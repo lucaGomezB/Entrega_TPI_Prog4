@@ -1,0 +1,28 @@
+# Web Framework & ORM
+fastapi
+sqlmodel>=0.0.38
+pydantic>=2.13.0
+
+# Servidor ASGI (Indispensable para correr FastAPI)
+uvicorn[standard]
+
+# Base de Datos
+psycopg2-binary        # Driver para PostgreSQL
+alembic                # Para migraciones (crucial si tu UML cambia)
+
+# Utilidades
+python-dotenv
+email-validator      # Para EmailStr de Pydantic
+
+# JWT Authentication
+PyJWT
+bcrypt
+
+# Rate Limiting
+slowapi
+
+# MercadoPago Integration
+mercadopago==2.4.0
+
+# Cloudinary SDK for Image Uploads
+cloudinary>=1.41,<2.0

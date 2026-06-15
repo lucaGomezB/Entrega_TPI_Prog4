@@ -1,0 +1,11 @@
+Backend/.env
+Frontend/.env
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+docs/50-preguntas-examen.md
+.engram
+openspec/
+docs/Recursos/mp.md
