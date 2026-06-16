@@ -7,21 +7,9 @@
  *   - pedidos: full view but no create/delete (mid-level access).
  *   - client:  read-only menu view with "Agregar al carrito" button.
  *
- * Features:
- *   - Paginated product list with client-side text filter.
- *   - Inline form for create/edit (full or stock-only mode).
- *   - Category and ingredient association via popup selectors.
- *   - Bulk variant creation modal (base name + multiple size/price variants).
- *   - Ingredient popup with quantity management and allergen toggles.
- *   - Category popup for viewing/adding/removing product-category links.
- *   - "Add to cart" integration with visual feedback animation.
- *   - Excel export of filtered data.
- *   - Auto-correction: products with stock=0 but disponible=true are set to false.
- *
- * State management: useReducer for the data grid, TanStack Form for create/edit.
+ * State management: TanStack Query for products, TanStack Form for create/edit.
  */
-
-import { useReducer, useEffect, useCallback, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useAppForm } from "@/shared/hooks/useAppForm";
 import type { Producto, ProductoCreate, ProductoIngredienteRead, ProductoCategoriaRead } from "@/features/productos/api/productos";
 import { productosApi } from "@/features/productos/api/productos";
@@ -29,8 +17,13 @@ import type { Ingrediente } from "@/features/productos/api/ingredientes";
 import { ingredientesApi } from "@/features/productos/api/ingredientes";
 import type { Categoria } from "@/features/categorias/api/categorias";
 import { categoriasApi } from "@/features/categorias/api/categorias";
+import { useProductos, useCreateProducto, useUpdateProducto, useDeleteProducto } from "@/features/productos/hooks/useProductos";
+import { useCategorias } from "@/features/categorias/hooks/useCategorias";
+import { useIngredientes } from "@/features/productos/hooks/useIngredientes";
 import { uploadsApi } from "@/shared/api/uploads";
 import ImageCarousel from "@/shared/components/ImageCarousel";
+import { addToast } from "@/shared/components/Toast";
+import Modal from "@/shared/components/Modal";
 import { useNavigate } from "react-router-dom";
 import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useCartStore } from "@/shared/store/cartStore";
@@ -39,82 +32,8 @@ import { getAccessToken } from "@/shared/api/client";
 
 const PAGE_SIZE = 10;
 
-/** All state for the data grid and modal/sub-form visibility. */
-interface State {
-  items: Producto[];
-  loading: boolean;
-  error: string | null;
-  page: number;
-  filter: string;
-  editingId: number | null;
-  showForm: boolean;
-  stockEditOnly: boolean;
-  selectedCategorias: {id: number, nombre: string, descripcion: string | null}[];
-  selectedIngredientes: {id: number, nombre: string, es_alergeno: boolean, cantidad: number}[];
-  showCategoriaSelector: boolean;
-  showIngredienteSelector: boolean;
-}
-
-type Action =
-  | { type: "SET_ITEMS"; payload: Producto[] }
-  | { type: "SET_LOADING"; payload: boolean }
-  | { type: "SET_ERROR"; payload: string | null }
-  | { type: "SET_PAGE"; payload: number }
-  | { type: "SET_FILTER"; payload: string }
-  | { type: "START_EDIT"; payload: Producto }
-  | { type: "START_STOCK_EDIT"; payload: Producto }
-  | { type: "START_CREATE" }
-  | { type: "CLOSE_FORM" }
-  | { type: "SET_SELECTED_CATEGORIAS"; payload: {id: number, nombre: string, descripcion: string | null}[] }
-  | { type: "SET_SELECTED_INGREDIENTES"; payload: {id: number, nombre: string, es_alergeno: boolean, cantidad: number}[] }
-  | { type: "SET_SHOW_CATEGORIA_SELECTOR"; payload: boolean }
-  | { type: "SET_SHOW_INGREDIENTE_SELECTOR"; payload: boolean };
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case "SET_ITEMS": return { ...state, items: action.payload, loading: false };
-    case "SET_LOADING": return { ...state, loading: action.payload };
-    case "SET_ERROR": return { ...state, error: action.payload, loading: false };
-    case "SET_PAGE": return { ...state, page: action.payload };
-    case "SET_FILTER": return { ...state, filter: action.payload, page: 0 };
-    case "START_EDIT":
-      return {
-        ...state, editingId: action.payload.id, showForm: true, stockEditOnly: false,
-        selectedCategorias: [],
-        selectedIngredientes: [],
-        showCategoriaSelector: false,
-        showIngredienteSelector: false,
-      };
-    case "START_STOCK_EDIT":
-      return {
-        ...state, editingId: action.payload.id, showForm: true, stockEditOnly: true,
-        selectedCategorias: [],
-        selectedIngredientes: [],
-        showCategoriaSelector: false,
-        showIngredienteSelector: false,
-      };
-    case "START_CREATE": return { ...state, editingId: null, showForm: true, stockEditOnly: false, selectedCategorias: [], selectedIngredientes: [], showCategoriaSelector: false, showIngredienteSelector: false };
-    case "CLOSE_FORM": return { ...state, showForm: false, editingId: null, stockEditOnly: false, selectedCategorias: [], selectedIngredientes: [], showCategoriaSelector: false, showIngredienteSelector: false };
-    case "SET_SELECTED_CATEGORIAS": return { ...state, selectedCategorias: action.payload };
-    case "SET_SELECTED_INGREDIENTES": return { ...state, selectedIngredientes: action.payload };
-    case "SET_SHOW_CATEGORIA_SELECTOR": return { ...state, showCategoriaSelector: action.payload };
-    case "SET_SHOW_INGREDIENTE_SELECTOR": return { ...state, showIngredienteSelector: action.payload };
-    default: return state;
-  }
-}
-
-const init: State = {
-  items: [], loading: false, error: null, page: 0, filter: "",
-  editingId: null, showForm: false, stockEditOnly: false,
-  selectedCategorias: [], selectedIngredientes: [], showCategoriaSelector: false, showIngredienteSelector: false,
-};
-
 /* ── Selector de Categorias (para creacion) ── */
 
-/**
- * Modal for selecting categories to assign to a new product.
- * Uses a simple checkbox table. Supports multi-select.
- */
 function CategoriaSelector({ allCategorias, selectedIds, onSelect, onClose }: {
   allCategorias: Categoria[]; selectedIds: number[]; onSelect: (ids: number[]) => void; onClose: () => void;
 }) {
@@ -132,13 +51,8 @@ function CategoriaSelector({ allCategorias, selectedIds, onSelect, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded p-6 w-full max-w-2xl max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Seleccionar Categorias</h2>
-          <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
-        </div>
-        <table className="w-full border-collapse border mb-4">
+    <Modal open={true} onClose={onClose} title="Seleccionar Categorias" maxWidth="max-w-2xl">
+      <table className="w-full border-collapse border mb-4">
           <thead><tr className="bg-gray-200">
             <th className="border p-2 text-left">Seleccionar</th>
             <th className="border p-2 text-left">Nombre</th>
@@ -160,17 +74,12 @@ function CategoriaSelector({ allCategorias, selectedIds, onSelect, onClose }: {
           <button onClick={handleConfirm} className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Confirmar</button>
           <button onClick={onClose} className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 /* ── Selector de Ingredientes (para creacion) ── */
 
-/**
- * Modal for selecting ingredients to assign to a new product.
- * Shows allergen info, price, and stock for each ingredient.
- */
 function IngredienteSelector({ allIngredientes, selected, onSelect, onClose }: {
   allIngredientes: Ingrediente[]; selected: {id: number, cantidad: number}[]; onSelect: (items: {id: number, cantidad: number}[]) => void; onClose: () => void;
 }) {
@@ -190,13 +99,8 @@ function IngredienteSelector({ allIngredientes, selected, onSelect, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded p-6 w-full max-w-2xl max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Seleccionar Ingredientes / Insumos</h2>
-          <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
-        </div>
-        <table className="w-full border-collapse border mb-4">
+    <Modal open={true} onClose={onClose} title="Seleccionar Ingredientes / Insumos" maxWidth="max-w-2xl">
+      <table className="w-full border-collapse border mb-4">
           <thead><tr className="bg-gray-200">
             <th className="border p-2 text-left">Seleccionar</th>
             <th className="border p-2 text-left">Nombre</th>
@@ -243,24 +147,12 @@ function IngredienteSelector({ allIngredientes, selected, onSelect, onClose }: {
           <button onClick={handleConfirm} className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Confirmar</button>
           <button onClick={onClose} className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 /* ── Popup de Ingredientes ── */
 
-/**
- * Modal for managing a product's ingredient relationships.
- *
- * Features:
- *   - View all assigned ingredients with order, quantity, cost, and flags.
- *   - Update quantity inline (optimistic update with revert on error).
- *   - Remove an ingredient from the product.
- *   - Add a new ingredient (with cantidad, orden, removible, principal flags).
- *   - Toggle es_alergeno on ingredients directly (admin convenience).
- *   - Shows calculated total ingredient cost for the product.
- */
 function IngredientesPopup({ productoId, productoNombre, onClose }: {
   productoId: number; productoNombre: string; onClose: () => void;
 }) {
@@ -271,14 +163,7 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
   const [addForm, setAddForm] = useState({ ingrediente_id: 0, cantidad: 1, es_removible: true, es_principal: false, orden: 0 });
   const [showAdd, setShowAdd] = useState(false);
   const [updatingCantidad, setUpdatingCantidad] = useState<number | null>(null);
-  const [mensaje, setMensaje] = useState<{tipo: 'exito' | 'error'; texto: string} | null>(null);
 
-  const mostrarMensaje = (tipo: 'exito' | 'error', texto: string) => {
-    setMensaje({ tipo, texto });
-    setTimeout(() => setMensaje(null), 3000);
-  };
-
-  /** Loads both the product's current ingredients and all available ingredients. */
   const load = useCallback(async () => {
     setLoading(true);
     const [prodIngs, available] = await Promise.all([
@@ -290,11 +175,6 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
     setLoading(false);
   }, [productoId]);
 
-  /**
-   * Silent refresh — fetches updated data WITHOUT setting loading=true.
-   * Used by handleToggleAlergeno and handleCantidadChange to avoid
-   * flashing "Cargando..." during background updates.
-   */
   const refresh = useCallback(async () => {
     const [prodIngs, available] = await Promise.all([
       productosApi.getIngredientes(productoId),
@@ -306,7 +186,6 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
 
   useEffect(() => { load(); }, [load]);
 
-  /** Adds a new ingredient relationship to the product. */
   const handleAdd = async () => {
     if (!addForm.ingrediente_id) return;
     try {
@@ -314,20 +193,15 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
       setShowAdd(false);
       setAddForm({ ingrediente_id: 0, cantidad: 1, es_removible: true, es_principal: false, orden: 0 });
       refresh();
-      mostrarMensaje('exito', 'Ingrediente agregado correctamente');
+      addToast('exito', 'Ingrediente agregado correctamente');
     } catch {
-      mostrarMensaje('error', 'Error al agregar ingrediente');
+      addToast('error', 'Error al agregar ingrediente');
     }
   };
 
-  /**
-   * Updates ingredient quantity with optimistic UI update.
-   * If the API call fails, the local state is reverted by reloading from the server.
-   */
   const handleCantidadChange = async (ingredienteId: number, newCantidad: number) => {
     if (newCantidad < 1) return;
     setUpdatingCantidad(ingredienteId);
-    // Optimistic update: immediately update local state
     setIngs(prev => prev.map(ing =>
       ing.ingrediente_id === ingredienteId
         ? { ...ing, cantidad: newCantidad }
@@ -336,31 +210,28 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
     try {
       await productosApi.updateIngredienteCantidad(productoId, ingredienteId, newCantidad);
     } catch {
-      // Revert on error: reload from server
       refresh();
     } finally {
       setUpdatingCantidad(null);
     }
   };
 
-  /** Removes an ingredient from the product. */
   const handleRemove = async (ingredienteId: number) => {
     if (!confirm("Quitar este ingrediente?")) return;
     try {
       await productosApi.removeIngrediente(productoId, ingredienteId);
       refresh();
-      mostrarMensaje('exito', 'Ingrediente quitado correctamente');
+      addToast('exito', 'Ingrediente quitado correctamente');
     } catch {
-      mostrarMensaje('error', 'Error al quitar ingrediente');
+      addToast('error', 'Error al quitar ingrediente');
     }
   };
 
-  /** Toggles the es_alergeno flag on an ingredient directly from this popup. */
   const handleToggleAlergeno = async (ingredienteId: number, currentValue: boolean) => {
     setToggling(ingredienteId);
     try {
       await ingredientesApi.update(ingredienteId, { es_alergeno: !currentValue });
-      await refresh(); // Silently reload to reflect changes
+      await refresh();
     } catch (err) {
       console.error("[alergeno-toggle] Error al cambiar alergeno:", err);
       alert("Error al cambiar alergeno. Revisa que tengas permisos de administrador o stock.");
@@ -369,11 +240,9 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
     }
   };
 
-  /** Resolves full ingredient info from the master list by ID. */
   const getIngInfo = (ingredienteId: number) =>
     allIngs.find((i) => i.id === ingredienteId);
 
-  /** Ingredients not yet assigned to this product. */
   const availableIngs = allIngs.filter(
     (ai) => !ings.some((i) => i.ingrediente_id === ai.id)
   );
@@ -385,12 +254,6 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
           <h2 className="text-lg font-bold">Ingredientes / Insumos de &quot;{productoNombre}&quot;</h2>
           <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
         </div>
-
-        {mensaje && (
-          <div className={`p-3 mb-4 rounded ${mensaje.tipo === 'exito' ? 'bg-green-100 text-green-800 border border-green-400' : 'bg-red-100 text-red-800 border border-red-400'}`}>
-            {mensaje.texto}
-          </div>
-        )}
 
         {loading ? <p>Cargando...</p> : (
           <>
@@ -410,7 +273,6 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
                 </tr></thead>
                 <tbody>
                   {(() => {
-                    /** Sum of (ingredient cost * quantity) across all assigned ingredients. */
                     const totalCalculado = ings.reduce((sum, ing) => {
                       const info = getIngInfo(ing.ingrediente_id);
                       const precio = info?.precio_actual ?? 0;
@@ -476,7 +338,6 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
               </table>
             )}
 
-            {/* Add ingredient form (toggled by button) */}
             {!showAdd ? (
               <button onClick={() => setShowAdd(true)}
                 className="bg-green-600 text-white px-4 py-1 rounded cursor-pointer hover:bg-green-700">+ Agregar Ingrediente</button>
@@ -534,10 +395,6 @@ function IngredientesPopup({ productoId, productoNombre, onClose }: {
 
 /* ── Popup de Categorias ── */
 
-/**
- * Modal for managing a product's category assignments.
- * Shows assigned categories and allows adding/removing.
- */
 function CategoriasPopup({ productoId, productoNombre, onClose }: {
   productoId: number; productoNombre: string; onClose: () => void;
 }) {
@@ -546,14 +403,7 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ categoria_id: 0, es_principal: false });
-  const [mensaje, setMensaje] = useState<{tipo: 'exito' | 'error'; texto: string} | null>(null);
 
-  const mostrarMensaje = (tipo: 'exito' | 'error', texto: string) => {
-    setMensaje({ tipo, texto });
-    setTimeout(() => setMensaje(null), 3000);
-  };
-
-  /** Loads both the product's current categories and all available categories. */
   const load = useCallback(async () => {
     setLoading(true);
     const [prodCats, available] = await Promise.all([
@@ -567,7 +417,6 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
 
   useEffect(() => { load(); }, [load]);
 
-  /** Adds a category assignment to the product. */
   const handleAdd = async () => {
     if (!addForm.categoria_id) return;
     try {
@@ -575,25 +424,23 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
       setShowAdd(false);
       setAddForm({ categoria_id: 0, es_principal: false });
       load();
-      mostrarMensaje('exito', 'Categoria agregada correctamente');
+      addToast('exito', 'Categoria agregada correctamente');
     } catch {
-      mostrarMensaje('error', 'Error al agregar la categoria. Verifique los datos.');
+      addToast('error', 'Error al agregar la categoria. Verifique los datos.');
     }
   };
 
-  /** Removes a category assignment from the product. */
   const handleRemove = async (categoriaId: number) => {
     if (!confirm("Quitar esta categoria?")) return;
     try {
       await productosApi.removeCategoria(productoId, categoriaId);
       load();
-      mostrarMensaje('exito', 'Categoria quitada correctamente');
+      addToast('exito', 'Categoria quitada correctamente');
     } catch {
-      mostrarMensaje('error', 'Error al quitar la categoria');
+      addToast('error', 'Error al quitar la categoria');
     }
   };
 
-  /** Categories not yet assigned to this product. */
   const availableCats = allCats.filter(
     (ac) => !cats.some((c) => c.categoria_id === ac.id)
   );
@@ -605,11 +452,6 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
           <h2 className="text-lg font-bold">Categorias de &quot;{productoNombre}&quot;</h2>
           <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
         </div>
-        {mensaje && (
-          <div className={`p-3 mb-4 rounded ${mensaje.tipo === 'exito' ? 'bg-green-100 text-green-800 border border-green-400' : 'bg-red-100 text-red-800 border border-red-400'}`}>
-            {mensaje.texto}
-          </div>
-        )}
         {loading ? <p>Cargando...</p> : (
           <>
             {cats.length === 0 ? (
@@ -636,7 +478,6 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
               </table>
             )}
 
-            {/* Add category form (toggled by button) */}
             {!showAdd ? (
               <button onClick={() => setShowAdd(true)}
                 className="bg-green-600 text-white px-4 py-1 rounded cursor-pointer">+ Agregar Categoria</button>
@@ -677,20 +518,6 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
 
 /* ── Pagina principal ── */
 
-/**
- * ProductosCRUD — Main product management component.
- *
- * Role-based behavior is determined by the `role` prop:
- *   - admin:   full access (CRUD, relations, create variants, export).
- *   - stock:   stock-only mode (update stock_cantidad + disponible flag).
- *   - pedidos: full view, can edit but cannot create/delete.
- *   - client:  read-only menu view with "Agregar al carrito" only.
- *
- * Cart integration:
- *   - Only authenticated users (isAuth) see the "Add to cart" column.
- *   - Recently-added items get a visual feedback animation (green flash).
- *   - Products without stock or not available are disabled.
- */
 export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'stock' | 'pedidos' | 'client' }) {
   const navigate = useNavigate();
   const readOnly = role === 'client';
@@ -698,26 +525,41 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const isAuth = !!getAccessToken();
   const hideCreate = role !== 'admin';
   const hideDelete = role === 'client' || role === 'stock';
-  const hideRelations = role === 'client' || role === 'stock';
   const hideCategoriasBtn = role === 'client' || role === 'stock';
   const hideExport = role === 'client' || role === 'stock';
-  const [state, dispatch] = useReducer(reducer, init);
+
+  // ── UI-only state ──
+  const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [stockEditOnly, setStockEditOnly] = useState(false);
+  const [selectedCategorias, setSelectedCategorias] = useState<{id: number, nombre: string, descripcion: string | null}[]>([]);
+  const [selectedIngredientes, setSelectedIngredientes] = useState<{id: number, nombre: string, es_alergeno: boolean, cantidad: number}[]>([]);
+  const [showCategoriaSelector, setShowCategoriaSelector] = useState(false);
+  const [showIngredienteSelector, setShowIngredienteSelector] = useState(false);
   const [ingPopup, setIngPopup] = useState<{ id: number; nombre: string } | null>(null);
   const [catPopup, setCatPopup] = useState<{ id: number; nombre: string } | null>(null);
-  const [allCats, setAllCats] = useState<Categoria[]>([]);
-  const [allIngs, setAllIngs] = useState<Ingrediente[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Set<number>>(new Set());
   const addTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-  const [mensaje, setMensaje] = useState<{tipo: 'exito' | 'error'; texto: string} | null>(null);
 
   // Cloudinary Upload Widget state
   const cloudinaryWidgetRef = useRef<unknown>(null);
   const [imagenPublicIds, setImagenPublicIds] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
 
-  /** Extracts a Cloudinary public ID from a Cloudinary URL.
-   *  Format: https://res.cloudinary.com/{cloud}/image/upload/v{version}/{public_id}.{ext}
-   *  Returns the public_id segment, or the original URL if parsing fails. */
+  // ── TanStack Query: products (paginated) ──
+  const { data: items = [], isLoading, isError, error } = useProductos(page * PAGE_SIZE, PAGE_SIZE);
+
+  // ── TanStack Query: categories and ingredients for selectors ──
+  const { data: allCats = [] } = useCategorias(0, 1000);
+  const { data: allIngs = [] } = useIngredientes(0, 1000);
+
+  // ── TanStack Query mutations ──
+  const createMutation = useCreateProducto();
+  const updateMutation = useUpdateProducto();
+  const deleteMutation = useDeleteProducto();
+
   const extractPublicId = (url: string): string => {
     try {
       const parts = url.split("/");
@@ -729,22 +571,11 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     }
   };
 
-  const mostrarMensaje = (tipo: 'exito' | 'error', texto: string) => {
-    setMensaje({ tipo, texto });
-    setTimeout(() => setMensaje(null), 3000);
-  };
-
-  /** Adds a product to the cart (localStorage) and shows visual feedback. */
   const handleAddToCart = (prod: Producto) => {
     useCartStore.getState().addToCart(prod.id, prod.nombre, Number(prod.precio_actual));
     triggerFeedback(prod.id);
   };
 
-  /**
-   * Visual feedback: changes the "Agregar al carrito" button to green
-   * with a checkmark for 1.2 seconds, then reverts.
-   * Uses a ref map to manage per-product timers.
-   */
   const triggerFeedback = (productoId: number) => {
     setRecentlyAdded((prev) => new Set(prev).add(productoId));
     const existingTimer = addTimerRef.current.get(productoId);
@@ -759,13 +590,6 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     }, 1200);
     addTimerRef.current.set(productoId, timer);
   };
-
-  // Load all categories and ingredients for the relationship selectors
-  useEffect(() => {
-    if (hideRelations) return;
-    categoriasApi.getAll(0, 1000).then(setAllCats).catch(() => {});
-    ingredientesApi.getAll(0, 1000).then(setAllIngs).catch(() => {});
-  }, [hideRelations]);
 
   // Load Cloudinary Upload Widget CDN script
   useEffect(() => {
@@ -783,11 +607,10 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     };
   }, [readOnly]);
 
-  // Cloudinary Upload Widget opener
   const abrirWidgetCloudinary = () => {
     const cloudinary = (window as unknown as Record<string, unknown>).cloudinary as Record<string, unknown> | undefined;
     if (!cloudinary || typeof cloudinary.createUploadWidget !== "function") {
-      mostrarMensaje("error", "El widget de Cloudinary no se ha cargado. Recargue la pagina.");
+      addToast("error", "El widget de Cloudinary no se ha cargado. Recargue la pagina.");
       return;
     }
     const widget = (cloudinary.createUploadWidget as Function)(
@@ -799,7 +622,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       },
       (error: unknown, result: { event: string; info?: { secure_url: string; public_id: string } }) => {
         if (error) {
-          mostrarMensaje("error", "Error al subir imagen a Cloudinary");
+          addToast("error", "Error al subir imagen a Cloudinary");
           return;
         }
         if (result?.event === "success" && result.info) {
@@ -815,7 +638,6 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     (widget as { open: () => void }).open();
   };
 
-  // Delete handler for carousel images
   const handleDeleteImagen = async (publicId: string) => {
     if (!confirm("Eliminar esta imagen?")) return;
     setUploadingImages(true);
@@ -829,9 +651,9 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
         form.setFieldValue("imagenes_url", newUrls);
         setImagenPublicIds((prev) => prev.filter((id) => id !== publicId));
       }
-      mostrarMensaje("exito", "Imagen eliminada correctamente");
+      addToast("exito", "Imagen eliminada correctamente");
     } catch {
-      mostrarMensaje("error", "Error al eliminar la imagen");
+      addToast("error", "Error al eliminar la imagen");
     } finally {
       setUploadingImages(false);
     }
@@ -839,83 +661,34 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
 
   // Load selected categories and ingredients when editing an existing product
   useEffect(() => {
-    if (state.editingId) {
+    if (editingId) {
       Promise.all([
-        productosApi.getCategorias(state.editingId),
-        productosApi.getIngredientes(state.editingId),
+        productosApi.getCategorias(editingId),
+        productosApi.getIngredientes(editingId),
       ]).then(([cats, ings]) => {
-        dispatch({ type: "SET_SELECTED_CATEGORIAS", payload: cats.map(c => ({ id: c.categoria_id, nombre: c.categoria_nombre, descripcion: null })) });
+        setSelectedCategorias(cats.map(c => ({ id: c.categoria_id, nombre: c.categoria_nombre, descripcion: null })));
         const selectedIngs = ings.map(i => {
           const ing = allIngs.find(ai => ai.id === i.ingrediente_id);
           return { id: i.ingrediente_id, nombre: i.ingrediente_nombre, es_alergeno: ing ? ing.es_alergeno : false, cantidad: i.cantidad ?? 1 };
         });
-        dispatch({ type: "SET_SELECTED_INGREDIENTES", payload: selectedIngs });
+        setSelectedIngredientes(selectedIngs);
       });
     }
-  }, [state.editingId, allIngs]);
+  }, [editingId, allIngs]);
 
-  /**
-   * Fetches the current page of products from the backend.
-   * After fetching, auto-corrects products with stock=0 but disponible=true
-   * (only for non-readonly roles).
-   */
-  const fetchData = useCallback(async () => {
-    dispatch({ type: "SET_LOADING", payload: true });
-    try {
-      const data = await productosApi.getAll(state.page * PAGE_SIZE, PAGE_SIZE);
-      dispatch({ type: "SET_ITEMS", payload: data });
-
-      // Auto-correct products with stock=0 but disponible=true
-      // Only if the user has write permissions (not client)
-      if (!readOnly) {
-        const toFix = data.filter((p: Producto) => p.stock_cantidad === 0 && p.disponible === true);
-        for (const prod of toFix) {
-          try {
-            await productosApi.update(prod.id, { disponible: false });
-          } catch {
-            // Silently skip if the user lacks permissions
-          }
-        }
-        if (toFix.length > 0) {
-          // Reload to reflect the changes
-          const freshData = await productosApi.getAll(state.page * PAGE_SIZE, PAGE_SIZE);
-          dispatch({ type: "SET_ITEMS", payload: freshData });
-        }
-      }
-    } catch (e) {
-      dispatch({ type: "SET_ERROR", payload: (e as Error).message });
-    }
-  }, [state.page, readOnly]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  /**
-   * Syncs calculated price from selected ingredients (create mode only).
-   * When ingredients are selected, the precio_base is auto-computed as the
-   * sum of all ingredient prices, and the manual price input is disabled.
-   */
+  // Sync calculated price from selected ingredients (create mode only)
   const precioCalculadoRef = useRef(0);
   useEffect(() => {
-    if (!state.editingId && state.selectedIngredientes.length > 0) {
-      const total = state.selectedIngredientes.reduce((sum, ing) => {
+    if (!editingId && selectedIngredientes.length > 0) {
+      const total = selectedIngredientes.reduce((sum, ing) => {
         const fullIng = allIngs.find(a => a.id === ing.id);
         return sum + Number(fullIng?.precio_actual ?? 0) * (ing.cantidad ?? 1);
       }, 0);
       precioCalculadoRef.current = total;
       form.setFieldValue('precio_base', total);
     }
-  }, [state.selectedIngredientes, state.editingId, allIngs]);
+  }, [selectedIngredientes, editingId, allIngs]);
 
-  /**
-   * TanStack Form for creating/editing a single product.
-   *
-   * Submit behavior depends on state:
-   *   - editingId + stockEditOnly: only updates stock_cantidad + disponible.
-   *   - editingId (full): updates all fields.
-   *   - No editingId (create): creates with categorias_ids + ingredientes.
-   *
-   * Error handling extracts the backend's detail field (AxiosError).
-   */
   const form = useAppForm<ProductoCreate>({
     defaultValues: {
       nombre: "",
@@ -933,16 +706,14 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     },
     onSubmit: async ({ value }) => {
       try {
-        if (state.editingId) {
-          if (state.stockEditOnly) {
-            await productosApi.update(state.editingId, {
+        if (editingId) {
+          if (stockEditOnly) {
+            await updateMutation.mutateAsync({ id: editingId, data: {
               stock_cantidad: value.stock_cantidad,
               disponible: value.disponible,
-            });
+            }});
           } else {
-            // Build a payload with only the fields that actually changed,
-            // so unchanged fields are NOT sent to the backend.
-            const original = state.items.find(p => p.id === state.editingId);
+            const original = items.find(p => p.id === editingId);
             const changed: Record<string, unknown> = {};
             if (value.nombre !== original?.nombre) changed.nombre = value.nombre;
             if (value.descripcion !== (original?.descripcion ?? null)) changed.descripcion = value.descripcion;
@@ -955,23 +726,20 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             if (JSON.stringify(value.imagenes_url) !== JSON.stringify(original?.imagenes_url ?? [])) {
               changed.imagenes_url = value.imagenes_url;
             }
-            // Also sync tiempo_prep_min
             if (Number(value.tiempo_prep_min) !== Number(original?.tiempo_prep_min ?? 0)) changed.tiempo_prep_min = value.tiempo_prep_min;
-            await productosApi.update(state.editingId, changed);
+            await updateMutation.mutateAsync({ id: editingId, data: changed });
           }
-          mostrarMensaje('exito', 'Producto actualizado correctamente');
+          addToast('exito', 'Producto actualizado correctamente');
         } else {
-          // Guard: require a positive price when no ingredients are selected and not insumo
-          if (!value.es_insumo && state.selectedIngredientes.length === 0 && value.precio_base <= 0) {
-            dispatch({ type: "SET_ERROR", payload: "El precio base debe ser mayor a 0 cuando no hay ingredientes" });
-            return;
+          if (!value.es_insumo && selectedIngredientes.length === 0 && value.precio_base <= 0) {
+            throw new Error("El precio base debe ser mayor a 0 cuando no hay ingredientes");
           }
-          await productosApi.create({
+          await createMutation.mutateAsync({
             ...value,
             precio_actual: value.precio_actual,
             es_insumo: value.es_insumo,
-            categorias_ids: state.selectedCategorias.map(c => c.id),
-            ingredientes: state.selectedIngredientes.map(i => ({
+            categorias_ids: selectedCategorias.map(c => c.id),
+            ingredientes: selectedIngredientes.map(i => ({
               ingrediente_id: i.id,
               cantidad: i.cantidad ?? 1,
               es_removible: true,
@@ -979,10 +747,9 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
               orden: 0,
             })),
           });
-          mostrarMensaje('exito', 'Producto creado correctamente');
+          addToast('exito', 'Producto creado correctamente');
         }
-        dispatch({ type: "CLOSE_FORM" });
-        fetchData();
+        handleCloseForm();
       } catch (err) {
         let msg = (err as Error).message;
         if (err instanceof AxiosError && err.response?.data) {
@@ -993,7 +760,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             } else if (typeof body.detail === 'object') {
               const detail = body.detail as Record<string, unknown>;
               const messages: string[] = [];
-              for (const [key, value] of Object.entries(detail)) {
+              for (const [, value] of Object.entries(detail)) {
                 if (Array.isArray(value)) {
                   messages.push(value.join('. '));
                 } else if (typeof value === 'string') {
@@ -1008,21 +775,21 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             }
           }
         }
-        dispatch({ type: "SET_ERROR", payload: msg });
+        addToast('error', msg);
       }
     },
   });
 
-  // Action wrappers that combine TanStack Form + reducer
-
-  /** Opens the form in create mode with blank defaults. */
   const handleStartCreate = () => {
     form.reset();
     setImagenPublicIds([]);
-    dispatch({ type: "START_CREATE" });
+    setEditingId(null);
+    setShowForm(true);
+    setStockEditOnly(false);
+    setSelectedCategorias([]);
+    setSelectedIngredientes([]);
   };
 
-  /** Opens the form in edit mode, pre-filled with the product's current values. */
   const handleStartEdit = (prod: Producto) => {
     form.reset({
       nombre: prod.nombre,
@@ -1037,10 +804,13 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       imagenes_url: prod.imagenes_url,
     }, { keepDefaultValues: true });
     setImagenPublicIds(prod.imagenes_url.map(extractPublicId));
-    dispatch({ type: "START_EDIT", payload: prod });
+    setEditingId(prod.id);
+    setShowForm(true);
+    setStockEditOnly(false);
+    setSelectedCategorias([]);
+    setSelectedIngredientes([]);
   };
 
-  /** Opens the form in stock-only edit mode. */
   const handleStartStockEdit = (prod: Producto) => {
     form.reset({
       nombre: prod.nombre,
@@ -1055,54 +825,56 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       imagenes_url: prod.imagenes_url,
     }, { keepDefaultValues: true });
     setImagenPublicIds(prod.imagenes_url.map(extractPublicId));
-    dispatch({ type: "START_STOCK_EDIT", payload: prod });
+    setEditingId(prod.id);
+    setShowForm(true);
+    setStockEditOnly(true);
+    setSelectedCategorias([]);
+    setSelectedIngredientes([]);
   };
 
-  /** Closes the form and resets all editing state. */
   const handleCloseForm = () => {
     form.reset();
     setImagenPublicIds([]);
-    dispatch({ type: "CLOSE_FORM" });
+    setShowForm(false);
+    setEditingId(null);
+    setStockEditOnly(false);
+    setSelectedCategorias([]);
+    setSelectedIngredientes([]);
+    setShowCategoriaSelector(false);
+    setShowIngredienteSelector(false);
   };
 
-  /** Deletes a product after user confirmation. */
   const handleDelete = async (id: number) => {
     if (!confirm("Eliminar este producto?")) return;
     try {
-      await productosApi.delete(id);
-      mostrarMensaje('exito', 'Producto eliminado');
-      fetchData();
+      await deleteMutation.mutateAsync(id);
+      addToast('exito', 'Producto eliminado');
     } catch (err) {
-      dispatch({ type: "SET_ERROR", payload: (err as Error).message });
+      addToast('error', (err as Error).message);
     }
   };
 
-  /** Client-side filter: by name, and for clients, hide unavailable products. */
-  const filtered = state.items.filter((p) =>
+  // Client-side filter
+  const filtered = items.filter((p) =>
     (role !== 'client' || p.disponible === true) &&
-    p.nombre.toLowerCase().includes(state.filter.toLowerCase())
+    p.nombre.toLowerCase().includes(filter.toLowerCase())
   );
 
-  // ---- RENDER ----
+  // ── RENDER ──
 
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">{role === 'client' ? 'Menu' : 'Gestion de Productos'}</h1>
-      {mensaje && (
-        <div className={`p-3 mb-4 rounded ${mensaje.tipo === 'exito' ? 'bg-green-100 text-green-800 border border-green-400' : 'bg-red-100 text-red-800 border border-red-400'}`}>
-          {mensaje.texto}
-        </div>
-      )}
-      {state.error && <pre className="text-red-500 mb-4 whitespace-pre-wrap font-sans">{state.error}</pre>}
+      {isError && <pre className="text-red-500 mb-4 whitespace-pre-wrap font-sans">{(error as Error)?.message || "Error al cargar"}</pre>}
 
-      {/* Toolbar: create buttons, filter, export */}
+      {/* Toolbar */}
       <div className="flex gap-2 mb-4 items-center">
         {!hideCreate && (
           <button onClick={handleStartCreate}
             className="bg-green-600 text-white px-4 py-1 rounded cursor-pointer">Crear Producto</button>
         )}
-        <input type="text" placeholder="Filtrar por nombre..." value={state.filter}
-          onChange={(e) => dispatch({ type: "SET_FILTER", payload: e.target.value })}
+        <input type="text" placeholder="Filtrar por nombre..." value={filter}
+          onChange={(e) => setFilter(e.target.value)}
           className="border px-2 py-1 rounded flex-grow" />
         {!hideExport && (
           <button onClick={() => exportToExcel(filtered.map(({ id, nombre, precio_actual, stock_cantidad, disponible, tiempo_prep_min }) => ({
@@ -1112,11 +884,10 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
         )}
       </div>
 
-      {/* Create/edit form (visible when showForm is active) */}
-      {state.showForm && (!hideCreate || state.stockEditOnly) && (
+      {/* Create/edit form */}
+      {showForm && (!hideCreate || stockEditOnly) && (
         <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="border p-4 mb-4 rounded bg-gray-50">
-          {state.stockEditOnly ? (
-            /* Stock-only mode: just stock_cantidad + disponible */
+          {stockEditOnly ? (
             <div className="grid grid-cols-2 gap-4 mb-4">
               {!readOnly && (
                 <form.Field name="es_insumo">
@@ -1153,7 +924,6 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
               </form.Field>
             </div>
           ) : (
-            /* Full create/edit form */
             <div className="grid grid-cols-2 gap-4 mb-4">
               <form.Field name="nombre">
                 {(field) => (
@@ -1180,12 +950,10 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
               <div>
                 <label className="block text-sm font-medium">Precio Base</label>
                 {(() => {
-                  const editingProduct = state.editingId ? state.items.find(p => p.id === state.editingId) : null;
+                  const editingProduct = editingId ? items.find(p => p.id === editingId) : null;
                   const hasIngredients = editingProduct?.tiene_ingredientes ?? false;
                   const isInsumoValue = form.getFieldValue('es_insumo');
-                  // Disabled when ingredients are assigned (price is auto-calculated),
-                  // unless the product is marked as insumo (manual price).
-                  const precioDisabled = isInsumoValue ? false : (state.editingId ? hasIngredients : state.selectedIngredientes.length > 0);
+                  const precioDisabled = isInsumoValue ? false : (editingId ? hasIngredients : selectedIngredientes.length > 0);
                   return (
                     <form.Field name="precio_base">
                       {(field) => (
@@ -1195,12 +963,12 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                             onChange={(e) => field.handleChange(Number(e.target.value))}
                             onBlur={field.handleBlur}
                             className={`border px-2 py-1 rounded w-full ${precioDisabled ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : ''}`} />
-                          {(state.editingId && hasIngredients) || (!state.editingId && state.selectedIngredientes.length > 0) ? (
+                          {(editingId && hasIngredients) || (!editingId && selectedIngredientes.length > 0) ? (
                             <p className="text-xs text-gray-500 mt-1 italic">
-                              {!state.editingId
-                                ? (state.selectedIngredientes.length === 1
+                              {!editingId
+                                ? (selectedIngredientes.length === 1
                                     ? 'Calculado desde 1 ingrediente'
-                                    : `Calculado desde ${state.selectedIngredientes.length} ingredientes`)
+                                    : `Calculado desde ${selectedIngredientes.length} ingredientes`)
                                 : 'Calculado desde ingredientes'}
                             </p>
                           ) : null}
@@ -1221,7 +989,6 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                   )}
                 </form.Field>
               </div>
-              {/* Recipe textarea */}
               <div className="col-span-2">
                 <form.Field name="receta">
                   {(field) => (
@@ -1273,8 +1040,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             </div>
           )}
 
-          {/* Image section — show in full edit/create mode */}
-          {!state.stockEditOnly && (
+          {!stockEditOnly && (
             <div className="border p-4 mb-4 rounded bg-gray-50">
               <h3 className="text-lg font-medium mb-2">Imagenes</h3>
               <ImageCarousel
@@ -1294,12 +1060,11 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             </div>
           )}
 
-          {/* Category and ingredient selectors (create mode only, admin/pedidos) */}
-          {!state.editingId && !hideCreate && !isStockMode && (
+          {!editingId && !hideCreate && !isStockMode && (
             <>
               <div className="border p-4 mb-4 rounded bg-gray-50">
                 <h3 className="text-lg font-medium mb-2">Categorias</h3>
-                {state.selectedCategorias.length > 0 && (
+                {selectedCategorias.length > 0 && (
                   <table className="w-full border-collapse border mb-2">
                     <thead><tr className="bg-gray-200">
                       <th className="border p-2 text-left">Nombre</th>
@@ -1307,19 +1072,19 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                       <th className="border p-2 text-left">Accion</th>
                     </tr></thead>
                     <tbody>
-                      {state.selectedCategorias.map((c) => (
+                      {selectedCategorias.map((c) => (
                         <tr key={c.id}>
                           <td className="border p-2">{c.nombre}</td>
                           <td className="border p-2">{c.descripcion ?? "-"}</td>
                           <td className="border p-2">
-                            <button type="button" onClick={() => dispatch({ type: "SET_SELECTED_CATEGORIAS", payload: state.selectedCategorias.filter(sc => sc.id !== c.id) })} className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Quitar</button>
+                            <button type="button" onClick={() => setSelectedCategorias(prev => prev.filter(sc => sc.id !== c.id))} className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Quitar</button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 )}
-                <button type="button" onClick={() => dispatch({ type: "SET_SHOW_CATEGORIA_SELECTOR", payload: true })} className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Seleccionar Categorias</button>
+                <button type="button" onClick={() => setShowCategoriaSelector(true)} className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Seleccionar Categorias</button>
               </div>
 
               {!form.getFieldValue('es_insumo') && (
@@ -1327,7 +1092,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 <h3 className="text-lg font-medium mb-2">
                   Ingredientes / Insumos
                 </h3>
-                {state.selectedIngredientes.length > 0 && (
+                {selectedIngredientes.length > 0 && (
                   <table className="w-full border-collapse border mb-2">
                     <thead><tr className="bg-gray-200">
                       <th className="border p-2 text-left">Nombre</th>
@@ -1336,13 +1101,13 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                       <th className="border p-2 text-left">Accion</th>
                     </tr></thead>
                     <tbody>
-                      {state.selectedIngredientes.map((i) => (
+                      {selectedIngredientes.map((i) => (
                         <tr key={i.id}>
                           <td className="border p-2">{i.nombre}</td>
                           <td className="border p-2">{i.es_alergeno ? "Si" : "No"}</td>
                           <td className="border p-2">{i.cantidad}</td>
                           <td className="border p-2">
-                            <button type="button" onClick={() => dispatch({ type: "SET_SELECTED_INGREDIENTES", payload: state.selectedIngredientes.filter(si => si.id !== i.id) })} className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Quitar</button>
+                            <button type="button" onClick={() => setSelectedIngredientes(prev => prev.filter(si => si.id !== i.id))} className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Quitar</button>
                           </td>
                         </tr>
                       ))}
@@ -1350,18 +1115,17 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                   </table>
                 )}
                 <button type="button"
-                  onClick={() => dispatch({ type: "SET_SHOW_INGREDIENTE_SELECTOR", payload: true })}
+                  onClick={() => setShowIngredienteSelector(true)}
                   className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Seleccionar Insumos</button>
               </div>
               )}
             </>
           )}
 
-          {/* Form action buttons */}
           <div className="flex gap-2 mt-4">
             <button type="submit" disabled={form.state.isSubmitting}
               className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer disabled:opacity-50">
-              {form.state.isSubmitting ? "Guardando..." : (state.stockEditOnly ? "Actualizar Stock" : (state.editingId ? "Actualizar" : "Crear"))}</button>
+              {form.state.isSubmitting ? "Guardando..." : (stockEditOnly ? "Actualizar Stock" : (editingId ? "Actualizar" : "Crear"))}</button>
             <button type="button" onClick={handleCloseForm}
               className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
           </div>
@@ -1369,31 +1133,30 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       )}
 
       {/* Product list table */}
-      {state.loading ? <p>Cargando...</p> : (
-        <table className="w-full border-collapse border">
-          <thead><tr className="bg-gray-200">
-            {!readOnly && <th className="border p-2 text-left">Codigo</th>}
-            <th className="border p-2 text-left">Nombre</th>
-            <th className="border p-2 text-left">Precio</th>
-            {!readOnly && <th className="border p-2 text-left">Stock</th>}
-            {!readOnly && !isStockMode && <th className="border p-2 text-left">Tiempo prep. (min)</th>}
-            <th className="border p-2 text-left">Disponible</th>
-            {!readOnly && <th className="border p-2 text-left">Es Insumo?</th>}
+      {isLoading ? <p>Cargando...</p> : (
+        <div className="overflow-x-auto rounded-lg shadow border border-gray-200">
+          <table className="w-full border-collapse text-sm">
+          <thead><tr className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wider">
+            {!readOnly && <th className="px-3 py-3 text-left font-semibold">Codigo</th>}
+            <th className="px-3 py-3 text-left font-semibold">Nombre</th>
+            <th className="px-3 py-3 text-left font-semibold">Precio</th>
+            {!readOnly && <th className="px-3 py-3 text-left font-semibold">Stock</th>}
+            {!readOnly && !isStockMode && <th className="px-3 py-3 text-left font-semibold">Prep. (min)</th>}
+            <th className="px-3 py-3 text-left font-semibold">Disponible</th>
+            {!readOnly && <th className="px-3 py-3 text-left font-semibold">Insumo</th>}
             {!readOnly && (!isStockMode || role === 'stock') && (
-              <th className="border p-2 text-left">{isStockMode ? 'Ingredientes' : 'Relaciones'}</th>
+              <th className="px-3 py-3 text-left font-semibold">{isStockMode ? 'Ingredientes' : 'Relaciones'}</th>
             )}
-            {!readOnly && (
-              <th className="border p-2 text-left">Acciones</th>
-            )}
-                {isAuth && role !== 'stock' && <th className="border p-2 text-left">Agregar al carrito</th>}
+            {!readOnly && <th className="px-3 py-3 text-left font-semibold">Acciones</th>}
+            {isAuth && role !== 'stock' && <th className="px-3 py-3 text-left font-semibold">Carrito</th>}
           </tr></thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-100">
             {filtered.map((prod) => (
-              <tr key={prod.id} className={`hover:bg-gray-100 ${prod.stock_cantidad === 0 ? 'bg-red-100' : prod.stock_cantidad < 50 ? 'bg-yellow-100' : ''}`}>
-                {!readOnly && <td className="border p-2">{prod.id}</td>}
-                <td className="border p-2">{prod.nombre}</td>
-                <td className="border p-2">
-                  <span>
+              <tr key={prod.id} className={`hover:bg-blue-50 transition-colors ${prod.stock_cantidad === 0 ? 'bg-red-50' : prod.stock_cantidad < 50 ? 'bg-yellow-50' : 'bg-white'}`)}>
+                {!readOnly && <td className="px-3 py-2.5 text-gray-500 text-xs">{prod.id}</td>}
+                <td className="px-3 py-2.5 font-medium text-gray-800">{prod.nombre}</td>
+                <td className="px-3 py-2.5">
+                  <span className="font-mono text-sm">
                     ${Number(prod.precio_actual).toFixed(2)}
                     {prod.tiene_ingredientes && !prod.es_insumo && role !== 'client' && (
                       <span className="text-xs text-blue-600 font-medium ml-1">(calc)</span>
@@ -1401,55 +1164,55 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                   </span>
                 </td>
                 {!readOnly && (
-                  <td className="border p-2">
-                    <span className={`font-mono font-semibold ${prod.stock_cantidad === 0 ? 'text-red-600' : 'text-green-700'}`}>
+                  <td className="px-3 py-2.5">
+                    <span className={`font-mono font-semibold text-sm ${prod.stock_cantidad === 0 ? 'text-red-600' : 'text-green-700'}`}>
                       {prod.stock_cantidad}
                     </span>
                   </td>
                 )}
-                {!readOnly && !isStockMode && <td className="border p-2">{prod.tiempo_prep_min}</td>}
-                <td className="border p-2">
-                  <span className={`font-medium ${prod.disponible ? 'text-green-700' : 'text-red-600'}`}>
+                {!readOnly && !isStockMode && <td className="px-3 py-2.5 text-sm">{prod.tiempo_prep_min}</td>}
+                <td className="px-3 py-2.5">
+                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${prod.disponible ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {prod.disponible ? "Si" : "No"}
                   </span>
                 </td>
                 {!readOnly && (
-                  <td className="border p-2 text-center">
+                  <td className="px-3 py-2.5 text-center">
                     {prod.es_insumo
-                      ? <span className="text-blue-600 font-bold">✓</span>
+                      ? <span className="text-blue-600 font-bold">Si</span>
                       : <span className="text-gray-400">—</span>}
                   </td>
                 )}
                 {!readOnly && (!isStockMode || role === 'stock') && (
-                  <td className="border p-2">
+                  <td className="px-3 py-2.5">
                     <div className="flex gap-1">
                       <button onClick={() => setIngPopup({ id: prod.id, nombre: prod.nombre })}
-                        className="bg-purple-600 text-white px-2 py-1 rounded text-sm cursor-pointer hover:bg-purple-700">Insumos</button>
+                        className="bg-purple-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-purple-700 transition-colors">Insumos</button>
                       {!hideCategoriasBtn && (
                         <button onClick={() => setCatPopup({ id: prod.id, nombre: prod.nombre })}
-                          className="bg-teal-600 text-white px-2 py-1 rounded text-sm cursor-pointer hover:bg-teal-700">Categorias</button>
+                          className="bg-teal-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-teal-700 transition-colors">Categorias</button>
                       )}
                     </div>
                   </td>
                 )}
                 {!readOnly && (
-                  <td className="border p-2">
+                  <td className="px-3 py-2.5">
                     <div className="flex gap-1 flex-wrap">
                       {!isStockMode && (
                         <button onClick={() => handleStartEdit(prod)}
-                          className="bg-yellow-500 text-white px-2 py-1 rounded text-sm cursor-pointer hover:bg-yellow-600">Editar</button>
+                          className="bg-yellow-500 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-yellow-600 transition-colors">Editar</button>
                       )}
                       <button onClick={() => handleStartStockEdit(prod)}
-                        className="bg-amber-700 text-white px-2 py-1 rounded text-sm cursor-pointer hover:bg-amber-800">Gestionar Stock</button>
+                        className="bg-amber-700 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-amber-800 transition-colors">Stock</button>
                       {!isStockMode && !hideDelete && (
                         <button onClick={() => handleDelete(prod.id)}
-                          className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer hover:bg-red-700">Eliminar</button>
+                          className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700 transition-colors">Eliminar</button>
                       )}
                     </div>
                   </td>
                 )}
                 {isAuth && role !== 'stock' && (
-                  <td className="border p-2">
+                  <td className="px-3 py-2.5">
                     {(() => {
                       let addable = true;
                       let disabledReason = '';
@@ -1491,20 +1254,21 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 )}
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={readOnly ? 4 : (isStockMode ? 7 : isAuth ? 9 : 8)} className="border p-2 text-center text-gray-500">Sin resultados</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={readOnly ? 4 : (isStockMode ? 7 : isAuth ? 9 : 8)} className="px-3 py-6 text-center text-gray-400">Sin resultados</td></tr>}
           </tbody>
         </table>
+        </div>
       )}
 
       {/* Pagination + cart button */}
       <div className="flex gap-2 mt-4 items-center justify-between">
         <div className="flex gap-2 items-center">
-          <button disabled={state.page === 0}
-            onClick={() => dispatch({ type: "SET_PAGE", payload: state.page - 1 })}
+          <button disabled={page === 0}
+            onClick={() => setPage(page - 1)}
             className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer">Anterior</button>
-          <span>Pagina {state.page + 1}</span>
-          <button disabled={state.items.length < PAGE_SIZE}
-            onClick={() => dispatch({ type: "SET_PAGE", payload: state.page + 1 })}
+          <span>Pagina {page + 1}</span>
+          <button disabled={items.length < PAGE_SIZE}
+            onClick={() => setPage(page + 1)}
             className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer">Siguiente</button>
         </div>
         {isAuth && role !== 'stock' && (
@@ -1517,27 +1281,25 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
         )}
       </div>
 
-      {/* Popups for ingredient and category management */}
+      {/* Popups */}
       {ingPopup && <IngredientesPopup productoId={ingPopup.id} productoNombre={ingPopup.nombre} onClose={() => setIngPopup(null)} />}
       {catPopup && <CategoriasPopup productoId={catPopup.id} productoNombre={catPopup.nombre} onClose={() => setCatPopup(null)} />}
-      {/* Category selector for creation form */}
-      {state.showCategoriaSelector && (
+      {showCategoriaSelector && (
         <CategoriaSelector
           allCategorias={allCats}
-          selectedIds={state.selectedCategorias.map(c => c.id)}
+          selectedIds={selectedCategorias.map(c => c.id)}
           onSelect={(ids) => {
             const selectedCats = allCats.filter(c => ids.includes(c.id)).map(c => ({ id: c.id, nombre: c.nombre, descripcion: c.descripcion }));
-            dispatch({ type: "SET_SELECTED_CATEGORIAS", payload: selectedCats });
+            setSelectedCategorias(selectedCats);
           }}
-          onClose={() => dispatch({ type: "SET_SHOW_CATEGORIA_SELECTOR", payload: false })}
+          onClose={() => setShowCategoriaSelector(false)}
         />
       )}
 
-      {/* Ingredient selector for creation form */}
-      {state.showIngredienteSelector && !form.getFieldValue('es_insumo') && (
+      {showIngredienteSelector && !form.getFieldValue('es_insumo') && (
         <IngredienteSelector
           allIngredientes={allIngs}
-          selected={state.selectedIngredientes.map(i => ({ id: i.id, cantidad: i.cantidad }))}
+          selected={selectedIngredientes.map(i => ({ id: i.id, cantidad: i.cantidad }))}
           onSelect={(items) => {
             const selectedIngs = items.map(item => {
               const ing = allIngs.find(i => i.id === item.id);
@@ -1548,12 +1310,11 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 cantidad: item.cantidad ?? 1,
               };
             });
-            dispatch({ type: "SET_SELECTED_INGREDIENTES", payload: selectedIngs });
+            setSelectedIngredientes(selectedIngs);
           }}
-          onClose={() => dispatch({ type: "SET_SHOW_INGREDIENTE_SELECTOR", payload: false })}
+          onClose={() => setShowIngredienteSelector(false)}
         />
       )}
-
     </div>
   );
 }

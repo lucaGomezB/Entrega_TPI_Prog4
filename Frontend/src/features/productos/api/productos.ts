@@ -26,6 +26,7 @@ export interface Producto {
   disponible: boolean;
   es_insumo: boolean;
   tiene_ingredientes?: boolean;
+  categoria_principal_id?: number | null;
 }
 
 export interface IngredienteAsignado {

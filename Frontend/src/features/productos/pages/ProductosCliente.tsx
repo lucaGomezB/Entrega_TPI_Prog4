@@ -2,82 +2,67 @@
  * ProductosCliente — Client-facing product listing page with card grid layout.
  *
  * Responsibilities:
- *  - Fetch all products on mount via productosApi.getAll()
- *  - Client-side text filter by name
+ *  - Fetch all products via TanStack Query useProductos()
+ *  - Fetch categories for filter chips
+ *  - Client-side text filter by name and category filter
  *  - Hide products where disponible === false
  *  - Simple prev/next pagination (PAGE_SIZE = 12 for 3 rows of 4)
  *  - Renders each product via ProductCard with add-to-cart integration
  *  - Shows "Ver Carrito (N)" button for authenticated users
- *
- * State management: useReducer for data grid (same pattern as ProductosCRUD).
- * Visual feedback: recently-added Set with useRef timers (matching ProductosCRUD).
+ *  - Skeleton loaders while fetching
  */
-import { useReducer, useEffect, useRef, useState, useCallback } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { productosApi } from "@/features/productos/api/productos";
 import type { Producto } from "@/features/productos/api/productos";
-import { categoriasApi } from "@/features/categorias/api/categorias";
+import { useProductos } from "@/features/productos/hooks/useProductos";
+import { useCategorias } from "@/features/categorias/hooks/useCategorias";
 import { useCartStore } from "@/shared/store/cartStore";
 import { getAccessToken } from "@/shared/api/client";
 import ProductCard from "@/features/productos/components/ProductCard";
 
 const PAGE_SIZE = 12;
 
-// ── State ──
-
-interface State {
-  items: Producto[];
-  loading: boolean;
-  error: string | null;
-  page: number;
-  filter: string;
+/**
+ * Skeleton loader grid — mimics the exact layout of product cards
+ * but with animated pulse placeholders. Uses the same responsive grid.
+ */
+function SkeletonGrid() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-lg shadow-md overflow-hidden animate-pulse">
+          <div className="w-full aspect-[4/3] bg-gray-200" />
+          <div className="p-4 space-y-2">
+            <div className="h-4 bg-gray-200 rounded w-3/4" />
+            <div className="h-3 bg-gray-200 rounded w-1/2" />
+            <div className="h-6 bg-gray-200 rounded w-1/3 mt-2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
-
-type Action =
-  | { type: "SET_ITEMS"; payload: Producto[] }
-  | { type: "SET_LOADING"; payload: boolean }
-  | { type: "SET_ERROR"; payload: string | null }
-  | { type: "SET_PAGE"; payload: number }
-  | { type: "SET_FILTER"; payload: string };
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case "SET_ITEMS":
-      return { ...state, items: action.payload, loading: false };
-    case "SET_LOADING":
-      return { ...state, loading: action.payload };
-    case "SET_ERROR":
-      return { ...state, error: action.payload, loading: false };
-    case "SET_PAGE":
-      return { ...state, page: action.payload };
-    case "SET_FILTER":
-      return { ...state, filter: action.payload, page: 0 };
-    default:
-      return state;
-  }
-}
-
-const init: State = {
-  items: [],
-  loading: false,
-  error: null,
-  page: 0,
-  filter: "",
-};
 
 // ── Page component ──
 
 export default function ProductosCliente() {
   const navigate = useNavigate();
-  const [state, dispatch] = useReducer(reducer, init);
   const isAuth = !!getAccessToken();
 
-  // Recently-added feedback (matching ProductosCRUD pattern)
+  // TanStack Query: products
+  const { data: products = [], isLoading, isError, error } = useProductos(0, 1000);
+
+  // TanStack Query: categories (for filter chips + image fallback)
+  const { data: categorias = [] } = useCategorias(0, 1000);
+
+  // UI-only state
+  const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+
+  // Recently-added feedback
   const [recentlyAdded, setRecentlyAdded] = useState<Set<number>>(new Set());
   const addTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-
-  // Category images for product card fallback
-  const [categoryImagesMap, setCategoryImagesMap] = useState<Record<number, string[]>>({});
 
   /** Adds a product to the cart and triggers visual feedback. */
   const handleAddToCart = (prod: Producto) => {
@@ -104,39 +89,16 @@ export default function ProductosCliente() {
     addTimerRef.current.set(productoId, timer);
   };
 
-  /**
-   * Fetches all products on mount.
-   * Uses a large limit (1000) to get everything; filtering/pagination is client-side.
-   */
-  const fetchData = useCallback(async () => {
-    dispatch({ type: "SET_LOADING", payload: true });
-    try {
-      const data = await productosApi.getAll(0, 1000);
-      dispatch({ type: "SET_ITEMS", payload: data });
-    } catch (e) {
-      dispatch({ type: "SET_ERROR", payload: (e as Error).message });
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Fetch categories for image fallback
-  useEffect(() => {
-    categoriasApi.getAll(0, 1000).then((cats) => {
-      const map: Record<number, string[]> = {};
-      // We can't directly map product to category from paginated list,
-      // so we collect category images indexed by category ID and
-      // provide the first available category image as fallback.
-      for (const cat of cats) {
-        if (cat.imagenes_url && cat.imagenes_url.length > 0) {
-          map[cat.id] = cat.imagenes_url;
-        }
+  // Category images map for product card fallback
+  const categoryImagesMap = useMemo(() => {
+    const map: Record<number, string[]> = {};
+    for (const cat of categorias) {
+      if (cat.imagen_url && cat.imagen_url.length > 0) {
+        map[cat.id] = cat.imagen_url;
       }
-      setCategoryImagesMap(map);
-    }).catch(() => {});
-  }, []);
+    }
+    return map;
+  }, [categorias]);
 
   // Get the first available category image for any product
   const firstCategoryImages = Object.values(categoryImagesMap).find(
@@ -145,13 +107,16 @@ export default function ProductosCliente() {
 
   // ── Derived data ──
 
-  /** Filter: only available products matching the text filter. */
-  const filtered = state.items.filter(
-    (p) => p.disponible === true && p.nombre.toLowerCase().includes(state.filter.toLowerCase())
+  /** Filter: only available products matching the text filter AND selected category. */
+  const filtered = products.filter(
+    (p) =>
+      p.disponible === true &&
+      p.nombre.toLowerCase().includes(filter.toLowerCase()) &&
+      (selectedCategoryId === null || p.categoria_principal_id === selectedCategoryId)
   );
 
   /** Current page slice. */
-  const paged = filtered.slice(state.page * PAGE_SIZE, (state.page + 1) * PAGE_SIZE);
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
 
@@ -162,26 +127,60 @@ export default function ProductosCliente() {
       <h1 className="text-2xl font-bold mb-4">Menu</h1>
 
       {/* Error state */}
-      {state.error && <p className="text-red-500 mb-4">{state.error}</p>}
+      {isError && <p className="text-red-500 mb-4">{(error as Error)?.message || "Error al cargar productos"}</p>}
 
       {/* Search filter */}
       <div className="flex gap-2 mb-4 items-center">
         <input
           type="text"
           placeholder="Filtrar por nombre..."
-          value={state.filter}
-          onChange={(e) => dispatch({ type: "SET_FILTER", payload: e.target.value })}
+          value={filter}
+          onChange={(e) => { setFilter(e.target.value); setPage(0); }}
           className="border px-2 py-1 rounded flex-grow"
         />
       </div>
 
-      {/* Loading state */}
-      {state.loading ? (
-        <p className="text-center text-gray-500 py-8">Cargando...</p>
-      ) : state.error ? null : filtered.length === 0 ? (
-        /* Empty state */
+      {/* Category filter chips */}
+      {categorias.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => { setSelectedCategoryId(null); setPage(0); }}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors cursor-pointer ${
+              selectedCategoryId === null
+                ? "bg-blue-600 text-white"
+                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            }`}
+          >
+            Todas
+          </button>
+          {categorias.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => {
+                setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id);
+                setPage(0);
+              }}
+              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors cursor-pointer ${
+                selectedCategoryId === cat.id
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              {cat.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Loading state — skeleton loaders */}
+      {isLoading && <SkeletonGrid />}
+
+      {/* Results */}
+      {!isLoading && !isError && filtered.length === 0 && (
         <p className="text-center text-gray-500 py-8">Sin resultados</p>
-      ) : (
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && (
         <>
           {/* Product grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -200,18 +199,18 @@ export default function ProductosCliente() {
           <div className="flex gap-2 mt-6 items-center justify-between">
             <div className="flex gap-2 items-center">
               <button
-                disabled={state.page === 0}
-                onClick={() => dispatch({ type: "SET_PAGE", payload: state.page - 1 })}
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
                 className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer"
               >
                 Anterior
               </button>
               <span>
-                Pagina {state.page + 1}{totalPages > 1 ? ` de ${totalPages}` : ""}
+                Pagina {page + 1}{totalPages > 1 ? ` de ${totalPages}` : ""}
               </span>
               <button
-                disabled={state.page + 1 >= totalPages}
-                onClick={() => dispatch({ type: "SET_PAGE", payload: state.page + 1 })}
+                disabled={page + 1 >= totalPages}
+                onClick={() => setPage(page + 1)}
                 className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer"
               >
                 Siguiente

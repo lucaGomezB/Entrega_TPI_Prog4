@@ -9,7 +9,7 @@ codigo en este proyecto. Este es el contrato unico de arquitectura para frontend
 
 | Capa | Tecnologia |
 |------|-----------|
-| Frontend | React 19, TypeScript 6, Vite 8, Tailwind 4, Zustand 5, TanStack Query/Form, Recharts 3 |
+| Frontend | React 19, TypeScript 6, Vite 8, Tailwind 4, React Router 7, Zustand 5, TanStack Query/Form, Recharts 3 |
 | Backend | Python 3.12, FastAPI, SQLModel, PostgreSQL 16, Alembic, pytest |
 | Infra | Docker Compose, Nginx |
 
@@ -38,9 +38,9 @@ SOLO codigo usado por 2+ features. Si una sola feature lo usa, DEBE estar dentro
 de esa feature. Contiene:
 
 - `shared/api/` — cliente HTTP (Axios) y modulo de uploads (Cloudinary)
-- `shared/components/` — componentes reusables (ImageCarousel)
+- `shared/components/` — componentes reusables (ImageCarousel, Modal, Skeleton, Toast)
 - `shared/hooks/` — hook de formulario base (useAppForm)
-- `shared/store/` — stores globales (authStore, cartStore)
+- `shared/store/` — stores globales (authStore, cartStore, filtrosStore, uiStore)
 - `shared/utils/` — utilidades (exportExcel)
 
 ### Flujo de imports (DE ARRIBA HACIA ABAJO)

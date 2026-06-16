@@ -68,6 +68,7 @@ const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
+  timeout: 15_000,  // 15s timeout to prevent hanging requests on backend downtime
 });
 
 // ── Token Management (persisted to localStorage, survives page reload) ──
@@ -211,6 +212,11 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    // Network errors (no response) — reject immediately, don't attempt refresh
+    if (!error.response) {
+      return Promise.reject(error);
+    }
 
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);

@@ -41,7 +41,7 @@ type WsStore = WsState & WsActions;
 export const useWsStore = create<WsStore>((set) => ({
   status: 'disconnected',
   reconnectAttempt: 0,
-  maxReconnectAttempts: 5,
+  maxReconnectAttempts: 10,
   lastEvent: null,
   connectedAt: null,
 

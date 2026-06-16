@@ -40,7 +40,7 @@ El backend esta construido con **Python FastAPI** siguiendo una arquitectura mod
 | TypeScript | 5.6+ | Tipado estatico |
 | Vite | 6+ | Build tool y dev server |
 | Tailwind CSS | 4 | Utilidades CSS |
-| TanStack Router | latest | Ruteo tipado |
+| React Router | 7 | Ruteo declarativo |
 | TanStack Query | latest | Fetching y cache de datos |
 | Zustand | latest | Estado global |
 | Recharts | latest | Graficos (dashboard) |
@@ -50,7 +50,7 @@ El backend esta construido con **Python FastAPI** siguiendo una arquitectura mod
 | Tecnologia | Proposito |
 |------------|-----------|
 | Docker + Docker Compose | Contenedores y orquestacion local |
-| pytest + pytest-cov | Testing backend (143 tests) |
+| pytest + pytest-cov | Testing backend (155 tests) |
 | SQLite (tests) | Base de datos en memoria para tests |
 
 ---
@@ -177,7 +177,7 @@ El frontend estara disponible en **http://localhost:5173**.
 
 ## Testing
 
-El backend cuenta con **143 tests** unitarios y de integracion que cubren todos los modulos del sistema. Se ejecutan con base de datos SQLite en memoria, sin necesidad de PostgreSQL.
+El backend cuenta con **155 tests** unitarios y de integracion que cubren todos los modulos del sistema. Se ejecutan con base de datos SQLite en memoria, sin necesidad de PostgreSQL.
 
 ```bash
 # Ejecutar todos los tests
@@ -191,20 +191,21 @@ pytest Backend/tests/ --cov=Backend -v
 
 | Modulo | Tests | Archivo |
 |--------|-------|---------|
-| Auth (registro, login, logout, refresh, perfil) | 16 | `test_identidad_acceso.py` |
-| Usuario (CRUD, RBAC, soft-delete) | 8 | `test_identidad_acceso.py` |
+| Auth (registro, login, logout, refresh, perfil) | 17 | `test_identidad_acceso.py` |
+| Usuario (CRUD, RBAC, soft-delete) | 10 | `test_identidad_acceso.py` |
 | Rol (listado, consulta) | 5 | `test_identidad_acceso.py` |
 | Direccion de Entrega | 7 | `test_identidad_acceso.py` |
 | Categoria (CRUD, arbol, jerarquia) | 7 | `test_catalogo_productos.py` |
 | Producto (CRUD, soft-delete, categorias) | 7 | `test_catalogo_productos.py` |
 | Ingrediente (CRUD, alergenos) | 7 | `test_catalogo_productos.py` |
-| Pedido (listado, FSM avanzar/cancelar) | 16 | `test_pedidos.py` |
+| Pedido (listado, FSM avanzar/cancelar) | 18 | `test_pedidos.py` |
 | Estado de Pedido (catalogos) | 5 | `test_catalogos_pedido.py` |
 | Forma de Pago (catalogos) | 6 | `test_catalogos_pedido.py` |
-| Estadisticas (KPIs, precision decimal) | 42 | `test_estadisticas.py` |
+| Estadisticas (KPIs, precision decimal) | 30 | `test_estadisticas.py` |
 | Cloudinary (uploads, schemas, config) | 12 | `test_cloudinary_uploads.py` |
-| Pago (MercadoPago init, webhook, consulta) | 8 | `test_pago_service.py` |
+| Pago (MercadoPago init, webhook, consulta) | 10 | `test_pago_service.py` |
 | Historial de Estado de Pedido | 5 | `test_historial_estado_pedido_service.py` |
+| WebSocket (conexion, auth, canales) | 9 | `test_websocket.py` |
 
 ---
 
@@ -253,7 +254,7 @@ Entrega_TPI_Prog4/
 │   │   └── Uploads/                 # Cloudinary image management
 │   ├── app/db/seed.py               # Seed de datos iniciales
 │   ├── migrations/                  # Migraciones Alembic
-│   └── tests/                       # Suite de tests (143 tests)
+│   └── tests/                       # Suite de tests (155 tests)
 │
 ├── Frontend/
 │   ├── Dockerfile
@@ -262,13 +263,20 @@ Entrega_TPI_Prog4/
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── src/
-│       ├── api/                     # Cliente HTTP (fetch wrapper)
-│       ├── components/              # Componentes reutilizables
-│       ├── pages/                   # Vistas por ruta
-│       ├── store/                   # Estado global (Zustand)
-│       ├── hooks/                   # Custom hooks
-│       ├── types/                   # Tipos TypeScript compartidos
-│       └── utils/                   # Utilidades
+│       ├── app/                     # App shell (App.tsx, router.tsx, main.tsx)
+│       ├── assets/                  # Imagenes y recursos estaticos
+│       ├── features/                # Feature-Sliced Design
+│       │   ├── auth/                # Autenticacion y usuarios
+│       │   ├── productos/           # Catalogo de productos e ingredientes
+│       │   ├── pedidos/             # Pedidos, pagos y direcciones
+│       │   ├── categorias/          # Categorias de productos
+│       │   └── estadisticas/        # Dashboard KPIs y graficos
+│       └── shared/                  # Codigo compartido entre features
+│           ├── api/                 # Cliente HTTP (Axios) + query keys
+│           ├── components/          # Componentes reusables (ImageCarousel)
+│           ├── hooks/               # Hook de formulario base (useAppForm)
+│           ├── store/               # Stores globales (authStore, cartStore)
+│           └── utils/               # Utilidades (exportExcel)
 │
 └── openspec/                        # Especificaciones SDD (solo desarrollo)
 ```

@@ -5,18 +5,25 @@
  *  - Bootstrap session verification on mount (httpOnly refresh cookie).
  *  - Derive role flags (isGuest, isClient, isAdmin, etc.).
  *  - Build navigation items based on role.
- *  - Render layout: nav bar + main content (delegates to AppRoutes) + session timeout modal.
+ *  - Render layout: nav bar (responsive with hamburger on mobile) + main content + session timeout modal.
+ *  - WS connection indicator in navbar.
  *
  * Route definitions live in router.tsx. App.tsx contains NO inline route definitions.
  */
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from './queryClient'
 import { AppRoutes, UnauthenticatedRoutes } from './router'
 import SessionTimeoutModal from '@/features/auth/components/SessionTimeoutModal'
+import ToastContainer from '@/shared/components/Toast'
 import { apiFetch, getAccessToken, refreshSession } from '@/shared/api/client'
 import type { UserInfo } from '@/shared/api/client'
 import { useCartStore } from '@/shared/store/cartStore'
 import { useAuthStore } from '@/shared/store/authStore'
+import { useUiStore } from '@/shared/store/uiStore'
+import { useNotificationStore } from '@/features/pedidos/store/notificationStore'
+import { useWsStatus } from '@/features/pedidos/store/wsStore'
 
 /* ── Helpers ── */
 
@@ -30,6 +37,11 @@ function App() {
   const user = useAuthStore((s) => s.user)
   const navigate = useNavigate()
   const cartCount = useCartStore((s) => s.getItemCount())
+  const unseenCount = useNotificationStore((s) => s.unseenCount)
+  const mobileMenuOpen = useUiStore((s) => s.mobileMenuOpen)
+  const setMobileMenuOpen = useUiStore((s) => s.setMobileMenuOpen)
+  const wsStatus = useWsStatus()
+  const wsConnected = wsStatus === 'connected'
 
   useEffect(() => {
     async function bootstrap() {
@@ -85,15 +97,21 @@ function App() {
   // ── Loading state ──
   if (verifying) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-gray-500">Verificando sesion...</p>
-      </div>
+      <QueryClientProvider client={queryClient}>
+        <div className="min-h-screen flex items-center justify-center bg-gray-100">
+          <p className="text-gray-500">Verificando sesion...</p>
+        </div>
+      </QueryClientProvider>
     )
   }
 
   // ── Unauthenticated state ──
   if (roles === null) {
-    return <UnauthenticatedRoutes />
+    return (
+      <QueryClientProvider client={queryClient}>
+        <UnauthenticatedRoutes />
+      </QueryClientProvider>
+    )
   }
 
   // ── Role-based flags ──
@@ -139,47 +157,130 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <nav className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center">
-        <div className="flex gap-4 items-center">
-          <span className="font-bold mr-4">{isClient || isGuest ? 'Menu' : 'Catalogo de Productos'}</span>
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `px-3 py-1 rounded ${isActive ? 'bg-gray-600' : 'hover:bg-gray-700'}`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </div>
-        <div className="flex items-center gap-4">
-          {!isGuest && (
-            <span className="text-sm text-gray-300">{user?.email}</span>
+    <QueryClientProvider client={queryClient}>
+      <div className="min-h-screen bg-white">
+        {/* ── Navbar (responsive) ── */}
+        <nav className="bg-gray-800 text-white px-4 py-3">
+          <div className="flex justify-between items-center">
+            {/* Left: brand + desktop nav links */}
+            <div className="flex items-center gap-4">
+              <span className="font-bold mr-2">{isClient || isGuest ? 'Menu' : 'Catalogo de Productos'}</span>
+
+              {/* Desktop nav links (hidden on mobile) */}
+              <div className="hidden md:flex gap-2">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      `px-3 py-1 rounded ${isActive ? 'bg-gray-600' : 'hover:bg-gray-700'}`
+                    }
+                  >
+                    {item.label}
+                    {item.to === '/pedidos' && unseenCount > 0 && (
+                      <span className="ml-1 inline-flex items-center justify-center bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1">
+                        {unseenCount > 99 ? '99+' : unseenCount}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+
+            {/* Right: user info + WS badge + logout + hamburger */}
+            <div className="flex items-center gap-3">
+              {/* WS connection indicator */}
+              <span
+                className={`hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  wsConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}
+                title={wsConnected ? 'En vivo — recibiendo actualizaciones' : 'Desconectado — no se reciben actualizaciones'}
+              >
+                <span className={`inline-block w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                {wsConnected ? 'En vivo' : 'Desconectado'}
+              </span>
+
+              {!isGuest && (
+                <span className="text-sm text-gray-300 hidden md:inline">{user?.email}</span>
+              )}
+              <button
+                onClick={handleLogout}
+                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors cursor-pointer hidden md:block"
+              >
+                Cerrar Sesion
+              </button>
+
+              {/* Hamburger button (visible on mobile) */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden text-white p-1 cursor-pointer hover:bg-gray-700 rounded"
+                aria-label="Abrir menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {mobileMenuOpen ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  )}
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile menu dropdown */}
+          {mobileMenuOpen && (
+            <div className="md:hidden mt-3 pt-3 border-t border-gray-700 flex flex-col gap-2">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `px-3 py-2 rounded ${isActive ? 'bg-gray-600' : 'hover:bg-gray-700'}`
+                  }
+                >
+                  {item.label}
+                  {item.to === '/pedidos' && unseenCount > 0 && (
+                    <span className="ml-1 inline-flex items-center justify-center bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1">
+                      {unseenCount > 99 ? '99+' : unseenCount}
+                    </span>
+                  )}
+                </NavLink>
+              ))}
+
+              {/* Mobile WS indicator */}
+              <div className="px-3 py-1 text-xs text-gray-400">
+                <span className={`inline-block w-2 h-2 rounded-full mr-1 ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                {wsConnected ? 'En vivo' : 'Desconectado'}
+              </div>
+
+              {!isGuest && (
+                <span className="px-3 py-1 text-sm text-gray-400">{user?.email}</span>
+              )}
+              <button
+                onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                className="mx-3 mb-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors cursor-pointer"
+              >
+                Cerrar Sesion
+              </button>
+            </div>
           )}
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm transition-colors cursor-pointer"
-          >
-            Cerrar Sesion
-          </button>
-        </div>
-      </nav>
+        </nav>
 
-      <main>
-        <AppRoutes
-          roles={roles}
-          isGuest={isGuest}
-          isClient={isClient}
-          isStock={isStock}
-          isPedidos={isPedidos}
-        />
-      </main>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <AppRoutes
+            roles={roles}
+            isGuest={isGuest}
+            isClient={isClient}
+            isStock={isStock}
+            isPedidos={isPedidos}
+          />
+        </main>
 
-      <SessionTimeoutModal />
-    </div>
+        <SessionTimeoutModal />
+        <ToastContainer />
+      </div>
+    </QueryClientProvider>
   )
 }
 

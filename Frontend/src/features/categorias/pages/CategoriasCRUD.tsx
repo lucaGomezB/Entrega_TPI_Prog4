@@ -2,32 +2,26 @@
  * CategoriasCRUD — Category management admin page.
  *
  * Features:
- *   - Hierarchical tree display (parent-child relationships via subcategorias).
+ *   - Hierarchical tree display via TanStack Query useCategoriasTree().
  *   - Expand/collapse tree nodes.
- *   - CRUD operations: create, edit, delete categories.
+ *   - CRUD operations: create, edit, delete categories via mutations.
  *   - Parent category selection via a tree-based modal (prevents cycles).
  *   - Text filter that recursively filters the tree.
  *   - Excel export of the flattened (depth-annotated) tree.
- *
- * The category tree is fetched once from categoriasApi.getTree() and
- * filtering is done client-side via filterTree().
  */
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { CategoriaCreate, CategoriaTree } from "@/features/categorias/api/categorias";
-import { categoriasApi } from "@/features/categorias/api/categorias";
+import { useCategoriasTree, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from "@/features/categorias/hooks/useCategorias";
 import { uploadsApi } from "@/shared/api/uploads";
 import ImageCarousel from "@/shared/components/ImageCarousel";
 import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
+import { addToast } from "@/shared/components/Toast";
 
 
 /* ── Helpers ── */
 
-/**
- * Recursively flattens a tree of CategoriaTree nodes into a linear array,
- * annotating each node with its nesting `depth` for display/export.
- */
 function flattenTree(nodes: CategoriaTree[], depth = 0): (CategoriaTree & { depth: number })[] {
   const result: (CategoriaTree & { depth: number })[] = [];
   for (const node of nodes) {
@@ -39,11 +33,6 @@ function flattenTree(nodes: CategoriaTree[], depth = 0): (CategoriaTree & { dept
   return result;
 }
 
-/**
- * Recursively filters a category tree by name (case-insensitive).
- * If a parent matches, all its children are kept; if only children match,
- * only those children are included (parent omitted to avoid false positives).
- */
 function filterTree(nodes: CategoriaTree[], query: string): CategoriaTree[] {
   const lower = query.toLowerCase();
   return nodes.reduce<CategoriaTree[]>((acc, node) => {
@@ -59,10 +48,6 @@ function filterTree(nodes: CategoriaTree[], query: string): CategoriaTree[] {
   }, []);
 }
 
-/**
- * Collects all descendant IDs (including self) for a given node.
- * Used to exclude self + descendants from the parent selector to prevent cycles.
- */
 function getDescendantIds(node: CategoriaTree): number[] {
   const ids: number[] = [node.id];
   for (const child of node.subcategorias) {
@@ -71,9 +56,6 @@ function getDescendantIds(node: CategoriaTree): number[] {
   return ids;
 }
 
-/**
- * Recursively finds a category node by ID within the tree.
- */
 function findCategoriaInTree(nodes: CategoriaTree[], id: number): CategoriaTree | null {
   for (const node of nodes) {
     if (node.id === id) return node;
@@ -87,12 +69,6 @@ function findCategoriaInTree(nodes: CategoriaTree[], id: number): CategoriaTree 
 
 /* ── Tree Row ── */
 
-/**
- * A single row in the category tree table.
- * Supports recursive rendering of children when expanded.
- *
- * Indentation is computed from `depth` via inline `paddingLeft` style.
- */
 function CategoryTreeRow({
   categoria, depth, expanded, onToggle, onEdit, onDelete,
 }: {
@@ -120,7 +96,6 @@ function CategoryTreeRow({
                 {isExpanded ? "-" : "+"}
               </button>
             ) : (
-              // Spacer to align items without children with those that have expand buttons
               <span className="w-5 h-5 inline-block" />
             )}
             <span className="font-semibold text-gray-900">{categoria.nombre}</span>
@@ -136,7 +111,6 @@ function CategoryTreeRow({
           </div>
         </td>
       </tr>
-      {/* Recursively render children if expanded */}
       {hasChildren && isExpanded && (
         categoria.subcategorias.map((child) => (
           <CategoryTreeRow
@@ -156,28 +130,12 @@ function CategoryTreeRow({
 
 /* ── Selector de Categoria Padre (jerarquico) ── */
 
-/**
- * Modal for selecting a parent category (hierarchical picker).
- * Excludes self and all descendants to prevent circular references.
- *
- * The `excludeIds` set is built by walking the tree from the current node
- * downwards (getDescendantIds) — this prevents selecting a descendant as parent.
- */
 function ParentSelector({ treeData, currentId, onSelect, onClose }: {
   treeData: CategoriaTree[]; currentId: number | null; onSelect: (id: number | null, name: string) => void; onClose: () => void;
 }) {
-  // Build a set of IDs to exclude (self + descendants)
   const excludeIds = new Set<number>();
   if (currentId !== null) {
-    const findNode = (nodes: CategoriaTree[]): CategoriaTree | null => {
-      for (const n of nodes) {
-        if (n.id === currentId) return n;
-        const found = findNode(n.subcategorias);
-        if (found) return found;
-      }
-      return null;
-    };
-    const self = findNode(treeData);
+    const self = findCategoriaInTree(treeData, currentId);
     if (self) {
       for (const id of getDescendantIds(self)) excludeIds.add(id);
     }
@@ -213,7 +171,6 @@ function ParentSelector({ treeData, currentId, onSelect, onClose }: {
           <h2 className="text-lg font-bold">Seleccionar Categoria superior</h2>
           <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
         </div>
-        {/* Option to make this a root category (no parent) */}
         <button onClick={() => onSelect(null, "")}
           className="mb-4 bg-gray-600 text-white px-4 py-1 rounded cursor-pointer hover:bg-gray-700">Ninguna (raiz)</button>
         <table className="w-full border-collapse border">
@@ -231,58 +188,40 @@ function ParentSelector({ treeData, currentId, onSelect, onClose }: {
 
 /* ── Main Page ── */
 
-/**
- * CategoriasCRUD page component.
- *
- * State:
- *   - treeData: the full hierarchical category tree from the backend.
- *   - expanded: Set<number> of node IDs that are currently expanded.
- *   - filter: text filter applied client-side.
- *   - showForm/editingId: control the create/edit inline form.
- *   - selectedParentName: display text for the chosen parent category.
- */
 export default function CategoriasCRUD() {
-  const [treeData, setTreeData] = useState<CategoriaTree[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [selectedParentName, setSelectedParentName] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [mensaje, setMensaje] = useState<{tipo: 'exito' | 'error'; texto: string} | null>(null);
 
   // Cloudinary Upload Widget state
   const cloudinaryWidgetRef = useRef<unknown>(null);
   const [imagenPublicIds, setImagenPublicIds] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
 
-  const mostrarMensaje = (tipo: 'exito' | 'error', texto: string) => {
-    setMensaje({ tipo, texto });
-    setTimeout(() => setMensaje(null), 3000);
-  };
+  // ── TanStack Query ──
+  const { data: treeData = [], isLoading, isError, error } = useCategoriasTree();
+  const createMutation = useCreateCategoria();
+  const updateMutation = useUpdateCategoria();
+  const deleteMutation = useDeleteCategoria();
 
-  /**
-   * TanStack Form for creating/editing a single category.
-   * Switching between create and edit is handled by reset() with different defaults.
-   */
   const form = useAppForm<CategoriaCreate>({
-    defaultValues: { nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] },
+    defaultValues: { nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagen_url: [] },
     onSubmit: async ({ value }) => {
       setSubmitting(true);
       try {
         if (editingId) {
-          await categoriasApi.update(editingId, value);
-          mostrarMensaje('exito', 'Categoria actualizada correctamente');
+          await updateMutation.mutateAsync({ id: editingId, data: value });
+          addToast('exito', 'Categoria actualizada correctamente');
         } else {
-          await categoriasApi.create(value);
-          mostrarMensaje('exito', 'Categoria creada correctamente');
+          await createMutation.mutateAsync(value);
+          addToast('exito', 'Categoria creada correctamente');
         }
         handleCloseForm();
-        loadTree();
       } catch (err) {
-        setError((err as Error).message);
+        addToast('error', (err as Error).message);
       } finally {
         setSubmitting(false);
       }
@@ -291,30 +230,6 @@ export default function CategoriasCRUD() {
   const [showParentSelector, setShowParentSelector] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
-
-  // Auto-clear error after 3 seconds
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
-
-  /** Fetches the full category tree from the backend. */
-  const loadTree = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await categoriasApi.getTree();
-      setTreeData(data);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadTree(); }, [loadTree]);
 
   // Load Cloudinary Upload Widget CDN script
   useEffect(() => {
@@ -331,11 +246,10 @@ export default function CategoriasCRUD() {
     };
   }, []);
 
-  // Cloudinary Upload Widget opener
   const abrirWidgetCloudinary = () => {
     const cloudinary = (window as unknown as Record<string, unknown>).cloudinary as Record<string, unknown> | undefined;
     if (!cloudinary || typeof cloudinary.createUploadWidget !== "function") {
-      mostrarMensaje("error", "El widget de Cloudinary no se ha cargado. Recargue la pagina.");
+      addToast("error", "El widget de Cloudinary no se ha cargado. Recargue la pagina.");
       return;
     }
     const widget = (cloudinary.createUploadWidget as Function)(
@@ -347,14 +261,14 @@ export default function CategoriasCRUD() {
       },
       (error: unknown, result: { event: string; info?: { secure_url: string; public_id: string } }) => {
         if (error) {
-          mostrarMensaje("error", "Error al subir imagen a Cloudinary");
+          addToast("error", "Error al subir imagen a Cloudinary");
           return;
         }
         if (result?.event === "success" && result.info) {
           const newUrl = result.info.secure_url;
           const newPublicId = result.info.public_id;
-          const currentUrls = form.getFieldValue("imagenes_url") ?? [];
-          form.setFieldValue("imagenes_url", [...currentUrls, newUrl]);
+          const currentUrls = form.getFieldValue("imagen_url") ?? [];
+          form.setFieldValue("imagen_url", [...currentUrls, newUrl]);
           setImagenPublicIds((prev) => [...prev, newPublicId]);
         }
       }
@@ -363,7 +277,6 @@ export default function CategoriasCRUD() {
     (widget as { open: () => void }).open();
   };
 
-  // Delete handler for carousel images
   const handleDeleteImagen = async (publicId: string) => {
     if (!confirm("Eliminar esta imagen?")) return;
     setUploadingImages(true);
@@ -371,21 +284,20 @@ export default function CategoriasCRUD() {
       await uploadsApi.deleteImage(publicId);
       const idx = imagenPublicIds.indexOf(publicId);
       if (idx >= 0) {
-        const currentUrls = form.getFieldValue("imagenes_url") ?? [];
+        const currentUrls = form.getFieldValue("imagen_url") ?? [];
         const newUrls = [...currentUrls];
         newUrls.splice(idx, 1);
-        form.setFieldValue("imagenes_url", newUrls);
+        form.setFieldValue("imagen_url", newUrls);
         setImagenPublicIds((prev) => prev.filter((id) => id !== publicId));
       }
-      mostrarMensaje("exito", "Imagen eliminada correctamente");
+      addToast("exito", "Imagen eliminada correctamente");
     } catch {
-      mostrarMensaje("error", "Error al eliminar la imagen");
+      addToast("error", "Error al eliminar la imagen");
     } finally {
       setUploadingImages(false);
     }
   };
 
-  /** Toggle expansion state for a tree node. */
   const toggleExpand = (id: number) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -395,10 +307,6 @@ export default function CategoriasCRUD() {
     });
   };
 
-  /**
-   * Opens the form in edit mode, pre-fills with the category's current values,
-   * and resolves the parent category name from the tree for display.
-   */
   const handleEdit = (cat: CategoriaTree) => {
     setEditingId(cat.id);
     setShowForm(true);
@@ -408,7 +316,6 @@ export default function CategoriasCRUD() {
       parent_id: cat.parent_id,
       orden_display: cat.orden_display,
     }, { keepDefaultValues: true });
-    // Find parent name from tree
     const findParent = (nodes: CategoriaTree[]): string => {
       for (const n of nodes) {
         if (n.id === cat.parent_id) return n.nombre;
@@ -421,54 +328,41 @@ export default function CategoriasCRUD() {
     setShowParentSelector(false);
   };
 
-  /** Opens the form in create mode with blank defaults. */
   const handleCreate = () => {
     setEditingId(null);
     setShowForm(true);
-    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] });
+    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagen_url: [] });
     setSelectedParentName("");
     setShowParentSelector(false);
     setImagenPublicIds([]);
   };
 
-  /** Closes the form and resets all editing state. */
   const handleCloseForm = () => {
     setShowForm(false);
     setEditingId(null);
-    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] });
+    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagen_url: [] });
     setSelectedParentName("");
     setImagenPublicIds([]);
   };
 
-  /** Deletes a category after user confirmation. */
   const handleDelete = async (id: number) => {
     if (!confirm("Eliminar esta categoria?")) return;
     try {
-      await categoriasApi.delete(id);
-      mostrarMensaje('exito', 'Categoria eliminada correctamente');
-      loadTree();
+      await deleteMutation.mutateAsync(id);
+      addToast('exito', 'Categoria eliminada correctamente');
     } catch (err) {
-      setError((err as Error).message);
+      addToast('error', (err as Error).message);
     }
   };
 
-  // Apply filter to tree (client-side recursive filter)
   const displayTree = filter ? filterTree(treeData, filter) : treeData;
-
-  // Flat list for Excel export
   const flatForExport = flattenTree(displayTree);
 
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Categorias</h1>
-      {error && <div className="bg-red-100 text-red-700 p-2 mb-4 rounded">{error}</div>}
-      {mensaje && (
-        <div className={`p-3 mb-4 rounded ${mensaje.tipo === 'exito' ? 'bg-green-100 text-green-800 border border-green-400' : 'bg-red-100 text-red-800 border border-red-400'}`}>
-          {mensaje.texto}
-        </div>
-      )}
+      {isError && <div className="bg-red-100 text-red-700 p-2 mb-4 rounded">{(error as Error)?.message || "Error al cargar"}</div>}
 
-      {/* Toolbar: filter input + action buttons */}
       <div className="flex gap-2 mb-4 flex-wrap items-center">
         <input type="text" placeholder="Filtrar por nombre..." value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -482,7 +376,6 @@ export default function CategoriasCRUD() {
           className="bg-blue-600 text-white px-4 py-1.5 rounded cursor-pointer hover:bg-blue-700">Exportar Excel</button>
       </div>
 
-      {/* Inline create/edit form — shown/hidden via showForm state */}
       {showForm && (
         <form ref={formRef} onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="border p-4 mb-4 rounded bg-gray-50 grid grid-cols-2 gap-2">
           <div>
@@ -511,7 +404,6 @@ export default function CategoriasCRUD() {
               )}
             </form.Field>
           </div>
-          {/* Parent category selector — opens a tree-based modal */}
           <div>
             <label className="block text-sm font-medium">Es una subcategoria de:</label>
             <div className="flex gap-2">
@@ -521,12 +413,10 @@ export default function CategoriasCRUD() {
             </div>
           </div>
 
-
-          {/* Image section */}
           <div className="col-span-2 border p-3 rounded bg-white">
             <h3 className="text-sm font-medium mb-2">Imagenes</h3>
             <ImageCarousel
-              images={form.getFieldValue("imagenes_url") ?? []}
+              images={form.getFieldValue("imagen_url") ?? []}
               publicIds={imagenPublicIds}
               onDelete={handleDeleteImagen}
               readOnly={false}
@@ -550,7 +440,6 @@ export default function CategoriasCRUD() {
         </form>
       )}
 
-      {/* Parent selector modal */}
       {showParentSelector && (
         <ParentSelector
           treeData={treeData}
@@ -564,8 +453,7 @@ export default function CategoriasCRUD() {
         />
       )}
 
-      {/* Loading / tabular tree display */}
-      {loading ? (
+      {isLoading ? (
         <p className="text-gray-500">Cargando...</p>
       ) : (
         <div className="max-h-96 overflow-auto">

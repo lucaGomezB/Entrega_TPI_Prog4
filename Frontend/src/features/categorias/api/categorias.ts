@@ -14,7 +14,7 @@ export interface Categoria {
   nombre: string;
   descripcion: string | null;
   parent_id: number | null;
-  imagenes_url: string[];
+  imagen_url: string[];
   orden_display: number;
 }
 
@@ -43,7 +43,7 @@ export interface CategoriaTree {
   nombre: string;
   descripcion: string | null;
   parent_id: number | null;
-  imagenes_url: string[];
+  imagen_url: string[];
   orden_display: number;
   subcategorias: CategoriaTree[];
 }

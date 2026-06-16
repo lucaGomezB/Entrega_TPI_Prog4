@@ -79,6 +79,18 @@ export interface CancelarResponse {
   mensaje: string;
 }
 
+/** A single entry in an order's state transition history. */
+export interface HistorialEntry {
+  id: number;
+  pedido_id: number;
+  estado_desde: string | null;
+  estado_hacia: string;
+  usuario_id: number | null;
+  motivo: string | null;
+  es_sistema: boolean;
+  created_at: string;
+}
+
 /** Detail about a product whose stock is insufficient to fulfill the order. */
 export interface StockInsuficienteDetalle {
   producto_id: number;
@@ -149,6 +161,10 @@ export const pedidosApi = {
    */
   getHistorial: (skip = 0, limit = 100) =>
     apiFetchPaginated<Pedido>(`/pedidos/historial?skip=${skip}&limit=${limit}`),
+
+  /** Fetches the state transition history for a specific order. */
+  getHistorialById: (pedidoId: number) =>
+    apiFetch<HistorialEntry[]>(`/pedidos/${pedidoId}/historial`),
 
   /**
    * Fetches the current user's own orders. Scoped to the authenticated user

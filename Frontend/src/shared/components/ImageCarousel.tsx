@@ -16,6 +16,12 @@
  */
 import { useState } from "react";
 
+/** Applies Cloudinary optimization transformations to a raw image URL. */
+function applyCloudinaryTransform(url: string): string {
+  if (!url.includes("cloudinary.com")) return url;
+  return url.replace("/upload/", "/upload/f_auto,q_auto,c_fill/");
+}
+
 interface ImageCarouselProps {
   images: string[];
   publicIds: string[];
@@ -59,9 +65,9 @@ export default function ImageCarousel({
 
   return (
     <div className="relative w-full aspect-[4/3] bg-gray-100 rounded overflow-hidden group">
-      {/* Current image */}
+      {/* Current image with Cloudinary transformations */}
       <img
-        src={images[current]}
+        src={applyCloudinaryTransform(images[current])}
         alt={`Imagen ${current + 1} de ${images.length}`}
         className="w-full h-full object-cover"
       />
