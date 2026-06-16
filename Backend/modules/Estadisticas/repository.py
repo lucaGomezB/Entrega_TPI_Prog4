@@ -153,7 +153,7 @@ class EstadisticasRepository:
                 """
                 SELECT COUNT(*) AS pedidos_activos
                 FROM pedido
-                WHERE estado_codigo IN ('PENDIENTE', 'CONFIRMADO', 'EN_PREP', 'EN_CAMINO')
+                WHERE estado_codigo IN ('PENDIENTE', 'CONFIRMADO', 'EN_PREP')
                   AND deleted_at IS NULL
                 """
             )
@@ -186,14 +186,14 @@ class EstadisticasRepository:
     def get_ingresos_por_forma_pago(
         self, desde: date, hasta: date
     ) -> list[dict]:
-        """Revenue grouped by payment method, using order state as revenue signal.
+        """Revenue grouped by payment method.
 
         Returns list of dicts with keys: forma_pago_codigo, total.
-        Uses estado_codigo IN confirmed-state-list instead of JOINing pago.
-        This includes BOTH PAGO_LOCAL (auto-confirmed, no Pago record) and
-        MERCADOPAGO (confirmed via webhook) orders.
-        PENDIENTE and CANCELADO orders are naturally excluded.
-        Excludes soft-deleted records.
+        For MERCADOPAGO orders: only counts pedidos with at least one
+        pago where mp_status = 'approved' (verified payment).
+        For PAGO_LOCAL / EFECTIVO: counts all confirmed orders
+        (no pago record exists, confirmation is implicit).
+        Excludes PENDIENTE, CANCELADO, and soft-deleted records.
         """
         result = self.session.exec(
             text(
@@ -202,9 +202,17 @@ class EstadisticasRepository:
                     p.forma_pago_codigo,
                     COALESCE(SUM(p.total), 0) AS total
                 FROM pedido p
-                WHERE p.estado_codigo IN ('CONFIRMADO', 'EN_PREP', 'EN_CAMINO', 'ENTREGADO')
+                WHERE p.estado_codigo IN ('CONFIRMADO', 'EN_PREP', 'ENTREGADO')
                   AND p.deleted_at IS NULL
                   AND DATE(p.created_at) BETWEEN :desde AND :hasta
+                  AND (
+                      p.forma_pago_codigo != 'MERCADOPAGO'
+                      OR EXISTS (
+                          SELECT 1 FROM pago pg
+                          WHERE pg.pedido_id = p.id
+                            AND pg.mp_status = 'approved'
+                      )
+                  )
                 GROUP BY p.forma_pago_codigo
                 ORDER BY total DESC
                 """

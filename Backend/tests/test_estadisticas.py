@@ -50,11 +50,11 @@ class TestAuth:
     """Verify that all /estadisticas endpoints enforce ADMIN-only access."""
 
     ENDPOINTS = [
-        "/estadisticas/resumen",
-        "/estadisticas/ventas-periodo?desde=2026-01-01&hasta=2026-01-31&agrupacion=day",
-        "/estadisticas/productos-top?limit=5",
-        "/estadisticas/pedidos-estado",
-        "/estadisticas/ingresos-forma-pago?desde=2026-01-01&hasta=2026-01-31",
+        "/api/v1/estadisticas/resumen",
+        "/api/v1/estadisticas/ventas-periodo?desde=2026-01-01&hasta=2026-01-31&agrupacion=day",
+        "/api/v1/estadisticas/productos-top?limit=5",
+        "/api/v1/estadisticas/pedidos-estado",
+        "/api/v1/estadisticas/ingresos-forma-pago?desde=2026-01-01&hasta=2026-01-31",
     ]
 
     def test_unauthenticated_returns_401(self):
@@ -472,8 +472,8 @@ class TestResumenKpiCalculation:
         assert result.ticket_promedio == Decimal("100.00")
 
     def test_pedidos_activos_only_non_terminal(self):
-        """Scenario: PENDIENTE(1),CONFIRMADO(1),EN_PREP(1),EN_CAMINO(1),
-        ENTREGADO(2),CANCELADO(1) → pedidos_activos=4."""
+        """Scenario: PENDIENTE(1),CONFIRMADO(1),EN_PREP(1),
+        ENTREGADO(2),CANCELADO(1) -> pedidos_activos=3."""
         mock_session = _mock_session()
         kpis = {
             "ventas_hoy": Decimal("0.00"),
@@ -631,7 +631,7 @@ class TestAgrupacionValidation:
             ):
                 client = TestClient(app)
                 response = client.get(
-                    "/estadisticas/ventas-periodo"
+                    "/api/v1/estadisticas/ventas-periodo"
                     "?desde=2026-06-01&hasta=2026-06-07&agrupacion=hour"
                 )
             assert response.status_code == 422

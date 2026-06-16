@@ -19,7 +19,7 @@ class CategoriaBase(TimestampModel):
     nombre: str = Field(unique=True, max_length=100)
     descripcion: Optional[str] = None
     parent_id: Optional[int] = Field(default=None, foreign_key="categoria.id")  # NULL for root categories
-    imagenes_url: List[str] = Field(default=[], sa_column=Column(JSON))
+    imagen_url: List[str] = Field(default=[], sa_column=Column("imagenes_url", JSON))
     orden_display: int = 0
 
 

@@ -26,3 +26,8 @@ mercadopago==2.4.0
 
 # Cloudinary SDK for Image Uploads
 cloudinary>=1.41,<2.0
+
+# Testing
+pytest
+pytest-cov
+httpx

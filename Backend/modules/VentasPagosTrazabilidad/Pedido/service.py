@@ -42,10 +42,10 @@ from core.dependencies import fire_broadcast, fire_broadcast_admin
 # ---------------------------------------------------------------------------
 # Full flow:
 #
-#   PENDIENTE --[confirm]--> CONFIRMADO --[start prep]--> EN_PREP
-#       |                                                        |
-#       |  (customer or admin)         [out for delivery]        |
-#       +--[cancel]--> CANCELADO       EN_CAMINO --[deliver]--> ENTREGADO
+#   PENDIENTE --[confirm]--> CONFIRMADO --[start prep]--> EN_PREP --[deliver]--> ENTREGADO
+#       |                                                                   |
+#       |  (customer or admin)                                              |
+#       +--[cancel]--> CANCELADO                                            |
 #
 # Terminal states (no further transitions allowed):
 #   - ENTREGADO: delivery completed
@@ -54,7 +54,7 @@ from core.dependencies import fire_broadcast, fire_broadcast_admin
 # State transition rules:
 #   - Only one state advance at a time
 #   - From PENDIENTE or CONFIRMADO: customer or admin can CANCEL
-#   - From EN_PREP or EN_CAMINO: only ADMIN/PEDIDOS can cancel
+#   - From EN_PREP: only ADMIN/PEDIDOS can cancel
 #   - ENTREGADO and CANCELADO are TERMINAL — no coming back
 # ---------------------------------------------------------------------------
 ESTADOS_TERMINALES = {"ENTREGADO", "CANCELADO"}
@@ -62,8 +62,7 @@ ESTADOS_TERMINALES = {"ENTREGADO", "CANCELADO"}
 TRANSICIONES_VALIDAS: dict[str, str] = {
     "PENDIENTE": "CONFIRMADO",
     "CONFIRMADO": "EN_PREP",
-    "EN_PREP": "EN_CAMINO",
-    "EN_CAMINO": "ENTREGADO",
+    "EN_PREP": "ENTREGADO",
 }
 
 
@@ -695,12 +694,12 @@ class PedidoService:
 
     @staticmethod
     def cancelar_pedido(session: Session, pedido_id: int, usuario, motivo: str = "Cancelado por usuario", ws_manager=None) -> Pedido:
-        """Cancel an order. Only PENDIENTE or CONFIRMADO orders can be cancelled.
+        """Cancel an order. Only PENDIENTE, CONFIRMADO, or EN_PREP orders can be cancelled.
 
         Permission rules:
             - ALL roles can only cancel PENDIENTE or CONFIRMADO orders
-            - Stock is restored if cancelling from CONFIRMADO (previously deducted)
-            - EN_PREP, EN_CAMINO, ENTREGADO, CANCELADO cannot be cancelled
+            - Stock is restored if cancelling from CONFIRMADO or EN_PREP (previously deducted)
+            - ENTREGADO and CANCELADO cannot be cancelled
 
         Args:
             motivo: User-provided cancellation reason (replaces hardcoded string).
@@ -720,16 +719,16 @@ class PedidoService:
                     detail=f"El pedido ya está en estado terminal '{estado_actual}'",
                 )
 
-            # Only PENDIENTE and CONFIRMADO can be cancelled (ALL roles)
-            estados_permitidos_cancelar = {"PENDIENTE", "CONFIRMADO"}
+            # Only PENDIENTE, CONFIRMADO and EN_PREP can be cancelled
+            estados_permitidos_cancelar = {"PENDIENTE", "CONFIRMADO", "EN_PREP"}
             if estado_actual not in estados_permitidos_cancelar:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"No se puede cancelar un pedido en estado '{estado_actual}'",
                 )
 
-            # Restore stock if cancelling from CONFIRMADO (stock was deducted at confirmation)
-            if estado_actual == "CONFIRMADO":
+            # Restore stock if cancelling from CONFIRMADO or EN_PREP (stock was deducted at confirmation)
+            if estado_actual in ("CONFIRMADO", "EN_PREP"):
                 for det in db_pedido.detalles:
                     prod = uow.pedidos.get_producto(det.producto_id)
                     if prod:

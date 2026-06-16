@@ -39,6 +39,14 @@ def crear_usuario(session: Session, datos: UsuarioCreate) -> Usuario:
     6. Refresh the user and eagerly load roles for the response.
     """
     with IdentidadYAccesoUnitOfWork(session) as uow:
+        # Check for duplicate email before insert (returns proper 409)
+        existing = uow.usuarios.get_by_email(datos.email)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"El email '{datos.email}' ya esta registrado.",
+            )
+
         nuevo_usuario = Usuario(
             nombre=datos.nombre,
             apellido=datos.apellido,
@@ -57,20 +65,7 @@ def crear_usuario(session: Session, datos: UsuarioCreate) -> Usuario:
                     nuevo_usuario.roles.append(rol)
 
         uow.usuarios.refresh(nuevo_usuario)
-        return _load_roles(session, nuevo_usuario)
-
-
-def _load_roles(session: Session, usuario: Usuario):
-    """
-    Eager-load the roles relationship after commit.
-
-    Required because after session.commit(), lazy-loaded relationships
-    may fail with "lazy loading outside of session". Re-querying with
-    get_with_roles ensures roles are available for serialization.
-    """
-    repo = UsuarioRepository(session)
-    repo.get_with_roles(usuario.id)
-    return usuario
+        return uow.usuarios.get_with_roles(nuevo_usuario.id)
 
 
 def listar_usuarios(
@@ -170,7 +165,7 @@ def actualizar_usuario(
                 if rol:
                     usuario.roles.append(rol)
 
-        return _load_roles(session, usuario)
+        return uow.usuarios.get_with_roles(usuario.id)
 
 
 def eliminar_usuario(session: Session, usuario_id: int) -> bool:

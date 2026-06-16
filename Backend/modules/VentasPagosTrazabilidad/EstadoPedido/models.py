@@ -14,9 +14,8 @@ Typical seed data:
     PENDIENTE  | Pendiente             | 1 | false
     CONFIRMADO | Confirmado            | 2 | false
     EN_PREP    | En preparacion        | 3 | false
-    EN_CAMINO  | En camino             | 4 | false
-    ENTREGADO  | Entregado             | 5 | true
-    CANCELADO  | Cancelado             | 6 | true
+    ENTREGADO  | Entregado             | 4 | true
+    CANCELADO  | Cancelado             | 5 | true
 """
 from typing import Optional
 from sqlmodel import Field

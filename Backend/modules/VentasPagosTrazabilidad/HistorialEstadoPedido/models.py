@@ -18,8 +18,7 @@ Typical trace for an order:
     10:00        | NULL         | PENDIENTE    | 1    |
     10:01        | PENDIENTE    | CONFIRMADO   | 1    |
     10:30        | CONFIRMADO   | EN_PREP      | 2    |
-    10:45        | EN_PREP      | EN_CAMINO    | 2    |
-    11:00        | EN_CAMINO    | ENTREGADO    | 2    |
+    10:45        | EN_PREP      | ENTREGADO    | 2    |
 """
 from typing import Optional, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship

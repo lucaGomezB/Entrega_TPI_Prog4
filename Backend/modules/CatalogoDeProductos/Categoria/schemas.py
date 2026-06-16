@@ -15,7 +15,7 @@ class CategoriaCreate(BaseModel):
     nombre: str = Field(min_length=1, max_length=100)
     descripcion: Optional[str] = None
     parent_id: Optional[int] = None
-    imagenes_url: List[str] = []
+    imagen_url: List[str] = []
     orden_display: int = 0
 
 
@@ -24,7 +24,7 @@ class CategoriaUpdate(BaseModel):
     nombre: Optional[str] = None
     descripcion: Optional[str] = None
     parent_id: Optional[int] = None
-    imagenes_url: Optional[List[str]] = None
+    imagen_url: Optional[List[str]] = None
     orden_display: Optional[int] = None
 
 
@@ -36,13 +36,13 @@ class CategoriaRead(BaseModel):
     nombre: str
     descripcion: Optional[str] = None
     parent_id: Optional[int] = None
-    imagenes_url: List[str] = []
+    imagen_url: List[str] = []
     orden_display: int
 
-    @field_validator("imagenes_url", mode="before")
+    @field_validator("imagen_url", mode="before")
     @classmethod
-    def normalize_imagenes_url(cls, v):
-        """DB may store NULL in imagenes_url — convert to empty list for type safety."""
+    def normalize_imagen_url(cls, v):
+        """DB may store NULL in imagen_url — convert to empty list for type safety."""
         if v is None:
             return []
         return v

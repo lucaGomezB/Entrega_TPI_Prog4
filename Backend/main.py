@@ -72,6 +72,11 @@ async def lifespan(app: FastAPI):
     """
     # --- Startup ---
     alembic_cfg = Config("alembic.ini")
+    # Override the database URL from the environment so Alembic connects
+    # to the correct host (e.g., "db" in Docker instead of "localhost").
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
     command.upgrade(alembic_cfg, "head")
 
     # Seed roles, users, products, and other reference data (idempotent)
@@ -105,15 +110,16 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     Custom exception handler for rate limit exceeded errors.
 
     Returns a 429 Too Many Requests response with RFC 7807 Problem Details
-    and a Retry-After header indicating 900 seconds.
+    and a Retry-After header reflecting the actual remaining window.
     """
+    retry_seconds = int(exc.retry_after) if getattr(exc, "retry_after", None) else 900
     resp = problem_response(
         status=429,
         title="Demasiados intentos",
-        detail="Error: Demasiados intentos fallidos. Por favor vuelva a intentar en unos minutos.",
+        detail=f"Error: Demasiados intentos fallidos. Por favor vuelva a intentar en {retry_seconds} segundos.",
         instance=str(request.url),
     )
-    resp.headers["Retry-After"] = "900"
+    resp.headers["Retry-After"] = str(retry_seconds)
     return resp
 
 

@@ -199,9 +199,9 @@ def avanzar(
     """PATCH /pedidos/{id}/avanzar — Advance the order to the next FSM state.
 
     Transitions:
+        PENDIENTE -> CONFIRMADO (payment confirmed)
         CONFIRMADO -> EN_PREP (preparation started)
-        EN_PREP -> EN_CAMINO (out for delivery)
-        EN_CAMINO -> ENTREGADO (delivered)
+        EN_PREP -> ENTREGADO (delivered)
 
     NOTE: PENDIENTE -> CONFIRMADO is EXCLUSIVELY via payment webhook.
     This endpoint does NOT handle that transition anymore.
@@ -230,8 +230,9 @@ def cancelar(
     """PATCH /pedidos/{id}/cancelar — Cancel an order with a required motivo.
 
     Permission rules:
-        ALL roles can only cancel orders in PENDIENTE or CONFIRMADO state.
-        Cancelation is blocked for EN_PREP, EN_CAMINO, and terminal states.
+        ALL roles can cancel orders in PENDIENTE or CONFIRMADO state.
+        EN_PREP can only be cancelled by ADMIN/PEDIDOS.
+        Cancelation is blocked for terminal states (ENTREGADO, CANCELADO).
 
     Body:
         { "motivo": "Falta de stock" } — required, non-empty string.

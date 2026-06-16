@@ -60,7 +60,7 @@ def resumen(session: Session = Depends(get_session)) -> ResumenResponse:
 
     Excludes CANCELADO orders and soft-deleted records from all calculations.
     pedidos_activos counts only non-terminal states (PENDIENTE, CONFIRMADO,
-    EN_PREP, EN_CAMINO).
+    EN_PREP).
     """
     return EstadisticasService.get_resumen(session)
 
@@ -135,7 +135,8 @@ def ingresos_forma_pago(
 ) -> list[IngresosResponse]:
     """GET /estadisticas/ingresos-forma-pago — Revenue by payment method.
 
-    Only counts pedidos with at least one pago where mp_status='approved'.
-    Excludes CANCELADO orders and soft-deleted records.
+    For MERCADOPAGO: only counts pedidos with mp_status='approved'.
+    For PAGO_LOCAL and EFECTIVO: counts all confirmed orders.
+    Excludes PENDIENTE, CANCELADO, and soft-deleted records.
     """
     return EstadisticasService.get_ingresos_forma_pago(session, desde, hasta)

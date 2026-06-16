@@ -367,6 +367,8 @@ class PagoService:
                     return
 
                 # Update Pago status
+                _should_broadcast = False
+                _broadcast_pedido_id = None
                 with VentasPagosTrazabilidadUnitOfWork(_session) as uow:
                     db_pago = uow.pagos.get_by_id(pago.id)
                     if not db_pago:
@@ -383,7 +385,7 @@ class PagoService:
                         try:
                             from ..Pedido.service import PedidoService as _PedidoService
 
-                            pedido_confirmado = _PedidoService.confirmar_por_pago(
+                            _PedidoService.confirmar_por_pago(
                                 _session,
                                 db_pago.pedido_id,
                             )
@@ -391,20 +393,8 @@ class PagoService:
                                 "MP webhook: pedido %s avanzado a CONFIRMADO",
                                 db_pago.pedido_id,
                             )
-
-                            # ── Broadcast pago_confirmado to pedido room + admin ──
-                            ws_manager = get_ws_manager()
-                            payload = {
-                                "event": "pago_confirmado",
-                                "pedido_id": db_pago.pedido_id,
-                                "estado_anterior": "PENDIENTE",
-                                "estado_nuevo": "CONFIRMADO",
-                                "usuario_id": None,
-                                "motivo": None,
-                                "timestamp": datetime.utcnow().isoformat(),
-                            }
-                            fire_broadcast(ws_manager, db_pago.pedido_id, payload)
-                            fire_broadcast_admin(ws_manager, payload)
+                            _should_broadcast = True
+                            _broadcast_pedido_id = db_pago.pedido_id
                         except Exception as e:
                             logger.exception(
                                 "MP webhook: error advancing pedido %s: %s",
@@ -415,6 +405,21 @@ class PagoService:
                         "MP webhook: payment %s updated to %s for pedido %s",
                         mp_payment_id, mp_status, db_pago.pedido_id,
                     )
+
+                # ── AFTER UoW commit: broadcast to WebSocket clients ──
+                if _should_broadcast:
+                    ws_manager = get_ws_manager()
+                    payload = {
+                        "event": "pago_confirmado",
+                        "pedido_id": _broadcast_pedido_id,
+                        "estado_anterior": "PENDIENTE",
+                        "estado_nuevo": "CONFIRMADO",
+                        "usuario_id": None,
+                        "motivo": None,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                    fire_broadcast(ws_manager, _broadcast_pedido_id, payload)
+                    fire_broadcast_admin(ws_manager, payload)
 
         if background_tasks is not None:
             background_tasks.add_task(_process)

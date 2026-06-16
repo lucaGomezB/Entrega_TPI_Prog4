@@ -169,12 +169,11 @@ PRODUCTOS = [
 ]
 
 ESTADOS_PEDIDO = [
-    EstadoPedido(codigo="PENDIENTE",  descripcion="Pedido creado, pago pendiente",            orden=1, es_terminal=False),
-    EstadoPedido(codigo="CONFIRMADO", descripcion="Pago procesado y confirmado",              orden=2, es_terminal=False),
-    EstadoPedido(codigo="EN_PREP",    descripcion="En preparación en cocina",                  orden=3, es_terminal=False),
-    EstadoPedido(codigo="EN_CAMINO",  descripcion="Despachado al cliente",                    orden=4, es_terminal=False),
-    EstadoPedido(codigo="ENTREGADO",  descripcion="Entrega confirmada",                       orden=5, es_terminal=True),
-    EstadoPedido(codigo="CANCELADO",  descripcion="Pedido cancelado",                         orden=6, es_terminal=True),
+    EstadoPedido(codigo="PENDIENTE",  descripcion="Pedido creado, pago pendiente",  orden=1, es_terminal=False),
+    EstadoPedido(codigo="CONFIRMADO", descripcion="Pago procesado y confirmado",    orden=2, es_terminal=False),
+    EstadoPedido(codigo="EN_PREP",    descripcion="En preparacion en cocina",        orden=3, es_terminal=False),
+    EstadoPedido(codigo="ENTREGADO",  descripcion="Entrega confirmada",             orden=4, es_terminal=True),
+    EstadoPedido(codigo="CANCELADO",  descripcion="Pedido cancelado",               orden=5, es_terminal=True),
 ]
 
 FORMAS_PAGO = [

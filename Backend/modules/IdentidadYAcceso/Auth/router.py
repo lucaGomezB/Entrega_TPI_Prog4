@@ -73,6 +73,7 @@ def _clear_refresh_cookie(response: Response):
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/15minutes")
 def register(
     datos: UsuarioCreate,
     request: Request,

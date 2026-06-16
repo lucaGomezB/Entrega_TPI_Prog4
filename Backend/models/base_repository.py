@@ -91,6 +91,24 @@ class BaseRepository(Generic[T]):
         self.session.refresh(entity)
         return entity
 
+    def delete(self, entity: T) -> T:
+        """
+        Soft-delete an entity by setting its deleted_at timestamp.
+
+        Only works for models inheriting from SoftDeleteModel.
+        The entity is staged via add() — the caller's UoW commit()
+        persists the change atomically.
+        """
+        if not self._is_soft_delete:
+            raise TypeError(
+                f"{self.model_class.__name__} does not support soft delete. "
+                f"Inherit from SoftDeleteModel to enable this method."
+            )
+        from models.base import get_utc_now
+        entity.deleted_at = get_utc_now()
+        self.session.add(entity)
+        return entity
+
     def flush(self):
         """
         Send pending SQL statements to the database without committing.
