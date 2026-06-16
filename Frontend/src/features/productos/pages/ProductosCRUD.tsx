@@ -1152,7 +1152,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
           </tr></thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.map((prod) => (
-              <tr key={prod.id} className={`hover:bg-blue-50 transition-colors ${prod.stock_cantidad === 0 ? 'bg-red-50' : prod.stock_cantidad < 50 ? 'bg-yellow-50' : 'bg-white'}`)}>
+              <tr key={prod.id} className="hover:bg-blue-50 transition-colors" style={{ backgroundColor: prod.stock_cantidad === 0 ? '#fef2f2' : prod.stock_cantidad < 50 ? '#fefce8' : undefined }}>
                 {!readOnly && <td className="px-3 py-2.5 text-gray-500 text-xs">{prod.id}</td>}
                 <td className="px-3 py-2.5 font-medium text-gray-800">{prod.nombre}</td>
                 <td className="px-3 py-2.5">

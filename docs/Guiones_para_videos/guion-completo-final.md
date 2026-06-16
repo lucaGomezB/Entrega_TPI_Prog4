@@ -121,16 +121,16 @@
 
 ## Bloque 4 — Ventas, Pagos y Trazabilidad (3:00)
 
-### Slide 7 | Pedidos — FSM, Snapshots y Cancelacion (1:15)
+### Slide 7 | Pedidos — Máquina de Estados Finitos (FSM), Snapshots y Cancelacion (1:15)
 
-> **En pantalla:** Diagrama FSM:
+> **En pantalla:** Diagrama Máquina de Estados Finitos (FSM):
 > ```
 > PENDIENTE → CONFIRMADO → EN_PREP → ENTREGADO (terminal)
 >     ↓            ↓           ↓
 >     └────────────┴───────────┘──→ CANCELADO (terminal)
 > ```
 >
-> **Narracion:** "FSM de 5 estados, dos terminales. Cada transicion registrada en HistorialEstadoPedido — INSERT-only. Detalles capturan nombre_snapshot y precio_snapshot: aunque el producto cambie, el pedido conserva los valores del momento. Cancelacion requiere motivo, desde EN_PREP tambien se puede cancelar con restore de stock. Timeline en tiempo real visible en el popup de detalles."
+> **Narracion:** "Máquina de Estados Finitos (FSM) de 5 estados, dos terminales. Cada transicion registrada en HistorialEstadoPedido — INSERT-only. Detalles capturan nombre_snapshot y precio_snapshot: aunque el producto cambie, el pedido conserva los valores del momento. Cancelacion requiere motivo, desde EN_PREP tambien se puede cancelar con restore de stock. Timeline en tiempo real visible en el popup de detalles."
 >
 > **Codigo backend (15s):** Mostrar `Pedido/service.py` — TRANSICIONES_VALIDAS, avanzar_estado(), _registrar_transicion(). Mostrar DetallePedido/models.py — snapshots.
 >
@@ -206,7 +206,7 @@
 > └── ... (9 archivos, 155 tests total)
 > ```
 >
-> **Narracion:** "155 tests: integracion con TestClient + SQLite en memoria, unitarios con MagicMock para APIs externas. conftest.py tiene fixtures reutilizables, helpers JWT, factories. Cobertura >60%. Cada modulo tiene 5+ tests. Los tests de Pedidos cubren toda la FSM. Los de Auth validan register, login, RBAC. WebSocket tiene 9 tests de conexion, auth y desconexion."
+> **Narracion:** "155 tests: integracion con TestClient + SQLite en memoria, unitarios con MagicMock para APIs externas. conftest.py tiene fixtures reutilizables, helpers JWT, factories. Cobertura >60%. Cada modulo tiene 5+ tests. Los tests de Pedidos cubren toda la Máquina de Estados Finitos (FSM). Los de Auth validan register, login, RBAC. WebSocket tiene 9 tests de conexion, auth y desconexion."
 >
 > **Codigo backend (15s):** Mostrar `conftest.py` — engine, db_session, client, _create_auth_headers. Terminal con `pytest -v`.
 
