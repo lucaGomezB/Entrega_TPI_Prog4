@@ -11,11 +11,13 @@ import CategoriasCRUD from '@/features/categorias/pages/CategoriasCRUD'
 import IngredientesCRUD from '@/features/productos/pages/IngredientesCRUD'
 import ProductosCRUD from '@/features/productos/pages/ProductosCRUD'
 import ProductosCliente from '@/features/productos/pages/ProductosCliente'
+import ProductoDetail from '@/features/productos/pages/ProductoDetail'
 import Carrito from '@/features/pedidos/pages/Carrito'
 import PedidosPage from '@/features/pedidos/pages/PedidosPage'
 import DireccionesPage from '@/features/pedidos/pages/DireccionesPage'
 import AdminUsuariosPage from '@/features/auth/pages/AdminUsuariosPage'
 import Dashboard from '@/features/estadisticas/pages/Dashboard'
+import UnidadesMedidaAdminPage from '@/features/unidades-medida/pages/UnidadesMedidaAdminPage'
 import Login from '@/features/auth/pages/LoginConceptual'
 
 /* ── Helpers ── */
@@ -47,6 +49,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
     return (
       <Routes>
         <Route path="/" element={<Navigate to="/productos" replace />} />
+        <Route path="/productos/:id" element={<ProductoDetail />} />
         <Route path="/productos" element={<ProductosCliente />} />
         {!isGuest && <Route path="/carrito" element={<Carrito />} />}
         <Route path="/pedidos" element={<PedidosPage />} />
@@ -82,6 +85,8 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
       <Route path="/ingredientes" element={<IngredientesCRUD />} />
       <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
       <Route path="/admin/dashboard" element={<Dashboard />} />
+      <Route path="/admin/unidades-medida" element={<UnidadesMedidaAdminPage />} />
+      <Route path="/productos/:id" element={<ProductoDetail />} />
       <Route path="/productos" element={
         productRole === 'client' ? <ProductosCliente /> : <ProductosCRUD role={productRole} />
       } />

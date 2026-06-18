@@ -81,6 +81,7 @@ class ProductoService:
                         es_principal=ingrediente.es_principal,
                         orden=ingrediente.orden,
                         cantidad=ingrediente.cantidad,
+                        unidad_medida_id=ingrediente.unidad_medida_id,
                     )
 
             # Recalculate price if the product has ingredients (skip for insumo)
@@ -319,6 +320,7 @@ class ProductoService:
                 es_principal=data.es_principal,
                 orden=data.orden,
                 cantidad=data.cantidad,
+                unidad_medida_id=data.unidad_medida_id,
             )
             # Recalculate price after ingredient change (skip for insumo)
             if not db_producto.es_insumo:

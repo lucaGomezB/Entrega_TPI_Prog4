@@ -203,6 +203,92 @@ class TestProductoEndpoints:
         }, headers=admin_headers)
         assert response.status_code == 201
 
+    def test_get_ingredientes_includes_es_alergeno(self, client, admin_headers, db_session):
+        """GET /productos/{id}/ingredientes returns es_alergeno field per ingredient."""
+        # Create an allergenic ingredient
+        ing_resp = client.post("/api/v1/ingredientes/", json={
+            "nombre": "Allergenic Ing",
+            "descripcion": "Contains allergens",
+            "es_alergeno": True,
+            "precio_actual": "50.00",
+            "stock_actual": 30,
+        }, headers=admin_headers)
+        assert ing_resp.status_code == 201
+        ing_id = ing_resp.json()["id"]
+
+        # Create a product
+        prod_resp = client.post("/api/v1/productos/", json={
+            "nombre": "Allergen Product",
+            "descripcion": "Product with allergens",
+            "precio_base": "300.00",
+            "precio_actual": "300.00",
+            "stock_cantidad": 10,
+            "tiempo_prep_min": 5,
+            "disponible": True,
+        }, headers=admin_headers)
+        assert prod_resp.status_code == 201
+        prod_id = prod_resp.json()["id"]
+
+        # Assign ingredient to product
+        assign_resp = client.post(f"/api/v1/productos/{prod_id}/ingredientes", json={
+            "ingrediente_id": ing_id,
+            "cantidad": 1,
+            "es_removible": True,
+            "es_principal": True,
+            "orden": 1,
+        }, headers=admin_headers)
+        assert assign_resp.status_code == 201
+
+        # Fetch ingredients — must include es_alergeno
+        get_resp = client.get(f"/api/v1/productos/{prod_id}/ingredientes")
+        assert get_resp.status_code == 200
+        ingredients = get_resp.json()
+        assert len(ingredients) == 1
+        assert ingredients[0]["es_alergeno"] is True
+        assert ingredients[0]["ingrediente_nombre"] == "Allergenic Ing"
+
+    def test_get_ingredientes_es_alergeno_false(self, client, admin_headers, db_session):
+        """Non-allergenic ingredient returns es_alergeno: false."""
+        # Create a non-allergenic ingredient
+        ing_resp = client.post("/api/v1/ingredientes/", json={
+            "nombre": "Safe Ing",
+            "descripcion": "No allergens",
+            "es_alergeno": False,
+            "precio_actual": "25.00",
+            "stock_actual": 100,
+        }, headers=admin_headers)
+        assert ing_resp.status_code == 201
+        ing_id = ing_resp.json()["id"]
+
+        # Create a product
+        prod_resp = client.post("/api/v1/productos/", json={
+            "nombre": "Safe Product",
+            "descripcion": "No allergens",
+            "precio_base": "200.00",
+            "precio_actual": "200.00",
+            "stock_cantidad": 20,
+            "tiempo_prep_min": 3,
+            "disponible": True,
+        }, headers=admin_headers)
+        assert prod_resp.status_code == 201
+        prod_id = prod_resp.json()["id"]
+
+        # Assign ingredient to product
+        assign_resp = client.post(f"/api/v1/productos/{prod_id}/ingredientes", json={
+            "ingrediente_id": ing_id,
+            "cantidad": 1,
+            "orden": 1,
+        }, headers=admin_headers)
+        assert assign_resp.status_code == 201
+
+        # Fetch ingredients — es_alergeno must be false
+        get_resp = client.get(f"/api/v1/productos/{prod_id}/ingredientes")
+        assert get_resp.status_code == 200
+        ingredients = get_resp.json()
+        assert len(ingredients) == 1
+        assert ingredients[0]["es_alergeno"] is False
+        assert ingredients[0]["ingrediente_nombre"] == "Safe Ing"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # INGREDIENTE ENDPOINTS

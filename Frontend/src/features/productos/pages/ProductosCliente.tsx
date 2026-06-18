@@ -50,10 +50,12 @@ export default function ProductosCliente() {
   const isAuth = !!getAccessToken();
 
   // TanStack Query: products
-  const { data: products = [], isLoading, isError, error } = useProductos(0, 1000);
+  const { data: productsData, isLoading, isError, error } = useProductos(0, 1000);
+  const products = productsData?.items ?? [];
 
   // TanStack Query: categories (for filter chips + image fallback)
-  const { data: categorias = [] } = useCategorias(0, 1000);
+  const { data: categoriasData } = useCategorias(0, 1000);
+  const categorias = categoriasData?.items ?? [];
 
   // UI-only state
   const [page, setPage] = useState(0);

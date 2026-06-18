@@ -23,6 +23,7 @@ from modules.IdentidadYAcceso.Auth.dependencies import require_roles, get_curren
 from modules.IdentidadYAcceso.Usuario.models import Usuario
 from modules.IdentidadYAcceso.Usuario.repository import UsuarioRepository
 from .service import PedidoService
+from .repository import SORTABLE_FIELDS
 from .schemas import (
     PedidoRead, PedidoCreate, PedidoUpdate,
     PedidoAvanzarResponse, PedidoCancelarResponse,
@@ -54,6 +55,8 @@ def read_all(
 def read_activos(
     skip: int = Query(0),
     limit: int = Query(100),
+    sort_by: str = Query("id", description="Field to sort by: id, estado_codigo, created_at, updated_at, total"),
+    sort_order: str = Query("desc", description="Sort direction: asc or desc"),
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -61,11 +64,24 @@ def read_activos(
 
     ADMIN/PEDIDOS see all active orders; regular users only see their own.
     """
+    if sort_by not in SORTABLE_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"sort_by debe ser uno de: {', '.join(sorted(SORTABLE_FIELDS))}",
+        )
+    if sort_order not in ("asc", "desc"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="sort_order debe ser 'asc' o 'desc'",
+        )
+
     es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles)
     if es_gestor:
-        return PedidoService.get_activos(session, skip=skip, limit=limit)
+        return PedidoService.get_activos(session, skip=skip, limit=limit,
+                                         sort_by=sort_by, sort_order=sort_order)
     # Regular user: filter to their own active orders
-    todos_activos = PedidoService.get_activos(session, skip=0, limit=10000)
+    todos_activos = PedidoService.get_activos(session, skip=0, limit=10000,
+                                              sort_by=sort_by, sort_order=sort_order)
     items_filtrados = [p for p in todos_activos.items if p.usuario_id == current_user.id]
     return PaginatedResponse(
         items=items_filtrados[skip:skip + limit],
@@ -79,6 +95,8 @@ def read_activos(
 def read_historial(
     skip: int = Query(0),
     limit: int = Query(100),
+    sort_by: str = Query("id", description="Field to sort by: id, estado_codigo, created_at, updated_at, total"),
+    sort_order: str = Query("desc", description="Sort direction: asc or desc"),
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -86,9 +104,21 @@ def read_historial(
 
     ADMIN/PEDIDOS see all history; regular users only see their own.
     """
+    if sort_by not in SORTABLE_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"sort_by debe ser uno de: {', '.join(sorted(SORTABLE_FIELDS))}",
+        )
+    if sort_order not in ("asc", "desc"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="sort_order debe ser 'asc' o 'desc'",
+        )
+
     es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles)
     if es_gestor:
-        return PedidoService.get_historial(session, skip=skip, limit=limit)
+        return PedidoService.get_historial(session, skip=skip, limit=limit,
+                                           sort_by=sort_by, sort_order=sort_order)
     return PedidoService.get_historial_by_usuario(session, current_user.id, skip=skip, limit=limit)
 
 
@@ -224,14 +254,15 @@ def cancelar(
     pedido_id: int,
     body: CancelarPedidoInput = Body(...),
     session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_user),
+    current_user: Usuario = Depends(require_roles(["ADMIN", "PEDIDOS"])),
     ws_manager: WSManager = Depends(get_ws_manager),
 ):
     """PATCH /pedidos/{id}/cancelar — Cancel an order with a required motivo.
 
+    Requires ADMIN or PEDIDOS role.
+
     Permission rules:
-        ALL roles can cancel orders in PENDIENTE or CONFIRMADO state.
-        EN_PREP can only be cancelled by ADMIN/PEDIDOS.
+        Only ADMIN/PEDIDOS can cancel orders.
         Cancelation is blocked for terminal states (ENTREGADO, CANCELADO).
 
     Body:

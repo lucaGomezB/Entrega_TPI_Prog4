@@ -10,8 +10,9 @@ Router inclusion follows a modular architecture where each domain module
 exposes its own APIRouter.
 """
 
-import os
+import asyncio
 import logging
+import os
 from decimal import Decimal
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, status
@@ -29,6 +30,7 @@ from core.rate_limit import limiter
 from modules.CatalogoDeProductos.Categoria.router import router as categoria_router
 from modules.CatalogoDeProductos.Producto.router import router as producto_router
 from modules.CatalogoDeProductos.Ingrediente.router import router as ingrediente_router
+from modules.CatalogoDeProductos.UnidadMedida.router import router as unidad_medida_router
 from modules.IdentidadYAcceso.Auth.router import router as auth_router
 from modules.IdentidadYAcceso.Usuario.router import router as usuario_router
 from modules.IdentidadYAcceso.Rol.router import router as rol_router
@@ -43,6 +45,7 @@ from modules.Estadisticas.router import router as estadisticas_router
 from modules.CatalogoDeProductos.Categoria.models import Categoria
 from modules.CatalogoDeProductos.Producto.models import Producto
 from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
 from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
 from modules.IdentidadYAcceso.Rol.models import Rol
@@ -56,6 +59,28 @@ from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
 from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
 from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
 from modules.VentasPagosTrazabilidad.Pago.models import Pago
+from modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
+
+async def _cleanup_expired_snapshots():
+    """Background task: delete expired cart_snapshot rows every 5 minutes."""
+    logger = logging.getLogger("cart_snapshot.cleanup")
+    while True:
+        try:
+            await asyncio.sleep(300)  # 5 minutes
+            with Session(engine) as session:
+                from modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import (
+                    CarritoSnapshotRepository,
+                )
+                repo = CarritoSnapshotRepository(session)
+                deleted = repo.delete_expired()
+                if deleted > 0:
+                    session.commit()
+                    logger.info("Deleted %d expired cart snapshots", deleted)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("Snapshot cleanup error: %s", exc)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -87,10 +112,17 @@ async def lifespan(app: FastAPI):
     with Session(engine) as session:
         cleanup_expired_tokens(session)
 
+    # Start snapshot cleanup background task (runs every 5 minutes)
+    _snapshot_cleanup_task = asyncio.create_task(_cleanup_expired_snapshots())
+
     yield  # Application runs here — between startup and shutdown
 
     # --- Shutdown ---
-    pass
+    _snapshot_cleanup_task.cancel()
+    try:
+        await _snapshot_cleanup_task
+    except asyncio.CancelledError:
+        pass
 
 
 # Initialize the FastAPI application with the lifespan manager
@@ -149,6 +181,7 @@ app.include_router(direccion_router, prefix="/api/v1")
 app.include_router(categoria_router, prefix="/api/v1")
 app.include_router(producto_router, prefix="/api/v1")
 app.include_router(ingrediente_router, prefix="/api/v1")
+app.include_router(unidad_medida_router, prefix="/api/v1")
 
 # Sales, Payments & Tracking module
 app.include_router(estado_pedido_router, prefix="/api/v1")

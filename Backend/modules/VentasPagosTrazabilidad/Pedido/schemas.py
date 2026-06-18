@@ -2,10 +2,10 @@
 Pedido schemas — Pydantic models for order API request/response.
 
 Key concepts:
-    - DetallePedidoInput / PedidoCreate: what the frontend sends when creating an order
+    - ItemPedidoRequest / PedidoCreate: what the frontend sends when creating an order
     - PedidoRead: what the API returns (includes nested details and user info)
     - Validation: total cannot be negative, stock validation schemas included
-    - Snapshots: DetallePedidoInput captures product name and price at order creation time
+    - Snapshots: ItemPedidoRequest captures product name and price at order creation time
       so that later catalog changes don't affect historical records.
 """
 from decimal import Decimal
@@ -14,7 +14,7 @@ from pydantic import BaseModel, model_validator, Field
 from datetime import datetime
 
 
-class DetallePedidoInput(BaseModel):
+class ItemPedidoRequest(BaseModel):
     """Input schema for a single product line when creating an order.
 
     Uses price and name SNAPSHOTS — copies of the product's current values
@@ -44,7 +44,7 @@ class PedidoCreate(BaseModel):
     descuento: Decimal = Decimal('0.00')
     costo_envio: Decimal = Decimal('50.00')
     notas: Optional[str] = None
-    detalles: Optional[List[DetallePedidoInput]] = None
+    detalles: Optional[List[ItemPedidoRequest]] = None
 
     @model_validator(mode="after")
     def validate_total(self):

@@ -34,6 +34,7 @@ from modules.CatalogoDeProductos.Producto.models import Producto
 from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
 from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
 from modules.CatalogoDeProductos.Producto.service import ProductoService
+from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 
 # ── Sales ──
 from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
@@ -271,6 +272,18 @@ FORMAS_PAGO_SEED = [
     FormaPago(codigo="EFECTIVO",      descripcion="Efectivo",             habilitado=True),
     FormaPago(codigo="PAGO_LOCAL",    descripcion="Pago y retiro en local", habilitado=True),
     FormaPago(codigo="TRANSFERENCIA", descripcion="Transferencia",        habilitado=True),
+]
+
+# Standard measurement units for the product catalog.
+# Each tuple is (nombre, simbolo, tipo).
+UNIDADES_MEDIDA_SEED = [
+    ("kilogramo", "kg", "masa"),
+    ("gramo", "g", "masa"),
+    ("litro", "L", "volumen"),
+    ("mililitro", "mL", "volumen"),
+    ("pieza", "p", "unidad"),
+    ("docena", "doc", "unidad"),
+    ("metro cuadrado", "m²", "area"),
 ]
 
 
@@ -532,6 +545,22 @@ def seed_formas_pago(session: Session):
     session.commit()
 
 
+def seed_unidades_medida(session: Session):
+    """
+    Create standard measurement units idempotently.
+
+    Checks by nombre to avoid duplicates. The 7 predefined units
+    cover masa, volumen, unidad, and area types.
+    """
+    for nombre, simbolo, tipo in UNIDADES_MEDIDA_SEED:
+        existing = session.exec(
+            select(UnidadMedida).where(UnidadMedida.nombre == nombre)
+        ).first()
+        if not existing:
+            session.add(UnidadMedida(nombre=nombre, simbolo=simbolo, tipo=tipo))
+    session.commit()
+
+
 # ═══════════════════════════════════════════════════════════════
 #  MAIN SEED RUNNER
 # ═══════════════════════════════════════════════════════════════
@@ -556,6 +585,7 @@ def run_seed():
         seed_productos(session)
         seed_estados_pedido(session)
         seed_formas_pago(session)
+        seed_unidades_medida(session)
 
     # Stamp Alembic to the current head so subsequent app starts
     # don't try to re-run broken incremental migrations on an empty DB.

@@ -1,6 +1,17 @@
 /**
  * Carrito — Shopping cart page.
  * Uses TanStack Query for direcciones, Zustand for cart state.
+ *
+ * POST-PAGO FLOW (MercadoPago):
+ *   1. Validate stock
+ *   2. Call pagosApi.initFromCart() with cart items
+ *   3. Redirect to MP init_point (cart NOT cleared)
+ *   4. WebSocket pago_confirmado event clears cart and navigates
+ *
+ * SYNCHRONOUS FLOW (PAGO_LOCAL, EFECTIVO):
+ *   1. Create Pedido
+ *   2. Clear cart
+ *   3. Navigate to pedidos
  */
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -13,7 +24,7 @@ import {
   formatDireccion,
   type DireccionEntregaInput,
 } from "@/features/pedidos/api/direcciones";
-import { pagosApi } from "@/features/pedidos/api/pagos";
+import { pagosApi, type InitFromCartRequest } from "@/features/pedidos/api/pagos";
 import { getAccessToken } from "@/shared/api/client";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { useStore } from "@tanstack/react-form";
@@ -214,34 +225,71 @@ export default function Carrito() {
     setError(null);
 
     try {
+      // 1. Validate stock (common to both flows)
       const stockResult = await pedidosApi.validarStock({ detalles: currentItems.map((i) => ({ producto_id: i.productoId, cantidad: i.cantidad })) });
       if (!stockResult.valido) { setStockWarnings(stockResult.detalles); setEnviando(false); return; }
 
       const direccionId = typeof direccionSelId === "number" ? direccionSelId : undefined;
-      const pedido = await pedidosApi.create({
-        forma_pago_codigo: formaPago,
-        subtotal: useCartStore.getState().getTotal(),
-        descuento: 0,
-        costo_envio: direccionId ? 50 : 0,
-        direccion_id: direccionId,
-        detalles: currentItems.map((i) => ({ producto_id: i.productoId, cantidad: i.cantidad, nombre_snapshot: i.nombre, precio_snapshot: i.precio, ...(i.ingredientesExcluidos.length > 0 ? { personalizacion: i.ingredientesExcluidos } : {}) })),
-      });
+      const subtotal = useCartStore.getState().getTotal();
+      const costoEnvio = direccionId ? 50 : 0;
 
+      // ── BRANCH: MercadoPago vs synchronous flows ──
       if (formaPago === "MERCADOPAGO") {
+        // ── POST-PAGO FLOW ──
+        // No Pedido created yet. Cart survives redirect.
+        const initData: InitFromCartRequest = {
+          forma_pago_codigo: "MERCADOPAGO",
+          subtotal: subtotal,
+          descuento: 0,
+          costo_envio: costoEnvio,
+          direccion_id: direccionId ?? null,
+          items: currentItems.map((i) => ({
+            producto_id: i.productoId,
+            nombre: i.nombre,
+            precio: Number(i.precio),
+            cantidad: i.cantidad,
+            ingredientes_excluidos: i.ingredientesExcluidos,
+          })),
+        };
+
         try {
-          const paymentResult = await pagosApi.initPayment(pedido.id);
+          const paymentResult = await pagosApi.initFromCart(initData);
           if (paymentResult.init_point && paymentResult.init_point.startsWith("https://")) {
-            useCartStore.getState().clearCarrito();
+            // Cart is NOT cleared — it survives the redirect
+            // The WebSocket pago_confirmado event will clear it later
             window.location.href = paymentResult.init_point;
           } else {
-            setMensaje({ tipo: 'error', texto: 'El servicio de pago no esta disponible en este momento. Su pedido quedo registrado. Puede intentar el pago desde la seccion de pedidos.' });
-            setTimeout(() => navigate("/pedidos"), 3000);
+            // init_point is null — MP API failure
+            setMensaje({
+              tipo: 'error',
+              texto: 'Servicio de pago no disponible. Intente nuevamente.',
+            });
+            setEnviando(false);
           }
         } catch {
-          setMensaje({ tipo: 'error', texto: 'No se pudo conectar con el servicio de pago. Su pedido quedo registrado. Complete el pago desde la seccion de pedidos.' });
-          setTimeout(() => navigate("/pedidos"), 3000);
+          setMensaje({
+            tipo: 'error',
+            texto: 'No se pudo conectar con el servicio de pago. Intente nuevamente desde el carrito.',
+          });
+          setEnviando(false);
         }
       } else {
+        // ── SYNCHRONOUS FLOW (PAGO_LOCAL, EFECTIVO) ──
+        const pedido = await pedidosApi.create({
+          forma_pago_codigo: formaPago,
+          subtotal: subtotal,
+          descuento: 0,
+          costo_envio: costoEnvio,
+          direccion_id: direccionId,
+          detalles: currentItems.map((i) => ({
+            producto_id: i.productoId,
+            cantidad: i.cantidad,
+            nombre_snapshot: i.nombre,
+            precio_snapshot: i.precio,
+            ...(i.ingredientesExcluidos.length > 0 ? { personalizacion: i.ingredientesExcluidos } : {}),
+          })),
+        });
+
         useCartStore.getState().clearCarrito();
         setMensaje({ tipo: 'exito', texto: 'Pedido confirmado. Retire en el local cuando este listo.' });
         setTimeout(() => navigate("/pedidos"), 1500);
@@ -250,7 +298,11 @@ export default function Carrito() {
       if (e instanceof AxiosError && e.response?.status === 409) {
         const body = e.response.data as Record<string, unknown>;
         const detail = body?.detail as Record<string, unknown> | undefined;
-        if (detail?.error === "stock_insuficiente" && Array.isArray(detail?.detalles)) { setStockWarnings(detail.detalles as ValidarStockDetalle[]); setEnviando(false); return; }
+        if (detail?.error === "stock_insuficiente" && Array.isArray(detail?.detalles)) {
+          setStockWarnings(detail.detalles as ValidarStockDetalle[]);
+          setEnviando(false);
+          return;
+        }
       }
       if (e instanceof AxiosError && e.response?.data) {
         const data = e.response.data as Record<string, unknown>;
@@ -264,7 +316,15 @@ export default function Carrito() {
         } else if (typeof data.message === "string") setError(data.message);
         else setError((e as Error).message);
       } else setError((e as Error).message);
-    } finally { setEnviando(false); }
+      setEnviando(false);
+    } finally {
+      if (formaPago === "MERCADOPAGO") {
+        // For MP flow: if we haven't redirected yet, keep enviando true
+        // (the page will redirect or show message)
+      } else {
+        setEnviando(false);
+      }
+    }
   };
 
   const handleRealizarPedido = () => doRealizarPedido();
@@ -286,6 +346,13 @@ export default function Carrito() {
 
   const total = useCartStore((s) => s.getTotal());
   const itemCount = useCartStore((s) => s.getItemCount());
+
+  const buttonText = () => {
+    if (enviando && formaPago === "MERCADOPAGO") return "Redirigiendo a MercadoPago...";
+    if (enviando) return "Creando pedido...";
+    if (formaPago === "MERCADOPAGO") return "Pagar con MercadoPago";
+    return "Realizar Pedido";
+  };
 
   if (items.length === 0) {
     return (
@@ -391,7 +458,9 @@ export default function Carrito() {
           Subtotal: <span className="text-blue-700">${total.toFixed(2)}</span>
           {direccionSelId && typeof direccionSelId === "number" && <span className="text-base font-normal text-gray-500 ml-2">(+ $50.00 envio)</span>}
         </div>
-        <button onClick={handleRealizarPedido} disabled={enviando} className="bg-green-700 text-white px-6 py-2 rounded text-lg font-semibold cursor-pointer hover:bg-green-800 disabled:opacity-60 disabled:cursor-not-allowed">{enviando ? "Creando pedido..." : "Realizar Pedido"}</button>
+        <button onClick={handleRealizarPedido} disabled={enviando} className="bg-green-700 text-white px-6 py-2 rounded text-lg font-semibold cursor-pointer hover:bg-green-800 disabled:opacity-60 disabled:cursor-not-allowed">
+          {buttonText()}
+        </button>
       </div>
 
       {stockWarnings && <StockWarningModal detalles={stockWarnings} onAdjust={handleStockAdjust} onClose={() => setStockWarnings(null)} />}

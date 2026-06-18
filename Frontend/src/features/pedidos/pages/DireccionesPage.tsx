@@ -1,10 +1,12 @@
 /**
  * DireccionesPage — Delivery addresses management page for authenticated users.
  * Uses TanStack Query for data fetching and mutations.
+ * Uses DataTable with client-side pagination.
  */
 import { useState, useMemo } from "react";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
+import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import {
   formatDireccion,
   type DireccionEntrega,
@@ -18,6 +20,8 @@ import {
   useDeleteDireccion,
   useSetPrincipalDireccion,
 } from "@/features/pedidos/hooks/useDirecciones";
+
+const DEFAULT_LIMIT = 10;
 
 /* ── Modal compartido para crear/editar ── */
 
@@ -159,6 +163,8 @@ function DireccionModal({
 export default function DireccionesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editando, setEditando] = useState<DireccionEntrega | undefined>(undefined);
+  const [skip, setSkip] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
 
   // ── TanStack Query ──
   const { data: direccionesRaw = [], isLoading, isError, error } = useDirecciones();
@@ -176,6 +182,10 @@ export default function DireccionesPage() {
     });
     return sorted;
   }, [direccionesRaw]);
+
+  // Client-side pagination
+  const total = direcciones.length;
+  const pagedDirecciones = direcciones.slice(skip, skip + limit);
 
   const handleCreate = async (data: DireccionEntregaInput) => {
     await createMutation.mutateAsync(data);
@@ -216,6 +226,58 @@ export default function DireccionesPage() {
     setEditando(undefined);
   };
 
+  const handlePageChange = (newSkip: number) => setSkip(newSkip);
+  const handleLimitChange = (newLimit: number) => { setLimit(newLimit); setSkip(0); };
+
+  const columns: DataTableColumn<DireccionEntrega>[] = [
+    {
+      key: "alias",
+      label: "Alias",
+      render: (d) => (
+        <div className="flex items-center gap-2">
+          <span className="font-semibold">{d.alias || "—"}</span>
+          {d.es_principal && (
+            <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded">
+              Principal
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "direccion",
+      label: "Direccion",
+      render: (d) => (
+        <div>
+          <span className="text-sm">{d.linea1}, {d.ciudad}</span>
+          {d.linea2 && <p className="text-xs text-gray-500">{d.linea2}</p>}
+          <div className="text-xs text-gray-400">
+            {[d.provincia, d.codigo_postal].filter(Boolean).join(" - ")}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "ciudad",
+      label: "Ciudad",
+      hideOnMobile: true,
+      render: (d) => <span className="text-sm text-gray-600">{d.ciudad}</span>,
+    },
+    {
+      key: "acciones",
+      label: "Acciones",
+      render: (d) => (
+        <div className="flex gap-1">
+          <button onClick={() => abrirEditar(d)} className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 cursor-pointer">Editar</button>
+          {!d.es_principal && (
+            <button onClick={() => handleSetPrincipal(d.id)} className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 cursor-pointer">Principal</button>
+          )}
+          <button onClick={() => handleDelete(d.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 cursor-pointer">Eliminar</button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
@@ -223,34 +285,17 @@ export default function DireccionesPage() {
         <button onClick={() => { setEditando(undefined); setShowModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 cursor-pointer">+ Nueva Direccion</button>
       </div>
       {isError && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">{(error as Error)?.message || "Error al cargar"}</div>}
-      {isLoading ? (
-        <p className="text-gray-500">Cargando direcciones...</p>
-      ) : direcciones.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <p className="text-lg mb-2">No tenes direcciones de entrega</p>
-          <p className="text-sm">Agrega una direccion para recibir pedidos.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {direcciones.map((d) => (
-            <div key={d.id} className="border border-gray-200 rounded p-4 flex justify-between items-start hover:bg-gray-50">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-semibold">{formatDireccion(d)}</span>
-                  {d.es_principal && <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded">Principal</span>}
-                </div>
-                {d.linea2 && <p className="text-sm text-gray-500">{d.linea2}</p>}
-                <div className="text-xs text-gray-400 mt-1">{[d.provincia, d.codigo_postal].filter(Boolean).join(" - ")}</div>
-              </div>
-              <div className="flex gap-1 ml-4">
-                <button onClick={() => abrirEditar(d)} className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 cursor-pointer">Editar</button>
-                {!d.es_principal && <button onClick={() => handleSetPrincipal(d.id)} className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 cursor-pointer">Principal</button>}
-                <button onClick={() => handleDelete(d.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 cursor-pointer">Eliminar</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={pagedDirecciones}
+        total={total}
+        skip={skip}
+        limit={limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        isLoading={isLoading}
+        emptyMessage="No tenes direcciones de entrega. Agrega una direccion para recibir pedidos."
+      />
       {showModal && (
         <DireccionModal direccion={editando} onClose={cerrarModal} onSave={async (data) => {
           if (editando) { await handleUpdate(editando.id, data as DireccionEntregaUpdate); } else { await handleCreate(data as DireccionEntregaInput); }

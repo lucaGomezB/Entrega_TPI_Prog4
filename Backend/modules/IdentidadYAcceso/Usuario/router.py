@@ -19,7 +19,8 @@ from sqlmodel import Session
 from typing import Optional, List
 from core.database import get_session
 from core.paginated_response import PaginatedResponse
-from modules.IdentidadYAcceso.Auth.dependencies import require_roles
+from modules.IdentidadYAcceso.Auth.dependencies import require_roles, get_current_user
+from modules.IdentidadYAcceso.Usuario.models import Usuario
 from .schemas import UsuarioCreate, UsuarioRead, UsuarioReadWithRoles, UsuarioUpdateWithRoles
 from . import service
 
@@ -28,13 +29,17 @@ router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
 @router.post("/", response_model=UsuarioRead, status_code=status.HTTP_201_CREATED,
             dependencies=[Depends(require_roles(["ADMIN"]))])
-def create_user(datos: UsuarioCreate, session: Session = Depends(get_session)):
+def create_user(
+    datos: UsuarioCreate,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
     """
     POST /usuarios — Create a new user with the provided data.
 
     Requires ADMIN role. Use /auth/register for self-registration.
     """
-    return service.crear_usuario(session, datos)
+    return service.crear_usuario(session, datos, admin_id=current_user.id)
 
 
 @router.get("/", response_model=PaginatedResponse[UsuarioReadWithRoles],
@@ -81,6 +86,7 @@ def update_usuario(
     usuario_id: int,
     datos: UsuarioUpdateWithRoles,
     session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
 ):
     """
     PATCH /usuarios/{usuario_id} — Partially update user fields and/or reassign roles.
@@ -88,7 +94,7 @@ def update_usuario(
     Send only the fields to change. To reassign roles, send roles_codigos.
     To remove all roles, send roles_codigos: []. ADMIN only.
     """
-    usuario = service.actualizar_usuario(session, usuario_id, datos)
+    usuario = service.actualizar_usuario(session, usuario_id, datos, admin_id=current_user.id)
     if not usuario:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return usuario

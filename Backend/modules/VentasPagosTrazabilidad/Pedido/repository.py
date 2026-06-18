@@ -4,7 +4,7 @@ Pedido repository — data access layer for Order.
 Extends BaseRepository with eager-loading, state-filtered queries,
 and cross-module lookups for stock validation (Producto, Ingrediente).
 """
-from sqlmodel import Session, select, col
+from sqlmodel import Session, select, col, asc, desc
 from typing import List, Optional
 from sqlalchemy.orm import selectinload
 from models.base_repository import BaseRepository
@@ -12,6 +12,14 @@ from .models import Pedido
 from ..DetallePedido.models import DetallePedido
 
 ESTADOS_TERMINALES = {"ENTREGADO", "CANCELADO"}
+
+SORTABLE_FIELDS = {"id", "estado_codigo", "created_at", "updated_at", "total"}
+
+def _apply_sort(statement, model, sort_by: str = "id", sort_order: str = "desc"):
+    """Apply dynamic ordering to a SQLModel select statement."""
+    column = getattr(model, sort_by, model.id)
+    direction = asc(column) if sort_order == "asc" else desc(column)
+    return statement.order_by(direction)
 
 
 class PedidoRepository(BaseRepository[Pedido]):
@@ -81,8 +89,8 @@ class PedidoRepository(BaseRepository[Pedido]):
         )
         return self.session.exec(statement).all()
 
-    def get_activos(self, skip: int = 0, limit: int = 100) -> List[Pedido]:
-        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), newest first."""
+    def get_activos(self, skip: int = 0, limit: int = 100, sort_by: str = "id", sort_order: str = "desc") -> List[Pedido]:
+        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), with dynamic sorting."""
         statement = (
             select(Pedido)
             .options(*self._eager_options())
@@ -90,12 +98,12 @@ class PedidoRepository(BaseRepository[Pedido]):
             .where(col(Pedido.deleted_at).is_(None))
             .offset(skip)
             .limit(limit)
-            .order_by(Pedido.created_at.desc())
         )
+        statement = _apply_sort(statement, Pedido, sort_by, sort_order)
         return self.session.exec(statement).all()
 
-    def get_historial(self, skip: int = 0, limit: int = 100) -> List[Pedido]:
-        """Fetch terminal-state orders (ENTREGADO or CANCELADO), most recently updated first."""
+    def get_historial(self, skip: int = 0, limit: int = 100, sort_by: str = "id", sort_order: str = "desc") -> List[Pedido]:
+        """Fetch terminal-state orders (ENTREGADO or CANCELADO), with dynamic sorting."""
         statement = (
             select(Pedido)
             .options(*self._eager_options())
@@ -103,8 +111,8 @@ class PedidoRepository(BaseRepository[Pedido]):
             .where(col(Pedido.deleted_at).is_(None))
             .offset(skip)
             .limit(limit)
-            .order_by(Pedido.updated_at.desc())
         )
+        statement = _apply_sort(statement, Pedido, sort_by, sort_order)
         return self.session.exec(statement).all()
 
     def get_historial_by_usuario(self, usuario_id: int, skip: int = 0, limit: int = 100) -> List[Pedido]:

@@ -40,6 +40,7 @@ class ProductoRepository(BaseRepository[Producto]):
         es_principal: bool,
         orden: int = 0,
         cantidad: int = 1,
+        unidad_medida_id: Optional[int] = None,
     ):
         """Create a ProductoIngrediente link row with relationship metadata."""
         enlace = ProductoIngrediente(
@@ -49,6 +50,7 @@ class ProductoRepository(BaseRepository[Producto]):
             es_principal=es_principal,
             orden=orden,
             cantidad=cantidad,
+            unidad_medida_id=unidad_medida_id,
         )
         self.session.add(enlace)
         return enlace
@@ -75,6 +77,7 @@ class ProductoRepository(BaseRepository[Producto]):
                 "es_removible": rel.es_removible,
                 "es_principal": rel.es_principal,
                 "orden": rel.orden,
+                "es_alergeno": ing.es_alergeno,
             }
             for rel, ing in results
         ]

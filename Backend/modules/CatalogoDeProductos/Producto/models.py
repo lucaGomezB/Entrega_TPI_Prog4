@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     # String-based forward references avoid circular import at runtime.
     from ..Categoria.models import Categoria
     from ..Ingrediente.models import Ingrediente
+    from ..UnidadMedida.models import UnidadMedida
 
 
 class ProductoBase(TimestampModel):
@@ -35,6 +36,7 @@ class ProductoBase(TimestampModel):
     tiempo_prep_min: int = Field(default=0)
     disponible: bool = Field(default=True)
     es_insumo: bool = Field(default=False)
+    unidad_medida_id: Optional[int] = Field(default=None, foreign_key="unidadmedida.id")
 
 
 class Producto(ProductoBase, SoftDeleteModel, table=True):
@@ -43,6 +45,7 @@ class Producto(ProductoBase, SoftDeleteModel, table=True):
     Relationships:
         - categorias: many-to-many via ProductoCategoria link table
         - ingredientes: many-to-many via ProductoIngrediente link table
+        - unidad_medida: optional FK to UnidadMedida
 
     SoftDeleteModel adds deleted_at — rows are never physically deleted.
     """
@@ -52,3 +55,13 @@ class Producto(ProductoBase, SoftDeleteModel, table=True):
     # String-based relationship names prevent circular import issues at module load time.
     categorias: List["Categoria"] = Relationship(back_populates="productos", link_model=ProductoCategoria)
     ingredientes: List["Ingrediente"] = Relationship(back_populates="productos", link_model=ProductoIngrediente)
+    unidad_medida: Optional["UnidadMedida"] = Relationship()
+
+    @property
+    def unidad_medida_simbolo(self) -> Optional[str]:
+        """Convenience accessor for unidad_medida.simbolo.
+        Returns None when unidad_medida is not set or not loaded.
+        """
+        if self.unidad_medida:
+            return self.unidad_medida.simbolo
+        return None

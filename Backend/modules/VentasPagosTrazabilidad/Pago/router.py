@@ -15,7 +15,12 @@ from modules.IdentidadYAcceso.Auth.dependencies import get_current_user
 from modules.IdentidadYAcceso.Usuario.models import Usuario
 
 from .service import PagoService
-from .schemas import InitPaymentRequest, InitPaymentResponse, PagoRead
+from .schemas import (
+    InitPaymentRequest,
+    InitPaymentResponse,
+    InitFromCartRequest,
+    PagoRead,
+)
 
 logger = logging.getLogger("mercadopago.webhook")
 
@@ -36,18 +41,49 @@ async def init_payment(
     session=Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
 ):
-    """POST /pagos — Initiate a MercadoPago checkout preference.
+    """POST /pagos — DEPRECATED. Use /pagos/init-from-cart instead.
 
-    Creates a pending Pago record, then creates a checkout preference
-    in MercadoPago. Returns the Pago details and the init_point URL
-    for the frontend to redirect the user.
+    Legacy endpoint for initiating a MercadoPago checkout from a pedido_id.
+    This flow is replaced by init-from-cart which creates the Pedido only
+    after payment confirmation.
+
+    Returns 501 Not Implemented to guide callers to the new endpoint.
+    """
+    raise HTTPException(
+        status_code=501,
+        detail={
+            "error": "endpoint_deprecated",
+            "mensaje": "Este endpoint fue reemplazado. Use POST /pagos/init-from-cart con los items del carrito.",
+        },
+    )
+
+
+@router.post("/init-from-cart", response_model=InitPaymentResponse, status_code=status.HTTP_201_CREATED)
+async def init_payment_from_cart(
+    data: InitFromCartRequest,
+    session=Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """POST /pagos/init-from-cart — Initiate MercadoPago payment from cart items.
+
+    The NEW post-pago flow:
+    1. Validates stock for all cart items
+    2. Creates a carrito_snapshot (persists cart state during payment window)
+    3. Creates a Pago record with pedido_id=NULL
+    4. Creates a MercadoPago preference with cart items as line items
+    5. Returns the init_point URL for redirecting the user
+
+    The cart is NOT cleared. The Pedido is created on payment confirmation
+    via webhook. The cart is cleared via WebSocket pago_confirmado event.
 
     Access: any authenticated user.
     """
     try:
-        pago_read, init_point = PagoService.init_mp_payment(session, data.pedido_id)
+        pago_read, init_point = PagoService.init_from_cart(
+            session, data, current_user
+        )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=409, detail={"error": "stock_insuficiente", "mensaje": str(e)})
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

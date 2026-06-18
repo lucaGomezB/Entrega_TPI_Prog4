@@ -30,12 +30,19 @@ from core.database import get_session
 # ═══════════════════════════════════════════════════════════════════════════
 from sqlalchemy.ext.compiler import compiles  # noqa: E402
 from sqlalchemy import ARRAY  # noqa: E402
+from sqlalchemy.dialects.postgresql import JSONB  # noqa: E402
 import json  # noqa: E402
 
 
 @compiles(ARRAY, "sqlite")
 def _compile_array_sqlite(element, compiler, **kw):
     """Render ARRAY(INTEGER) as JSON for SQLite compatibility."""
+    return "JSON"
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(element, compiler, **kw):
+    """Render JSONB as JSON for SQLite compatibility."""
     return "JSON"
 
 
@@ -54,6 +61,7 @@ from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega  #
 from modules.CatalogoDeProductos.Categoria.models import Categoria  # noqa: E402, F401
 from modules.CatalogoDeProductos.Producto.models import Producto  # noqa: E402, F401
 from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente  # noqa: E402, F401
+from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida  # noqa: E402, F401
 from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria  # noqa: E402, F401
 from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente  # noqa: E402, F401
 from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido  # noqa: E402, F401
@@ -62,6 +70,7 @@ from modules.VentasPagosTrazabilidad.Pedido.models import Pedido  # noqa: E402, 
 from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido  # noqa: E402, F401
 from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido  # noqa: E402, F401
 from modules.VentasPagosTrazabilidad.Pago.models import Pago  # noqa: E402, F401
+from modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot  # noqa: E402, F401
 
 
 # ═══════════════════════════════════════════════════════════════════════════

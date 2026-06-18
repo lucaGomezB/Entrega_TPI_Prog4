@@ -1,6 +1,7 @@
 /**
  * IngredientesCRUD — Ingredients (insumos) management admin page.
  * Uses TanStack Query for data fetching and mutations.
+ * Uses DataTable with server-side pagination.
  */
 import { useState, useEffect } from "react";
 import { AxiosError } from "axios";
@@ -10,11 +11,13 @@ import { useIngredientes, useCreateIngrediente, useUpdateIngrediente, useDeleteI
 import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
+import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 
-const PAGE_SIZE = 10;
+const DEFAULT_LIMIT = 10;
 
 export default function IngredientesCRUD() {
-  const [page, setPage] = useState(0);
+  const [skip, setSkip] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [filter, setFilter] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -22,7 +25,10 @@ export default function IngredientesCRUD() {
   const [inlinePrecioEdit, setInlinePrecioEdit] = useState<{ id: number; value: string } | null>(null);
 
   // ── TanStack Query ──
-  const { data: items = [], isLoading, isError, error } = useIngredientes(page * PAGE_SIZE, PAGE_SIZE);
+  const { data, isLoading, isError, error } = useIngredientes(skip, limit);
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+
   const createMutation = useCreateIngrediente();
   const updateMutation = useUpdateIngrediente();
   const deleteMutation = useDeleteIngrediente();
@@ -137,9 +143,78 @@ export default function IngredientesCRUD() {
     }
   };
 
-  const filtered = items.filter((i) =>
-    i.nombre.toLowerCase().includes(filter.toLowerCase())
-  );
+  const handlePageChange = (newSkip: number) => {
+    setSkip(newSkip);
+  };
+
+  const handleLimitChange = (newLimit: number) => {
+    setLimit(newLimit);
+    setSkip(0);
+  };
+
+  const columns: DataTableColumn<Ingrediente>[] = [
+    { key: "nombre", label: "Nombre" },
+    {
+      key: "es_alergeno",
+      label: "Alergeno?",
+      render: (ing) => (ing.es_alergeno ? "Si" : "No"),
+      hideOnMobile: true,
+    },
+    {
+      key: "precio_actual",
+      label: "Precio",
+      render: (ing) =>
+        inlinePrecioEdit?.id === ing.id ? (
+          <div className="flex gap-1 items-center">
+            <input type="number" step="0.01" min="0"
+              value={inlinePrecioEdit.value}
+              onChange={(e) => setInlinePrecioEdit({ ...inlinePrecioEdit, value: e.target.value })}
+              className="border px-1 py-0.5 w-20 rounded text-sm" />
+            <button onClick={() => handleInlinePrecioSave(ing.id)}
+              className="bg-green-600 text-white px-2 py-0.5 rounded text-xs cursor-pointer">Guardar</button>
+            <button onClick={() => setInlinePrecioEdit(null)}
+              className="bg-gray-400 text-white px-2 py-0.5 rounded text-xs cursor-pointer">X</button>
+          </div>
+        ) : (
+          `$${Number(ing.precio_actual).toFixed(2)}`
+        ),
+    },
+    {
+      key: "stock_actual",
+      label: "Stock",
+      render: (ing) =>
+        inlineStockEdit?.id === ing.id ? (
+          <div className="flex gap-1 items-center">
+            <input type="number" step="1" min="0"
+              value={inlineStockEdit.value}
+              onChange={(e) => setInlineStockEdit({ ...inlineStockEdit, value: e.target.value })}
+              className="border px-1 py-0.5 w-20 rounded text-sm" />
+            <button onClick={() => handleInlineStockSave(ing.id)}
+              className="bg-green-600 text-white px-2 py-0.5 rounded text-xs cursor-pointer">Guardar</button>
+            <button onClick={() => setInlineStockEdit(null)}
+              className="bg-gray-400 text-white px-2 py-0.5 rounded text-xs cursor-pointer">X</button>
+          </div>
+        ) : (
+          <span>{ing.stock_actual}</span>
+        ),
+    },
+    {
+      key: "acciones",
+      label: "Acciones",
+      render: (ing) => (
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => handleStartEdit(ing)}
+            className="bg-yellow-500 text-white px-2 py-1 rounded text-sm cursor-pointer">Editar</button>
+          <button onClick={() => setInlineStockEdit({ id: ing.id, value: String(ing.stock_actual) })}
+            className="bg-teal-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Stock</button>
+          <button onClick={() => setInlinePrecioEdit({ id: ing.id, value: String(ing.precio_actual) })}
+            className="bg-purple-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Precio</button>
+          <button onClick={() => handleDelete(ing.id)}
+            className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Eliminar</button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="p-4">
@@ -147,7 +222,7 @@ export default function IngredientesCRUD() {
       {isError && <div className="bg-red-100 text-red-700 p-2 mb-4 rounded">{(error as Error)?.message || "Error al cargar"}</div>}
       <div className="flex gap-2 mb-4 flex-wrap">
         <input type="text" placeholder="Filtrar por nombre..." value={filter}
-          onChange={(e) => { setFilter(e.target.value); setPage(0); }}
+          onChange={(e) => { setFilter(e.target.value); }}
           className="border px-3 py-1 rounded" />
         <button onClick={handleStartCreate}
           className="bg-green-600 text-white px-4 py-1 rounded cursor-pointer">+ Nuevo</button>
@@ -212,83 +287,16 @@ export default function IngredientesCRUD() {
             className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
         </form>
       )}
-      {isLoading ? <p>Cargando...</p> : (
-        <table className="w-full border-collapse border">
-          <thead><tr className="bg-gray-200">
-            <th className="border p-2 text-left">Codigo</th>
-            <th className="border p-2 text-left">Nombre</th>
-            <th className="border p-2 text-left">Es alergeno?</th>
-            <th className="border p-2 text-left">Precio</th>
-            <th className="border p-2 text-left">Stock</th>
-            <th className="border p-2 text-left">Acciones</th>
-          </tr></thead>
-          <tbody>
-            {filtered.map((ing) => (
-              <tr key={ing.id} className="hover:bg-gray-100">
-                <td className="border p-2">{ing.id}</td>
-                <td className="border p-2">{ing.nombre}</td>
-                <td className="border p-2">{ing.es_alergeno ? "Si" : "No"}</td>
-                <td className="border p-2">
-                  {inlinePrecioEdit?.id === ing.id ? (
-                    <div className="flex gap-1 items-center">
-                      <label className="text-xs text-gray-500">Nuevo precio:</label>
-                      <input type="number" step="0.01" min="0"
-                        value={inlinePrecioEdit.value}
-                        onChange={(e) => setInlinePrecioEdit({ ...inlinePrecioEdit, value: e.target.value })}
-                        className="border px-1 py-0.5 w-20 rounded text-sm" />
-                      <button onClick={() => handleInlinePrecioSave(ing.id)}
-                        className="bg-green-600 text-white px-2 py-0.5 rounded text-xs cursor-pointer">Guardar</button>
-                      <button onClick={() => setInlinePrecioEdit(null)}
-                        className="bg-gray-400 text-white px-2 py-0.5 rounded text-xs cursor-pointer">X</button>
-                    </div>
-                  ) : (
-                    `$${Number(ing.precio_actual).toFixed(2)}`
-                  )}
-                </td>
-                <td className="border p-2">
-                  {inlineStockEdit?.id === ing.id ? (
-                    <div className="flex gap-1 items-center">
-                      <label className="text-xs text-gray-500">Nuevo stock:</label>
-                      <input type="number" step="1" min="0"
-                        value={inlineStockEdit.value}
-                        onChange={(e) => setInlineStockEdit({ ...inlineStockEdit, value: e.target.value })}
-                        className="border px-1 py-0.5 w-20 rounded text-sm" />
-                      <button onClick={() => handleInlineStockSave(ing.id)}
-                        className="bg-green-600 text-white px-2 py-0.5 rounded text-xs cursor-pointer">Guardar</button>
-                      <button onClick={() => setInlineStockEdit(null)}
-                        className="bg-gray-400 text-white px-2 py-0.5 rounded text-xs cursor-pointer">X</button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-500">Actual: {ing.stock_actual}</span>
-                  )}
-                </td>
-                <td className="border p-2">
-                  <div className="flex gap-1 flex-wrap">
-                    <button onClick={() => handleStartEdit(ing)}
-                      className="bg-yellow-500 text-white px-2 py-1 rounded text-sm cursor-pointer">Editar</button>
-                    <button onClick={() => setInlineStockEdit({ id: ing.id, value: String(ing.stock_actual) })}
-                      className="bg-teal-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Stock</button>
-                    <button onClick={() => setInlinePrecioEdit({ id: ing.id, value: String(ing.precio_actual) })}
-                      className="bg-purple-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Precio</button>
-                    <button onClick={() => handleDelete(ing.id)}
-                      className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Eliminar</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && <tr><td colSpan={6} className="border p-2 text-center text-gray-500">{filter ? "Sin resultados para el filtro" : "No hay insumos cargados"}</td></tr>}
-          </tbody>
-        </table>
-      )}
-      <div className="flex gap-2 mt-4 items-center">
-        <button disabled={page === 0}
-          onClick={() => setPage(page - 1)}
-          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer">Anterior</button>
-        <span>Pagina {page + 1}</span>
-        <button disabled={items.length < PAGE_SIZE}
-          onClick={() => setPage(page + 1)}
-          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer">Siguiente</button>
-      </div>
+      <DataTable
+        columns={columns}
+        data={items}
+        total={total}
+        skip={skip}
+        limit={limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

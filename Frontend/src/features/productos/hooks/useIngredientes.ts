@@ -1,13 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ingredientesApi } from '../api/ingredientes'
-import type { IngredienteCreate, IngredienteUpdate } from '../api/ingredientes'
+import type { Ingrediente, IngredienteCreate, IngredienteUpdate } from '../api/ingredientes'
 import { queryKeys } from '@/shared/api/queryKeys'
+import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/client'
 
-/** Fetches all ingredientes with optional pagination (skip/limit). Uses TanStack Query. */
-export function useIngredientes(skip = 0, limit = 100) {
-  return useQuery({
-    queryKey: queryKeys.ingredientes.all,
-    queryFn: () => ingredientesApi.getAll(skip, limit),
+/** Fetches all ingredientes with pagination (skip/limit). Returns full response with total. */
+export function useIngredientes(skip = 0, limit = 10) {
+  return useQuery<PaginatedResponse<Ingrediente>>({
+    queryKey: [...queryKeys.ingredientes.all, skip, limit] as const,
+    queryFn: () => apiFetchPaginatedFull<Ingrediente>(`/ingredientes/?skip=${skip}&limit=${limit}`),
   })
 }
 

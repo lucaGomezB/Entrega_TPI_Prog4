@@ -211,6 +211,34 @@ class TestAuthLogout:
         data = response.json()
         assert "message" in data
 
+    def test_logout_revokes_token_in_db(self, client, db_session):
+        """Logout sets revoked_at on the refresh token in the database."""
+        from modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
+        reg = client.post("/api/v1/auth/register", json={
+            "nombre": "LogoutDB", "apellido": "Test",
+            "email": "logoutdb@test.com", "password": "pass123",
+        })
+        token = reg.json()["access_token"]
+        # Get the refresh token hash from DB before logout
+        tokens_before = db_session.exec(
+            select(RefreshToken).where(RefreshToken.revoked_at == None)
+        ).all()
+        assert len(tokens_before) >= 1, "At least one active refresh token must exist"
+
+        response = client.post("/api/v1/auth/logout", headers={
+            "Authorization": f"Bearer {token}",
+        })
+        assert response.status_code == 200
+
+        # Verify at least one token was revoked (revoked_at IS NOT NULL)
+        tokens_after = db_session.exec(
+            select(RefreshToken).where(
+                RefreshToken.revoked_at != None,
+                RefreshToken.id.in_([t.id for t in tokens_before]),
+            )
+        ).all()
+        assert len(tokens_after) >= 1, "Refresh token should be revoked in DB"
+
     def test_logout_without_token_returns_200(self, client):
         """Logout without a token returns 200 (idempotent)."""
         response = client.post("/api/v1/auth/logout")
@@ -406,6 +434,122 @@ class TestUsuarioPatchSoftDelete:
             func = getattr(client, method)
             resp = func(path, headers=client_headers)
             assert resp.status_code in (403, 404), f"{method} {path} returned {resp.status_code}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# USUARIO CREATE / UPDATE — asignado_por_id tracking
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestUsuarioCreateAsignadoPorId:
+    """POST /api/v1/usuarios — verify asignado_por_id is populated."""
+
+    def test_create_user_populates_asignado_por_id(self, client, admin_headers, db_session):
+        """When admin creates a user with roles, UsuarioRol.asignado_por_id
+        must be set to the admin's user ID."""
+        # Seed roles first (Rol table needed for FK constraints)
+        from modules.IdentidadYAcceso.Rol.models import Rol
+        from sqlmodel import select as _select
+        for codigo, nombre in [
+            ("ADMIN", "Admin"), ("CLIENT", "Client"),
+            ("PEDIDOS", "Pedidos"), ("STOCK", "Stock"),
+        ]:
+            if not db_session.exec(_select(Rol).where(Rol.codigo == codigo)).first():
+                db_session.add(Rol(codigo=codigo, nombre=nombre))
+        db_session.flush()
+
+        # Find the admin user (created by admin_headers fixture)
+        admin_user = db_session.exec(
+            _select(Usuario).where(Usuario.email == "admin_test@test.com")
+        ).first()
+        assert admin_user is not None
+
+        response = client.post("/api/v1/usuarios/", json={
+            "nombre": "NewUser",
+            "apellido": "WithRoles",
+            "email": "newuser_roles@test.com",
+            "password": "secure123",
+            "roles_codigos": ["CLIENT", "PEDIDOS"],
+        }, headers=admin_headers)
+        assert response.status_code == 201
+        data = response.json()
+        user_id = data["id"]
+
+        # Verify UsuarioRol rows have asignado_por_id set
+        rows = db_session.exec(
+            _select(UsuarioRol).where(UsuarioRol.usuario_id == user_id)
+        ).all()
+        assert len(rows) >= 2
+        for row in rows:
+            assert row.asignado_por_id == admin_user.id, (
+                f"Expected asignado_por_id={admin_user.id}, got {row.asignado_por_id}"
+            )
+
+    def test_create_user_no_roles_still_works(self, client, admin_headers, db_session):
+        """Creating a user without roles should succeed without errors."""
+        # Seed roles
+        from modules.IdentidadYAcceso.Rol.models import Rol
+        from sqlmodel import select as _select
+        for codigo, nombre in [("ADMIN", "Admin"), ("CLIENT", "Client")]:
+            if not db_session.exec(_select(Rol).where(Rol.codigo == codigo)).first():
+                db_session.add(Rol(codigo=codigo, nombre=nombre))
+        db_session.flush()
+
+        response = client.post("/api/v1/usuarios/", json={
+            "nombre": "NoRoles",
+            "apellido": "User",
+            "email": "noroles@test.com",
+            "password": "secure123",
+        }, headers=admin_headers)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["nombre"] == "NoRoles"
+
+
+class TestUsuarioUpdateAsignadoPorId:
+    """PATCH /api/v1/usuarios/{id} — verify asignado_por_id is populated."""
+
+    def test_update_user_roles_populates_asignado_por_id(self, client, admin_headers, db_session):
+        """When admin reassigns roles via PATCH, UsuarioRol.asignado_por_id
+        must be set to the admin's user ID."""
+        from modules.IdentidadYAcceso.Rol.models import Rol
+        from sqlmodel import select as _select
+        for codigo, nombre in [("ADMIN", "Admin"), ("CLIENT", "Client"), ("PEDIDOS", "Pedidos")]:
+            if not db_session.exec(_select(Rol).where(Rol.codigo == codigo)).first():
+                db_session.add(Rol(codigo=codigo, nombre=nombre))
+        db_session.flush()
+
+        # Find admin user
+        admin_user = db_session.exec(
+            _select(Usuario).where(Usuario.email == "admin_test@test.com")
+        ).first()
+        assert admin_user is not None
+
+        # Create a user first (via API to have asignado_por_id set)
+        resp = client.post("/api/v1/usuarios/", json={
+            "nombre": "ToUpdate",
+            "apellido": "User",
+            "email": "toupdate_roles@test.com",
+            "password": "secure123",
+            "roles_codigos": ["CLIENT"],
+        }, headers=admin_headers)
+        assert resp.status_code == 201
+        user_id = resp.json()["id"]
+
+        # PATCH: reassign roles
+        patch_resp = client.patch(f"/api/v1/usuarios/{user_id}", json={
+            "roles_codigos": ["PEDIDOS", "CLIENT"],
+        }, headers=admin_headers)
+        assert patch_resp.status_code == 200
+
+        # Verify UsuarioRol rows have asignado_por_id set to admin
+        rows = db_session.exec(
+            _select(UsuarioRol).where(UsuarioRol.usuario_id == user_id)
+        ).all()
+        assert len(rows) >= 2
+        for row in rows:
+            assert row.asignado_por_id == admin_user.id, (
+                f"Expected asignado_por_id={admin_user.id}, got {row.asignado_por_id}"
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

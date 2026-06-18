@@ -12,6 +12,7 @@ from .Pedido.repository import PedidoRepository
 from .DetallePedido.repository import DetallePedidoRepository
 from .HistorialEstadoPedido.repository import HistorialEstadoPedidoRepository
 from .Pago.repository import PagoRepository
+from .CarritoSnapshot.repository import CarritoSnapshotRepository
 
 
 class VentasPagosTrazabilidadUnitOfWork:
@@ -29,6 +30,7 @@ class VentasPagosTrazabilidadUnitOfWork:
         self.detalles = DetallePedidoRepository(session)
         self.historial = HistorialEstadoPedidoRepository(session)
         self.pagos = PagoRepository(session)
+        self.snapshots = CarritoSnapshotRepository(session)
 
     def __enter__(self):
         return self

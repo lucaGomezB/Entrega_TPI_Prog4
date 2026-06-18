@@ -30,7 +30,7 @@ class Pago(TimestampModel, table=True):
     __tablename__ = "pago"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    pedido_id: int = Field(foreign_key="pedido.id", nullable=False)
+    pedido_id: Optional[int] = Field(default=None, foreign_key="pedido.id", nullable=True)
     mp_payment_id: Optional[int] = Field(default=None, unique=True)
     mp_status: str = Field(max_length=30, nullable=False)
     mp_status_detail: Optional[str] = Field(default=None, max_length=100)

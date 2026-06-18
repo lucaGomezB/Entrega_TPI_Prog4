@@ -17,6 +17,7 @@ class IngredienteAsignado(SQLModel):
     es_removible: bool = True
     es_principal: bool = False
     orden: int = 0
+    unidad_medida_id: Optional[int] = None
 
 
 class CategoriaAsignada(SQLModel):
@@ -90,6 +91,8 @@ class ProductoRead(SQLModel):
     disponible: bool = True
     es_insumo: bool = False
     tiene_ingredientes: bool = False
+    unidad_medida_id: Optional[int] = None
+    unidad_medida_simbolo: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("imagenes_url", mode="before")
@@ -105,7 +108,7 @@ class ProductoIngredienteRead(SQLModel):
     """Response schema for an ingredient associated with a product.
 
     Includes data from the link table (cantidad, es_removible, orden)
-    plus the ingredient's name (joined from Ingrediente table).
+    plus the ingredient's name and allergen flag (joined from Ingrediente table).
     """
     ingrediente_id: int
     ingrediente_nombre: str
@@ -113,6 +116,7 @@ class ProductoIngredienteRead(SQLModel):
     es_removible: bool
     es_principal: bool
     orden: int
+    es_alergeno: bool
     model_config = ConfigDict(from_attributes=True)
 
 
