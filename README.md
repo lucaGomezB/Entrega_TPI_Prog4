@@ -7,6 +7,12 @@
 
 ---
 
+Enlace a la presentación: https://drive.google.com/file/d/1Yhj7-FECyTaSqpW8heZj5vt3VOEVM-6E/view?usp=sharing
+
+Enlace a la carpeta de la presentación (incluye archivos de entorno): https://drive.google.com/drive/folders/1eL1ukyJYPUVEuQZbj4gkdoUGndr9u4U3?usp=sharing
+
+---
+
 ## Descripcion
 
 Food Store es un sistema e-commerce de gestion de pedidos de comida. Permite a los clientes registrarse, navegar un catalogo de productos con categorias e ingredientes, realizar pedidos con distintas formas de pago (incluyendo integracion con MercadoPago), y seguir el estado de sus pedidos en tiempo real mediante WebSockets. Incluye un modulo de estadisticas para administradores con KPIs de ventas, productos mas vendidos e ingresos, y un sistema de carga de imagenes via Cloudinary.
