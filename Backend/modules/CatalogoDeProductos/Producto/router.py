@@ -9,7 +9,7 @@ Prefix: /productos
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
-from typing import List
+from typing import List, Optional
 from core.database import get_session
 from core.paginated_response import PaginatedResponse
 from modules.IdentidadYAcceso.Auth.dependencies import require_roles
@@ -21,9 +21,9 @@ router = APIRouter(prefix="/productos", tags=["Productos"])
 # --- Public GET endpoints (no auth required) ---
 
 @router.get("/", response_model=PaginatedResponse[ProductoRead])
-def read_productos(skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
+def read_productos(skip: int = 0, limit: int = 100, search: Optional[str] = None, session: Session = Depends(get_session)):
     """GET /productos — List all products with pagination. Public endpoint, no auth required."""
-    return ProductoService.get_all(session, skip=skip, limit=limit)
+    return ProductoService.get_all(session, skip=skip, limit=limit, search=search)
 
 @router.get("/{producto_id}", response_model=ProductoRead)
 def read_producto(producto_id: int, session: Session = Depends(get_session)):

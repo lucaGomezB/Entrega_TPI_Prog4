@@ -11,10 +11,7 @@ This is the most important file in the Sales module. It contains:
     - Append-only state change history
 
 PATTERN: Unit of Work (UoW)
-    All write operations go through VentasPagosTrazabilidadUnitOfWork,
-    which ensures atomicity: everything commits or everything rolls back.
-Read-only operations use the repository directly without UoW to avoid
-the commit/expire problem.
+    ALL operations (read and write) go through VentasPagosTrazabilidadUnitOfWork.
 """
 import logging
 from datetime import datetime
@@ -58,6 +55,9 @@ from core.dependencies import fire_broadcast, fire_broadcast_admin
 #   - ENTREGADO and CANCELADO are TERMINAL — no coming back
 # ---------------------------------------------------------------------------
 ESTADOS_TERMINALES = {"ENTREGADO", "CANCELADO"}
+
+# Payment methods that only allow in-store pickup (no delivery)
+PICKUP_ONLY_METHODS = {"EFECTIVO", "PAGO_LOCAL"}
 
 TRANSICIONES_VALIDAS: dict[str, str] = {
     "PENDIENTE": "CONFIRMADO",
@@ -134,94 +134,82 @@ class PedidoService:
 
     @staticmethod
     def get_all(session: Session, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """List ALL orders with pagination. Intended for ADMIN/PEDIDOS users.
-
-        Read-only: uses repository directly (no UoW) to avoid commit/expire.
-        """
-        repo = PedidoRepository(session)
-        rows = repo.get_all_eager(skip=skip, limit=limit)
-        total = repo.count_all()
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        """List ALL orders with pagination. Intended for ADMIN/PEDIDOS users."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_all_eager(skip=skip, limit=limit)
+            total = uow.pedidos.count_all()
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_by_id(session: Session, pedido_id: int) -> Optional[Pedido]:
-        """Fetch a single order by its primary key with eager-loaded details.
-
-        Read-only: uses repository directly (no UoW).
-        """
-        repo = PedidoRepository(session)
-        return repo.get_by_id_eager(pedido_id)
+        """Fetch a single order by its primary key with eager-loaded details."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            return uow.pedidos.get_by_id_eager(pedido_id)
 
     @staticmethod
     def get_by_usuario_id(session: Session, usuario_id: int, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """Fetch non-deleted orders for a specific user, newest first.
-
-        Read-only: uses repository directly (no UoW).
-        """
-        repo = PedidoRepository(session)
-        rows = repo.get_by_usuario_id_eager(usuario_id, skip=skip, limit=limit)
-        total = repo.count_by_usuario_id(usuario_id)
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        """Fetch non-deleted orders for a specific user, newest first."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_by_usuario_id_eager(usuario_id, skip=skip, limit=limit)
+            total = uow.pedidos.count_by_usuario_id(usuario_id)
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
-    def get_activos(session: Session, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), newest first.
+    def get_activos(session: Session, skip: int = 0, limit: int = 100,
+                    sort_by: str = "id", sort_order: str = "desc") -> PaginatedResponse[PedidoRead]:
+        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), with dynamic sorting.
 
         Used for the "active orders" dashboard.
-        Read-only: uses repository directly (no UoW).
         """
-        repo = PedidoRepository(session)
-        rows = repo.get_activos(skip=skip, limit=limit)
-        total = repo.count_activos()
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_activos(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
+            total = uow.pedidos.count_activos()
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
-    def get_historial(session: Session, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """Fetch terminal-state orders (ENTREGADO or CANCELADO), most recently updated first.
+    def get_historial(session: Session, skip: int = 0, limit: int = 100,
+                      sort_by: str = "id", sort_order: str = "desc") -> PaginatedResponse[PedidoRead]:
+        """Fetch terminal-state orders (ENTREGADO or CANCELADO), with dynamic sorting.
 
         Used for the order history view.
-        Read-only: uses repository directly (no UoW).
         """
-        repo = PedidoRepository(session)
-        rows = repo.get_historial(skip=skip, limit=limit)
-        total = repo.count_historial()
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_historial(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
+            total = uow.pedidos.count_historial()
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_historial_by_usuario(session: Session, usuario_id: int, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """Fetch terminal-state orders for a specific user, most recently updated first.
-
-        Read-only: uses repository directly (no UoW).
-        """
-        repo = PedidoRepository(session)
-        rows = repo.get_historial_by_usuario(usuario_id, skip=skip, limit=limit)
-        total = repo.count_by_usuario_id(usuario_id)
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        """Fetch terminal-state orders for a specific user, most recently updated first."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_historial_by_usuario(usuario_id, skip=skip, limit=limit)
+            total = uow.pedidos.count_by_usuario_id(usuario_id)
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def create(session: Session, data: PedidoCreate, ws_manager=None) -> Pedido:
@@ -244,8 +232,17 @@ class PedidoService:
         from modules.IdentidadYAcceso.DireccionEntrega.repository import DireccionEntregaRepository
         from modules.CatalogoDeProductos.Producto.repository import ProductoRepository
 
+        # ── Pickup-only payment methods: EFECTIVO and PAGO_LOCAL do NOT support delivery ──
+        if data.forma_pago_codigo in PICKUP_ONLY_METHODS:
+            if data.direccion_id is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Este metodo de pago no admite envio a domicilio. direccion_id debe ser null.",
+                )
+
         # Auto-select user's primary address if none provided
-        if data.direccion_id is None:
+        # (skip for pickup-only methods: they don't need a delivery address)
+        if data.direccion_id is None and data.forma_pago_codigo not in PICKUP_ONLY_METHODS:
             direccion_repo = DireccionEntregaRepository(session)
             principal = direccion_repo.get_principal(data.usuario_id)
             if principal:
@@ -264,6 +261,10 @@ class PedidoService:
                 }
 
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            # Force costo_envio=0 for pickup-only payment methods
+            if data.forma_pago_codigo in PICKUP_ONLY_METHODS:
+                data.costo_envio = Decimal('0.00')
+
             costo_envio = data.costo_envio if data.direccion_id else Decimal('0.00')
 
             # ── Step 1: Pre-validate stock for ALL products ──
@@ -373,26 +374,26 @@ class PedidoService:
         errors in real-time. The REAL stock validation (with deduction)
         happens in avanzar_estado when the order transitions to CONFIRMADO.
         """
-        repo = PedidoRepository(session)
-        errores: list[ValidarStockDetalleResponse] = []
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            errores: list[ValidarStockDetalleResponse] = []
 
-        for det in data.detalles:
-            prod = repo.get_producto(det.producto_id)
-            if not prod:
-                raise HTTPException(status_code=404, detail=f"Producto {det.producto_id} no encontrado")
-            stock_disp = prod.stock_cantidad
-            if stock_disp < det.cantidad:
-                errores.append(ValidarStockDetalleResponse(
-                    producto_id=det.producto_id,
-                    nombre_producto=prod.nombre,
-                    cantidad_solicitada=det.cantidad,
-                    stock_disponible=stock_disp,
-                ))
+            for det in data.detalles:
+                prod = uow.pedidos.get_producto(det.producto_id)
+                if not prod:
+                    raise HTTPException(status_code=404, detail=f"Producto {det.producto_id} no encontrado")
+                stock_disp = prod.stock_cantidad
+                if stock_disp < det.cantidad:
+                    errores.append(ValidarStockDetalleResponse(
+                        producto_id=det.producto_id,
+                        nombre_producto=prod.nombre,
+                        cantidad_solicitada=det.cantidad,
+                        stock_disponible=stock_disp,
+                    ))
 
-        return ValidarStockResponse(
-            valido=len(errores) == 0,
-            detalles=errores,
-        )
+            return ValidarStockResponse(
+                valido=len(errores) == 0,
+                detalles=errores,
+            )
 
     @staticmethod
     def actualizar_detalle(session: Session, pedido_id: int, producto_id: int, cantidad: int) -> Pedido:
@@ -585,8 +586,205 @@ class PedidoService:
         return (result_pedido, result_estado_anterior)
 
     @staticmethod
+    def crear_desde_snapshot(
+        session: Session,
+        snapshot,
+        snapshot_repo=None,
+    ) -> Pedido:
+        """Create a complete Pedido from a carrito_snapshot after MP payment approval.
+
+        This is the POST-PAGO creation path. The Pedido is created in CONFIRMADO
+        state directly (bypassing PENDIENTE) because payment is already confirmed.
+
+        Steps (all inside a single UoW):
+        1. Validate product stock for all snapshot items
+        2. Validate ingredient stock
+        3. Create Pedido in CONFIRMADO state with snapshot monetary data
+        4. Create DetallePedido rows with name/price snapshots
+        5. Deduct product stock
+        6. Deduct ingredient stock
+        7. Register creation in HistorialEstadoPedido (estado_desde=NULL)
+        8. Delete the carrito_snapshot row atomically
+
+        Atomicity: If any step fails, the entire UoW rolls back, preserving
+        the snapshot for retry.
+
+        Args:
+            session: SQLModel database session.
+            snapshot: CarritoSnapshot ORM instance.
+            snapshot_repo: Optional CarritoSnapshotRepository (uses UoW's if None).
+
+        Returns:
+            The newly created Pedido ORM instance.
+
+        Raises:
+            HTTPException(409): If stock is insufficient at creation time.
+        """
+        from modules.CatalogoDeProductos.Producto.repository import ProductoRepository
+        from ..CarritoSnapshot.repository import CarritoSnapshotRepository
+
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            # ── Step 1: Validate product stock ──
+            producto_repo = ProductoRepository(session)
+            errores_stock: list[dict] = []
+
+            for item_dict in snapshot.items:
+                producto_id = item_dict.get("producto_id")
+                cantidad = item_dict.get("cantidad", 0)
+                nombre = item_dict.get("nombre", str(producto_id))
+
+                producto = producto_repo.get_by_id(producto_id)
+                if not producto:
+                    errores_stock.append({
+                        "producto_id": producto_id,
+                        "nombre_producto": nombre,
+                        "cantidad_solicitada": cantidad,
+                        "stock_disponible": 0,
+                        "error": "producto_no_encontrado",
+                    })
+                    continue
+
+                if producto.stock_cantidad < cantidad:
+                    errores_stock.append({
+                        "producto_id": producto_id,
+                        "nombre_producto": producto.nombre,
+                        "cantidad_solicitada": cantidad,
+                        "stock_disponible": producto.stock_cantidad,
+                    })
+
+            if errores_stock:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "stock_insuficiente",
+                        "mensaje": "Stock insuficiente para confirmar el pedido por pago.",
+                        "detalles": errores_stock,
+                    },
+                )
+
+            # ── Step 2: Validate ingredient stock ──
+            errores_ing_stock: list[dict] = []
+            for item_dict in snapshot.items:
+                producto_id = item_dict.get("producto_id")
+                cantidad = item_dict.get("cantidad", 0)
+                ingredientes_excluidos = set(item_dict.get("ingredientes_excluidos") or [])
+
+                for pi in uow.pedidos.get_producto_ingredientes(producto_id):
+                    # Skip ingredients that were excluded by the user
+                    if pi.ingrediente_id in ingredientes_excluidos:
+                        continue
+
+                    cantidad_needed = pi.cantidad * cantidad
+                    ing = uow.pedidos.get_ingrediente(pi.ingrediente_id)
+                    if ing and ing.stock_actual < cantidad_needed:
+                        errores_ing_stock.append({
+                            "ingrediente": ing.nombre,
+                            "disponible": ing.stock_actual,
+                            "requerido": int(math.ceil(cantidad_needed)),
+                        })
+
+            if errores_ing_stock:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "stock_insuficiente",
+                        "ingredientes": errores_ing_stock,
+                    },
+                )
+
+            # ── Step 3: Create the Pedido ──
+            db_pedido = Pedido(
+                usuario_id=snapshot.usuario_id,
+                direccion_id=snapshot.direccion_id,
+                direccion_snapshot=snapshot.direccion_snapshot,
+                estado_codigo="CONFIRMADO",
+                forma_pago_codigo=snapshot.forma_pago_codigo,
+                subtotal=snapshot.subtotal,
+                descuento=Decimal("0.00"),
+                costo_envio=snapshot.costo_envio,
+                total=snapshot.total,
+                notas=snapshot.notas,
+            )
+            uow.add(db_pedido)
+            uow.flush()
+
+            # ── Step 4: Create DetallePedido rows ──
+            for item_dict in snapshot.items:
+                producto_id = item_dict.get("producto_id")
+                cantidad = item_dict.get("cantidad", 0)
+                nombre = item_dict.get("nombre", "")
+                precio = Decimal(str(item_dict.get("precio", "0.00")))
+                ingredientes_excluidos = item_dict.get("ingredientes_excluidos") or []
+                line_total = precio * cantidad
+
+                uow.add(DetallePedido(
+                    pedido_id=db_pedido.id,
+                    producto_id=producto_id,
+                    cantidad=cantidad,
+                    nombre_snapshot=nombre,
+                    precio_snapshot=precio,
+                    subtotal_snap=line_total,
+                    personalizacion=ingredientes_excluidos if ingredientes_excluidos else None,
+                ))
+
+            # ── Step 5: Deduct product stock ──
+            for item_dict in snapshot.items:
+                producto_id = item_dict.get("producto_id")
+                cantidad = item_dict.get("cantidad", 0)
+
+                prod = uow.pedidos.get_producto(producto_id)
+                if prod:
+                    prod.stock_cantidad = max(0, prod.stock_cantidad - cantidad)
+                    uow.add(prod)
+
+            # ── Step 6: Deduct ingredient stock ──
+            for item_dict in snapshot.items:
+                producto_id = item_dict.get("producto_id")
+                cantidad = item_dict.get("cantidad", 0)
+                ingredientes_excluidos = set(item_dict.get("ingredientes_excluidos") or [])
+
+                for pi in uow.pedidos.get_producto_ingredientes(producto_id):
+                    if pi.ingrediente_id in ingredientes_excluidos:
+                        continue
+                    cantidad_a_descontar = int(math.ceil(pi.cantidad * cantidad))
+                    ing = uow.pedidos.get_ingrediente(pi.ingrediente_id)
+                    if ing:
+                        ing.stock_actual = max(0, ing.stock_actual - cantidad_a_descontar)
+                        uow.add(ing)
+
+            # ── Step 7: Register creation in history ──
+            PedidoService._registrar_transicion(
+                uow,
+                pedido=db_pedido,
+                estado_anterior=None,
+                estado_siguiente="CONFIRMADO",
+                usuario_id=None,  # System — triggered by webhook
+            )
+
+            # ── Step 8: Delete the snapshot atomically ──
+            # Need to reload snapshot in this UoW's session
+            snapshot_to_delete = uow.snapshots.get_by_external_reference(
+                snapshot.external_reference
+            )
+            if snapshot_to_delete:
+                uow.snapshots.delete(snapshot_to_delete)
+
+            uow.refresh(db_pedido)
+            return db_pedido
+
+    @staticmethod
     def confirmar_por_pago(session: Session, pedido_id: int) -> Pedido:
-        """Advance PENDIENTE -> CONFIRMADO via payment webhook.
+        """DEPRECATED: Advance PENDIENTE -> CONFIRMADO via payment webhook.
+
+        This method is DEPRECATED for the MercadoPago flow. It is replaced by
+        crear_desde_snapshot() which creates the Pedido directly in CONFIRMADO
+        state instead of advancing from PENDIENTE.
+
+        The method is kept for backward compatibility with tests and to serve
+        as documentation of the original flow. It should NOT be called from
+        process_webhook() anymore.
+
+        Original docstring follows:
 
         Called by PagoService.process_webhook() when MercadoPago reports
         an approved payment. For MERCADOPAGO orders this is the ONLY way

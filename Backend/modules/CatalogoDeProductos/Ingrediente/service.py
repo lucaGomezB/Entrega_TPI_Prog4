@@ -42,32 +42,33 @@ class IngredienteService:
             return db_ingrediente
 
     @staticmethod
-    def get_all(session: Session, skip: int = 0, limit: int = 100) -> PaginatedResponse[IngredienteRead]:
-        """List non-deleted ingredients with pagination.
+    def get_all(session: Session, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> PaginatedResponse[IngredienteRead]:
+        """List non-deleted ingredients with pagination and optional text search.
 
-        Read-only: uses repository directly (no UoW) to avoid commit/expire.
+        Read-only: wrapped in UoW for consistent DB access.
         """
-        repo = IngredienteRepository(session)
-        rows = repo.get_all_paginated(skip=skip, limit=limit)
-        total = repo.count_all()
-        return PaginatedResponse(
-            items=[IngredienteRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        with CatalogoDeProductosUnitOfWork(session) as uow:
+            repo = IngredienteRepository(session)
+            rows = repo.get_all_paginated(skip=skip, limit=limit, search=search)
+            total = repo.count_all(search=search)
+            return PaginatedResponse(
+                items=[IngredienteRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_by_id(session: Session, ingrediente_id: int) -> Optional[IngredienteRead]:
         """Fetch a single non-deleted ingredient by ID.
 
-        Read-only: uses repository directly (no UoW).
+        Read-only: wrapped in UoW for consistent DB access.
         """
-        repo = IngredienteRepository(session)
-        row = repo.get_by_id(ingrediente_id)
-        if not row:
-            return None
-        return IngredienteRead.model_validate(row)
+        with CatalogoDeProductosUnitOfWork(session) as uow:
+            row = uow.ingredientes.get_by_id(ingrediente_id)
+            if not row:
+                return None
+            return IngredienteRead.model_validate(row)
 
     @staticmethod
     def actualizar_precio(session: Session, ingrediente_id: int, precio: Decimal) -> Ingrediente:

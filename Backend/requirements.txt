@@ -1,5 +1,6 @@
 # Web Framework & ORM
-fastapi
+fastapi>=0.115.0,<0.116.0
+starlette>=0.37.2,<0.39.0  # pinned: Kludex fork (1.x) is incompatible
 sqlmodel>=0.0.38
 pydantic>=2.13.0
 

@@ -38,6 +38,7 @@ from sqlmodel import SQLModel, create_engine, Session
 from modules.CatalogoDeProductos.Categoria.models import Categoria
 from modules.CatalogoDeProductos.Producto.models import Producto
 from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
 from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
 from modules.IdentidadYAcceso.Rol.models import Rol
@@ -62,6 +63,7 @@ from app.db.seed import (
     seed_productos,
     seed_estados_pedido,
     seed_formas_pago,
+    seed_unidades_medida,
 )
 
 
@@ -80,6 +82,7 @@ def mostrar_resumen(session: Session):
         "Categorías":    session.exec(select(func.count()).select_from(Categoria)).one(),
         "Ingredientes":  session.exec(select(func.count()).select_from(Ingrediente)).one(),
         "Productos":     session.exec(select(func.count()).select_from(Producto)).one(),
+        "Unidades Medida": session.exec(select(func.count()).select_from(UnidadMedida)).one(),
         "Estados Pedido": session.exec(select(func.count()).select_from(EstadoPedido)).one(),
         "Formas Pago":   session.exec(select(func.count()).select_from(FormaPago)).one(),
     }
@@ -139,6 +142,7 @@ def main():
         # Order workflow entities, no further dependencies.
         seed_estados_pedido(session)
         seed_formas_pago(session)
+        seed_unidades_medida(session)
         mostrar_resumen(session)
 
     print("Seed completed successfully.\n")

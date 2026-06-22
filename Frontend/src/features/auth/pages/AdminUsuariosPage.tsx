@@ -1,6 +1,7 @@
 /**
  * AdminUsuariosPage — User management admin page (RBAC).
  * Uses TanStack Query for data fetching and mutations.
+ * Uses DataTable with server-side pagination.
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -9,13 +10,21 @@ import { apiFetch, getUserRoles } from "@/shared/api/client";
 import { useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario } from "@/features/auth/hooks/useUsuarios";
 import { useAppForm, required, email, minLength, composeValidators } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
+import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 
-const PAGE_SIZE = 10;
+const DEFAULT_LIMIT = 10;
 
 interface RolOption {
   codigo: string;
   nombre: string;
 }
+
+const coloresRol: Record<string, string> = {
+  ADMIN: "bg-red-100 text-red-800",
+  STOCK: "bg-yellow-100 text-yellow-800",
+  PEDIDOS: "bg-blue-100 text-blue-800",
+  CLIENT: "bg-green-100 text-green-800",
+};
 
 /* ── Modal de edicion ── */
 
@@ -34,6 +43,7 @@ function EditarUsuarioModal({
     usuario.roles.map((r) => r.codigo)
   );
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   interface EditarForm {
     nombre: string;
@@ -60,6 +70,10 @@ function EditarUsuarioModal({
           roles_codigos: rolesSel,
         });
         onClose();
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } };
+        const msg = axiosErr?.response?.data?.detail ?? (err as Error).message ?? 'Error desconocido';
+        setError(msg);
       } finally {
         setGuardando(false);
       }
@@ -79,6 +93,7 @@ function EditarUsuarioModal({
       <div className="bg-white rounded p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-4">Editar Usuario #{usuario.id}</h2>
         <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
+          {error && <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
@@ -174,6 +189,10 @@ function CrearUsuarioModal({
           roles_codigos: rolesSel,
         });
         onClose();
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } };
+        const msg = axiosErr?.response?.data?.detail ?? (err as Error).message ?? 'Error desconocido';
+        setError(msg);
       } finally {
         setGuardando(false);
       }
@@ -252,7 +271,8 @@ function CrearUsuarioModal({
 
 export default function AdminUsuariosPage() {
   const navigate = useNavigate();
-  const [page, setPage] = useState(0);
+  const [skip, setSkip] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [rolFiltro, setRolFiltro] = useState("");
   const [todosRoles, setTodosRoles] = useState<RolOption[]>([]);
   const [editando, setEditando] = useState<Usuario | null>(null);
@@ -265,7 +285,10 @@ export default function AdminUsuariosPage() {
   }, [esAdmin, navigate]);
 
   // ── TanStack Query ──
-  const { data: usuarios = [], isLoading, isError, error } = useUsuarios(page * PAGE_SIZE, PAGE_SIZE, rolFiltro || undefined);
+  const { data, isLoading, isError, error } = useUsuarios(skip, limit, rolFiltro || undefined);
+  const usuarios = data?.items ?? [];
+  const total = data?.total ?? 0;
+
   const createMutation = useCreateUsuario();
   const updateMutation = useUpdateUsuario();
   const deleteMutation = useDeleteUsuario();
@@ -296,12 +319,46 @@ export default function AdminUsuariosPage() {
     }
   };
 
-  const coloresRol: Record<string, string> = {
-    ADMIN: "bg-red-100 text-red-800",
-    STOCK: "bg-yellow-100 text-yellow-800",
-    PEDIDOS: "bg-blue-100 text-blue-800",
-    CLIENT: "bg-green-100 text-green-800",
-  };
+  const handlePageChange = (newSkip: number) => setSkip(newSkip);
+  const handleLimitChange = (newLimit: number) => { setLimit(newLimit); setSkip(0); };
+
+  const columns: DataTableColumn<Usuario>[] = [
+    {
+      key: "nombre",
+      label: "Nombre",
+      render: (u) => `${u.nombre} ${u.apellido}`,
+    },
+    {
+      key: "email",
+      label: "Email",
+      render: (u) => <span className="text-sm text-gray-600">{u.email}</span>,
+    },
+    {
+      key: "roles",
+      label: "Roles",
+      render: (u) => (
+        <div className="flex gap-1 flex-wrap">
+          {u.roles.map((rol) => (
+            <span key={rol.codigo} className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${coloresRol[rol.codigo] || "bg-gray-100 text-gray-800"}`}>
+              {rol.nombre}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: "acciones",
+      label: "Acciones",
+      render: (u) => (
+        <div className="flex gap-1">
+          <button onClick={() => setEditando(u)} className="bg-yellow-500 text-white px-3 py-1 rounded text-xs hover:bg-yellow-600 cursor-pointer">Editar</button>
+          {u.roles.every((r) => r.codigo !== "ADMIN") && (
+            <button onClick={() => handleDelete(u.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 cursor-pointer">Eliminar</button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="p-4">
@@ -312,56 +369,21 @@ export default function AdminUsuariosPage() {
       {isError && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">{(error as Error)?.message || "Error al cargar"}</div>}
       <div className="flex gap-2 mb-4 items-center">
         <label className="text-sm font-medium text-gray-700">Filtrar por rol:</label>
-        <select value={rolFiltro} onChange={(e) => { setRolFiltro(e.target.value); setPage(0); }} className="border border-gray-300 rounded px-3 py-1.5 text-sm">
+        <select value={rolFiltro} onChange={(e) => { setRolFiltro(e.target.value); setSkip(0); }} className="border border-gray-300 rounded px-3 py-1.5 text-sm">
           <option value="">Todos los roles</option>
           {todosRoles.map((rol) => (<option key={rol.codigo} value={rol.codigo}>{rol.nombre}</option>))}
         </select>
       </div>
-      {isLoading ? (
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">Cargando usuarios...</span>
-        </div>
-      ) : usuarios.length === 0 ? (
-        <div className="text-center py-8 text-gray-500"><p className="text-lg">No se encontraron usuarios</p></div>
-      ) : (
-        <table className="w-full border-collapse border">
-          <thead><tr className="bg-gray-200">
-            <th className="border p-2 text-left">Legajo</th>
-            <th className="border p-2 text-left">Nombre</th>
-            <th className="border p-2 text-left">Email</th>
-            <th className="border p-2 text-left">Roles</th>
-            <th className="border p-2 text-left">Acciones</th>
-          </tr></thead>
-          <tbody>
-            {usuarios.map((u) => (
-              <tr key={u.id} className="hover:bg-gray-100 border-b">
-                <td className="border p-2 font-mono">{u.id}</td>
-                <td className="border p-2">{u.nombre} {u.apellido}</td>
-                <td className="border p-2 text-sm text-gray-600">{u.email}</td>
-                <td className="border p-2">
-                  <div className="flex gap-1 flex-wrap">
-                    {u.roles.map((rol) => (<span key={rol.codigo} className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${coloresRol[rol.codigo] || "bg-gray-100 text-gray-800"}`}>{rol.nombre}</span>))}
-                  </div>
-                </td>
-                <td className="border p-2">
-                  <div className="flex gap-1">
-                    <button onClick={() => setEditando(u)} className="bg-yellow-500 text-white px-3 py-1 rounded text-xs hover:bg-yellow-600 cursor-pointer">Editar</button>
-                    {u.roles.every((r) => r.codigo !== "ADMIN") && (
-                      <button onClick={() => handleDelete(u.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 cursor-pointer">Eliminar</button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <div className="flex gap-2 mt-4 items-center">
-        <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer">Anterior</button>
-        <span>Pagina {page + 1}</span>
-        <button disabled={usuarios.length < PAGE_SIZE} onClick={() => setPage((p) => p + 1)} className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50 cursor-pointer">Siguiente</button>
-      </div>
+      <DataTable
+        columns={columns}
+        data={usuarios}
+        total={total}
+        skip={skip}
+        limit={limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        isLoading={isLoading}
+      />
       {creando && <CrearUsuarioModal todosRoles={todosRoles} onClose={() => setCreando(false)} onSave={handleCreate} />}
       {editando && <EditarUsuarioModal usuario={editando} todosRoles={todosRoles} onClose={() => setEditando(null)} onSave={handleSave} />}
     </div>

@@ -5,6 +5,11 @@
  * state change events. On each event, calls the provided onEvent callback
  * and updates the wsStore.
  *
+ * POST-PAGO: Also listens for pago_confirmado events. When received:
+ *   1. Clears the cart via useCartStore.clearCarrito()
+ *   2. Invalidates pedidos query cache
+ *   3. Navigates to the new Pedido page
+ *
  * Features:
  *   - JWT authentication from authStore
  *   - Automatic connection lifecycle (connect on mount/enabled, close on unmount)
@@ -16,6 +21,7 @@
  */
 import { useEffect, useRef, useCallback } from "react";
 import { useAuthStore } from "@/shared/store/authStore";
+import { useCartStore } from "@/shared/store/cartStore";
 import { useWsStore } from "@/features/pedidos/store/wsStore";
 import { useNotificationStore } from "@/features/pedidos/store/notificationStore";
 import type { WsEvent } from "@/features/pedidos/types/ws";
@@ -25,6 +31,9 @@ const WS_BASE = (import.meta.env.VITE_WS_URL || "ws://localhost:8000") + "/api/v
 /** Exponential backoff delays in milliseconds (index = attempt number). */
 const BACKOFF_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000];
 const MAX_ATTEMPTS = 10;
+
+/** Set of pedido IDs that have been seen via pago_confirmado events. */
+const pagosConfirmadosVistos = new Set<number>();
 
 export function useEstadoPedidoWS(
   pedidoId: number,
@@ -61,11 +70,10 @@ export function useEstadoPedidoWS(
 
   const connect = useCallback(() => {
     if (!enabled || !accessToken || !mountedRef.current) return;
-    if (connectingRef.current) return; // prevent concurrent connect attempts (strict mode)
+    if (connectingRef.current) return;
 
     disconnect();
     connectingRef.current = true;
-    attemptRef.current = 0;
 
     const url = `${WS_BASE}/pedidos/ws/pedidos/${pedidoId}?token=${accessToken}`;
     const socket = new WebSocket(url);
@@ -77,6 +85,7 @@ export function useEstadoPedidoWS(
         socket.close();
         return;
       }
+      attemptRef.current = 0;
       setStatus('connected');
       resetReconnect();
     };
@@ -87,6 +96,15 @@ export function useEstadoPedidoWS(
         setLastEvent(event);
         useNotificationStore.getState().incrementUnseen();
         onEvent?.(event);
+
+        // ── Handle pago_confirmado: clear cart and navigate ──
+        if (event.event === "pago_confirmado" && event.pedido_id) {
+          const pid = event.pedido_id;
+          if (!pagosConfirmadosVistos.has(pid)) {
+            pagosConfirmadosVistos.add(pid);
+            useCartStore.getState().clearCarrito();
+          }
+        }
       } catch {
         // Ignore malformed messages
       }

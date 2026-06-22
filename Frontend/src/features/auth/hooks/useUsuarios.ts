@@ -1,13 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usuariosApi } from '../api/usuarios'
-import type { UsuarioCreate, UsuarioUpdate } from '../api/usuarios'
+import type { Usuario, UsuarioCreate, UsuarioUpdate } from '../api/usuarios'
 import { queryKeys } from '@/shared/api/queryKeys'
+import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/client'
 
-/** Fetches all usuarios with optional pagination and role filter. Uses TanStack Query. */
-export function useUsuarios(skip = 0, limit = 100, rolCodigo?: string) {
-  return useQuery({
+/** Fetches all usuarios with pagination and optional role filter. Returns full response with total. */
+export function useUsuarios(skip = 0, limit = 10, rolCodigo?: string) {
+  return useQuery<PaginatedResponse<Usuario>>({
     queryKey: [queryKeys.usuarios.all[0], 'list', { skip, limit, rolCodigo }] as const,
-    queryFn: () => usuariosApi.getAll(skip, limit, rolCodigo),
+    queryFn: () => {
+      let url = `/usuarios/?skip=${skip}&limit=${limit}`;
+      if (rolCodigo) url += `&rol_codigo=${rolCodigo}`;
+      return apiFetchPaginatedFull<Usuario>(url);
+    },
   })
 }
 

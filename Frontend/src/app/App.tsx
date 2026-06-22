@@ -23,7 +23,6 @@ import { useCartStore } from '@/shared/store/cartStore'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useUiStore } from '@/shared/store/uiStore'
 import { useNotificationStore } from '@/features/pedidos/store/notificationStore'
-import { useWsStatus } from '@/features/pedidos/store/wsStore'
 
 /* ── Helpers ── */
 
@@ -40,14 +39,13 @@ function App() {
   const unseenCount = useNotificationStore((s) => s.unseenCount)
   const mobileMenuOpen = useUiStore((s) => s.mobileMenuOpen)
   const setMobileMenuOpen = useUiStore((s) => s.setMobileMenuOpen)
-  const wsStatus = useWsStatus()
-  const wsConnected = wsStatus === 'connected'
 
   useEffect(() => {
     async function bootstrap() {
       useCartStore.getState().hydrate();
 
       const { accessToken, expiresAt } = useAuthStore.getState()
+      const hadToken = !!accessToken
 
       if (accessToken && expiresAt && Date.now() < expiresAt) {
         try {
@@ -61,20 +59,27 @@ function App() {
         }
       }
 
-      const hasSession = await refreshSession()
+      // Only restore session via refresh cookie if this window already had a token.
+      // Prevents fresh private windows from auto-logging in as a user from another window.
+      if (hadToken) {
+        const hasSession = await refreshSession()
 
-      if (!hasSession) {
+        if (!hasSession) {
+          useAuthStore.getState().logout()
+          useCartStore.getState().hydrate();
+          setVerifying(false)
+          return
+        }
+
+        try {
+          const user = await apiFetch<UserInfo>('/auth/me')
+          useAuthStore.getState().setUser(user)
+          useCartStore.getState().hydrate();
+        } catch {
+          useCartStore.getState().hydrate();
+        }
+      } else {
         useAuthStore.getState().logout()
-        useCartStore.getState().hydrate();
-        setVerifying(false)
-        return
-      }
-
-      try {
-        const user = await apiFetch<UserInfo>('/auth/me')
-        useAuthStore.getState().setUser(user)
-        useCartStore.getState().hydrate();
-      } catch {
         useCartStore.getState().hydrate();
       }
       setVerifying(false)
@@ -187,18 +192,8 @@ function App() {
               </div>
             </div>
 
-            {/* Right: user info + WS badge + logout + hamburger */}
+            {/* Right: user info + logout + hamburger */}
             <div className="flex items-center gap-3">
-              {/* WS connection indicator */}
-              <span
-                className={`hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                  wsConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}
-                title={wsConnected ? 'En vivo — recibiendo actualizaciones' : 'Desconectado — no se reciben actualizaciones'}
-              >
-                <span className={`inline-block w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                {wsConnected ? 'En vivo' : 'Desconectado'}
-              </span>
 
               {!isGuest && (
                 <span className="text-sm text-gray-300 hidden md:inline">{user?.email}</span>
@@ -247,12 +242,6 @@ function App() {
                   )}
                 </NavLink>
               ))}
-
-              {/* Mobile WS indicator */}
-              <div className="px-3 py-1 text-xs text-gray-400">
-                <span className={`inline-block w-2 h-2 rounded-full mr-1 ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                {wsConnected ? 'En vivo' : 'Desconectado'}
-              </div>
 
               {!isGuest && (
                 <span className="px-3 py-1 text-sm text-gray-400">{user?.email}</span>

@@ -9,6 +9,7 @@ from sqlmodel import Session
 from .Categoria.repository import CategoriaRepository
 from .Ingrediente.repository import IngredienteRepository
 from .Producto.repository import ProductoRepository
+from .UnidadMedida.repository import UnidadMedidaRepository
 
 
 class CatalogoDeProductosUnitOfWork:
@@ -26,6 +27,7 @@ class CatalogoDeProductosUnitOfWork:
         self.productos = ProductoRepository(session)
         self.categorias = CategoriaRepository(session)
         self.ingredientes = IngredienteRepository(session)
+        self.unidades_medida = UnidadMedidaRepository(session)
 
     def __enter__(self):
         return self

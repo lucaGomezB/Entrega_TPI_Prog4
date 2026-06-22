@@ -1,11 +1,24 @@
 /**
  * Carrito — Shopping cart page.
  * Uses TanStack Query for direcciones, Zustand for cart state.
+ *
+ * POST-PAGO FLOW (MercadoPago):
+ *   1. Validate stock
+ *   2. Call pagosApi.initFromCart() with cart items
+ *   3. Redirect to MP init_point (cart NOT cleared)
+ *   4. WebSocket pago_confirmado event clears cart and navigates
+ *
+ * SYNCHRONOUS FLOW (PAGO_LOCAL, EFECTIVO):
+ *   1. Create Pedido
+ *   2. Clear cart
+ *   3. Navigate to pedidos
  */
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCartStore } from "@/shared/store/cartStore";
 import { AxiosError } from "axios";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/shared/api/queryKeys";
 import { pedidosApi, type ValidarStockDetalle } from "@/features/pedidos/api/pedidos";
 import { productosApi, type ProductoIngredienteRead } from "@/features/productos/api/productos";
 import {
@@ -13,7 +26,7 @@ import {
   formatDireccion,
   type DireccionEntregaInput,
 } from "@/features/pedidos/api/direcciones";
-import { pagosApi } from "@/features/pedidos/api/pagos";
+import { pagosApi, type InitFromCartRequest } from "@/features/pedidos/api/pagos";
 import { getAccessToken } from "@/shared/api/client";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { useStore } from "@tanstack/react-form";
@@ -42,8 +55,15 @@ function NuevaDireccionModal({ onClose, onSave }: {
           es_principal: false,
         });
         onClose();
-      } catch {
-        setModalError("Error al guardar la direccion. Intente nuevamente.");
+      } catch (err) {
+        if (err instanceof AxiosError && err.response?.data) {
+          const data = err.response.data as Record<string, unknown>;
+          const detail = data.detail;
+          if (typeof detail === "string") setModalError(detail);
+          else setModalError("Error al guardar la direccion. Verifica los datos.");
+        } else {
+          setModalError("Error al guardar la direccion. Intente nuevamente.");
+        }
         setTimeout(() => setModalError(null), 4000);
       } finally {
         setGuardando(false);
@@ -157,14 +177,16 @@ export default function Carrito() {
 
   // ── TanStack Query: direcciones ──
   const { data: direcciones = [], isLoading: loadingDirs } = useDirecciones();
+  const queryClient = useQueryClient();
 
-  // Auto-select primary direction
+  // Auto-select primary direction — but NOT for pickup-only payment methods
+  const esRetiroLocal = formaPago === "PAGO_LOCAL" || formaPago === "EFECTIVO";
   useEffect(() => {
-    if (direcciones.length > 0 && direccionSelId === null) {
+    if (!esRetiroLocal && direcciones.length > 0 && direccionSelId === null) {
       const principal = direcciones.find((d) => d.es_principal);
       setDireccionSelId(principal ? principal.id : direcciones[0].id);
     }
-  }, [direcciones, direccionSelId]);
+  }, [direcciones, direccionSelId, esRetiroLocal]);
 
   // Hydrate cart on focus
   useEffect(() => {
@@ -214,57 +236,158 @@ export default function Carrito() {
     setError(null);
 
     try {
+      // 1. Validate stock (common to both flows)
       const stockResult = await pedidosApi.validarStock({ detalles: currentItems.map((i) => ({ producto_id: i.productoId, cantidad: i.cantidad })) });
       if (!stockResult.valido) { setStockWarnings(stockResult.detalles); setEnviando(false); return; }
 
       const direccionId = typeof direccionSelId === "number" ? direccionSelId : undefined;
-      const pedido = await pedidosApi.create({
-        forma_pago_codigo: formaPago,
-        subtotal: useCartStore.getState().getTotal(),
-        descuento: 0,
-        costo_envio: direccionId ? 50 : 0,
-        direccion_id: direccionId,
-        detalles: currentItems.map((i) => ({ producto_id: i.productoId, cantidad: i.cantidad, nombre_snapshot: i.nombre, precio_snapshot: i.precio, ...(i.ingredientesExcluidos.length > 0 ? { personalizacion: i.ingredientesExcluidos } : {}) })),
-      });
+      const subtotal = useCartStore.getState().getTotal();
+      const costoEnvio = direccionId ? 50 : 0;
 
+      // ── BRANCH: MercadoPago vs synchronous flows ──
       if (formaPago === "MERCADOPAGO") {
+        // ── POST-PAGO FLOW ──
+        // No Pedido created yet. Cart survives redirect.
+        const initData: InitFromCartRequest = {
+          forma_pago_codigo: "MERCADOPAGO",
+          subtotal: subtotal,
+          descuento: 0,
+          costo_envio: costoEnvio,
+          direccion_id: direccionId ?? null,
+          items: currentItems.map((i) => ({
+            producto_id: i.productoId,
+            nombre: i.nombre,
+            precio: Number(i.precio),
+            cantidad: i.cantidad,
+            ingredientes_excluidos: i.ingredientesExcluidos,
+          })),
+        };
+
         try {
-          const paymentResult = await pagosApi.initPayment(pedido.id);
+          const paymentResult = await pagosApi.initFromCart(initData);
           if (paymentResult.init_point && paymentResult.init_point.startsWith("https://")) {
-            useCartStore.getState().clearCarrito();
+            // Cart is NOT cleared — it survives the redirect
+            // The WebSocket pago_confirmado event will clear it later
             window.location.href = paymentResult.init_point;
           } else {
-            setMensaje({ tipo: 'error', texto: 'El servicio de pago no esta disponible en este momento. Su pedido quedo registrado. Puede intentar el pago desde la seccion de pedidos.' });
-            setTimeout(() => navigate("/pedidos"), 3000);
+            // init_point is null — MP API failure
+            setMensaje({
+              tipo: 'error',
+              texto: paymentResult.error || 'Servicio de pago no disponible. Intente nuevamente.',
+            });
+            setEnviando(false);
           }
-        } catch {
-          setMensaje({ tipo: 'error', texto: 'No se pudo conectar con el servicio de pago. Su pedido quedo registrado. Complete el pago desde la seccion de pedidos.' });
-          setTimeout(() => navigate("/pedidos"), 3000);
+        } catch (err) {
+          const axiosErr = err as { response?: { data?: { detail?: string } } };
+          const msg = axiosErr?.response?.data?.detail ?? (err as Error).message ?? 'Error desconocido';
+          setMensaje({
+            tipo: 'error',
+            texto: msg || 'No se pudo conectar con el servicio de pago. Intente nuevamente.',
+          });
+          setEnviando(false);
         }
       } else {
+        // ── SYNCHRONOUS FLOW (PAGO_LOCAL, EFECTIVO) ──
+        const pedido = await pedidosApi.create({
+          forma_pago_codigo: formaPago,
+          subtotal: subtotal,
+          descuento: 0,
+          costo_envio: costoEnvio,
+          direccion_id: direccionId,
+          detalles: currentItems.map((i) => ({
+            producto_id: i.productoId,
+            cantidad: i.cantidad,
+            nombre_snapshot: i.nombre,
+            precio_snapshot: i.precio,
+            ...(i.ingredientesExcluidos.length > 0 ? { personalizacion: i.ingredientesExcluidos } : {}),
+          })),
+        });
+
         useCartStore.getState().clearCarrito();
         setMensaje({ tipo: 'exito', texto: 'Pedido confirmado. Retire en el local cuando este listo.' });
         setTimeout(() => navigate("/pedidos"), 1500);
       }
     } catch (e) {
+      // ── Stock-insufficient 409: show the adjust modal ──
       if (e instanceof AxiosError && e.response?.status === 409) {
         const body = e.response.data as Record<string, unknown>;
         const detail = body?.detail as Record<string, unknown> | undefined;
-        if (detail?.error === "stock_insuficiente" && Array.isArray(detail?.detalles)) { setStockWarnings(detail.detalles as ValidarStockDetalle[]); setEnviando(false); return; }
+        if (detail?.error === "stock_insuficiente" && Array.isArray(detail?.detalles)) {
+          setStockWarnings(detail.detalles as ValidarStockDetalle[]);
+          setEnviando(false);
+          return;
+        }
       }
-      if (e instanceof AxiosError && e.response?.data) {
-        const data = e.response.data as Record<string, unknown>;
-        const detail = data.detail;
-        if (typeof detail === 'string') setError(detail);
-        else if (typeof detail === 'object') {
+
+      // ── Translate errors to user-friendly messages ──
+      if (e instanceof AxiosError) {
+        const statusCode = e.response?.status;
+        const data = e.response?.data as Record<string, unknown> | undefined;
+        const detail = data?.detail;
+
+        // 422 with direccion_id error — most likely pickup + delivery conflict
+        if (statusCode === 422 && typeof detail === "string" && detail.includes("direccion_id")) {
+          setError("Si seleccionaste retiro en local, no elijas una direccion de envio. Selecciona \"Retirar en el local mas cercano\" en el menu de direccion.");
+        }
+        // 422 with stock error
+        else if (statusCode === 422 && typeof detail === "object" && (detail as Record<string, unknown>)?.error === "stock_insuficiente") {
           const obj = detail as Record<string, unknown>;
-          if (obj.mensaje && typeof obj.mensaje === 'string') setError(obj.mensaje);
-          else if (obj.detalles && Array.isArray(obj.detalles)) setError('No hay stock suficiente para completar el pedido.');
-          else setError('Error al procesar el pedido. Verifique los datos.');
-        } else if (typeof data.message === "string") setError(data.message);
-        else setError((e as Error).message);
-      } else setError((e as Error).message);
-    } finally { setEnviando(false); }
+          if (obj.mensaje && typeof obj.mensaje === "string") {
+            setError(obj.mensaje);
+          } else if (obj.detalles && Array.isArray(obj.detalles)) {
+            setError("No hay stock suficiente para completar el pedido. Reduci las cantidades.");
+          } else {
+            setError("No hay stock suficiente para completar el pedido.");
+          }
+        }
+        // 404 product not found
+        else if (statusCode === 404 && typeof detail === "string") {
+          setError("Alguno de los productos seleccionados ya no esta disponible. Actualiza el carrito e intentalo de nuevo.");
+        }
+        // 422 or 400 by formapago/direccion 
+        else if (statusCode === 422 || statusCode === 400) {
+          if (typeof detail === "string") {
+            setError(detail);
+          } else if (typeof detail === "object") {
+            const obj = detail as Record<string, unknown>;
+            if (obj.mensaje && typeof obj.mensaje === "string") setError(obj.mensaje);
+            else setError("Hubo un error al procesar el pedido. Revisa los datos e intentalo nuevamente.");
+          } else {
+            setError("Hubo un error al procesar el pedido. Revisa los datos e intentalo nuevamente.");
+          }
+        }
+        // 500 or network errors
+        else if (!e.response || statusCode === 500) {
+          setError(
+            "No pudimos conectar con el servidor. Revisa tu conexion a internet e intentalo de nuevo."
+          );
+        }
+        // Any other error with detail string
+        else if (typeof detail === "string") {
+          setError(detail);
+        }
+        // Any other error with detail object
+        else if (typeof detail === "object") {
+          const obj = detail as Record<string, unknown>;
+          if (obj.mensaje && typeof obj.mensaje === "string") setError(obj.mensaje);
+          else setError("Error inesperado al crear el pedido. Intentalo nuevamente.");
+        }
+        // Fallback
+        else {
+          setError("Error inesperado al crear el pedido. Intentalo nuevamente.");
+        }
+      } else {
+        setError("Error inesperado. Intentalo nuevamente.");
+      }
+      setEnviando(false);
+    } finally {
+      if (formaPago === "MERCADOPAGO") {
+        // For MP flow: if we haven't redirected yet, keep enviando true
+        // (the page will redirect or show message)
+      } else {
+        setEnviando(false);
+      }
+    }
   };
 
   const handleRealizarPedido = () => doRealizarPedido();
@@ -281,11 +404,19 @@ export default function Carrito() {
 
   const handleCrearDireccion = async (data: DireccionEntregaInput) => {
     const nueva = await direccionesApi.create(data);
+    queryClient.invalidateQueries({ queryKey: queryKeys.direcciones.all });
     setDireccionSelId(nueva.id);
   };
 
   const total = useCartStore((s) => s.getTotal());
   const itemCount = useCartStore((s) => s.getItemCount());
+
+  const buttonText = () => {
+    if (enviando && formaPago === "MERCADOPAGO") return "Redirigiendo a MercadoPago...";
+    if (enviando) return "Creando pedido...";
+    if (formaPago === "MERCADOPAGO") return "Pagar con MercadoPago";
+    return "Realizar Pedido";
+  };
 
   if (items.length === 0) {
     return (
@@ -351,23 +482,44 @@ export default function Carrito() {
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Direccion de entrega</h2>
         {loadingDirs ? (
           <p className="text-sm text-gray-400">Cargando direcciones...</p>
-        ) : (
+        ) : esRetiroLocal ? (
           <div className="flex items-center gap-2">
-            <select value={direccionSelId === null ? "retiro" : direccionSelId} onChange={(e) => {
-              const val = e.target.value;
-              if (val === "nueva") setShowNewDir(true);
-              else if (val === "retiro") setDireccionSelId(null);
-              else setDireccionSelId(val ? Number(val) : null);
-            }} className="border border-gray-300 rounded px-3 py-2 text-sm flex-1 max-w-md">
+            <span className="flex-1 text-sm border border-green-300 bg-green-50 rounded px-3 py-2 text-green-800">
+              Retiro en el local mas cercano (sin costo de envio)
+            </span>
+            <span className="text-xs text-green-600 font-medium whitespace-nowrap">Gratis</span>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <select
+              value={direccionSelId === null ? "retiro" : direccionSelId}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "nueva") setShowNewDir(true);
+                else if (val === "retiro") setDireccionSelId(null);
+                else setDireccionSelId(val ? Number(val) : null);
+              }}
+              className="border border-gray-300 rounded px-3 py-2 text-sm w-full sm:flex-1"
+            >
               <option value="retiro">Retirar en el local mas cercano (gratis)</option>
               {direcciones.length > 0 && (
                 <optgroup label="--- Tus direcciones ---">
-                  {direcciones.map((d) => (<option key={d.id} value={d.id}>{formatDireccion(d)}{d.es_principal ? " (Principal)" : ""}</option>))}
+                  {direcciones.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {formatDireccion(d)}{d.es_principal ? " (Principal)" : ""}
+                    </option>
+                  ))}
                 </optgroup>
               )}
-              <option value="nueva" disabled={direcciones.length >= 10}>+ Agregar nueva direccion</option>
+              <option value="nueva" disabled={direcciones.length >= 10}>
+                + Agregar nueva direccion
+              </option>
             </select>
-            {direccionSelId === null ? <span className="text-xs text-green-600 font-medium whitespace-nowrap">Retiro en local (gratis)</span> : <span className="text-xs text-blue-600 font-medium whitespace-nowrap">Con envio (+$50.00)</span>}
+            {direccionSelId === null ? (
+              <span className="text-xs text-green-600 font-medium whitespace-nowrap">Retiro en local (gratis)</span>
+            ) : (
+              <span className="text-xs text-blue-600 font-medium whitespace-nowrap">Con envio (+$50.00)</span>
+            )}
           </div>
         )}
       </div>
@@ -389,9 +541,13 @@ export default function Carrito() {
       <div className="border-t pt-4 flex justify-between items-center">
         <div className="text-xl font-bold">
           Subtotal: <span className="text-blue-700">${total.toFixed(2)}</span>
-          {direccionSelId && typeof direccionSelId === "number" && <span className="text-base font-normal text-gray-500 ml-2">(+ $50.00 envio)</span>}
+          {!esRetiroLocal && direccionSelId && typeof direccionSelId === "number" && (
+            <span className="text-base font-normal text-gray-500 ml-2">(+ $50.00 envio)</span>
+          )}
         </div>
-        <button onClick={handleRealizarPedido} disabled={enviando} className="bg-green-700 text-white px-6 py-2 rounded text-lg font-semibold cursor-pointer hover:bg-green-800 disabled:opacity-60 disabled:cursor-not-allowed">{enviando ? "Creando pedido..." : "Realizar Pedido"}</button>
+        <button onClick={handleRealizarPedido} disabled={enviando} className="bg-green-700 text-white px-6 py-2 rounded text-lg font-semibold cursor-pointer hover:bg-green-800 disabled:opacity-60 disabled:cursor-not-allowed">
+          {buttonText()}
+        </button>
       </div>
 
       {stockWarnings && <StockWarningModal detalles={stockWarnings} onAdjust={handleStockAdjust} onClose={() => setStockWarnings(null)} />}

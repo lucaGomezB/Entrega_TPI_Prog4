@@ -2,15 +2,14 @@
  * CategoriasCRUD — Category management admin page.
  *
  * Features:
- *   - Hierarchical tree display via TanStack Query useCategoriasTree().
- *   - Expand/collapse tree nodes.
+ *   - Hierarchical tree table with expand/collapse (+/-) for parent categories.
  *   - CRUD operations: create, edit, delete categories via mutations.
  *   - Parent category selection via a tree-based modal (prevents cycles).
- *   - Text filter that recursively filters the tree.
+ *   - Text filter (client-side, preserves ancestor nodes so context is not lost).
  *   - Excel export of the flattened (depth-annotated) tree.
  */
-
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
+import { AxiosError } from "axios";
 import type { CategoriaCreate, CategoriaTree } from "@/features/categorias/api/categorias";
 import { useCategoriasTree, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from "@/features/categorias/hooks/useCategorias";
 import { uploadsApi } from "@/shared/api/uploads";
@@ -18,7 +17,6 @@ import ImageCarousel from "@/shared/components/ImageCarousel";
 import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
-
 
 /* ── Helpers ── */
 
@@ -31,21 +29,6 @@ function flattenTree(nodes: CategoriaTree[], depth = 0): (CategoriaTree & { dept
     }
   }
   return result;
-}
-
-function filterTree(nodes: CategoriaTree[], query: string): CategoriaTree[] {
-  const lower = query.toLowerCase();
-  return nodes.reduce<CategoriaTree[]>((acc, node) => {
-    const matches = node.nombre.toLowerCase().includes(lower);
-    const filteredChildren = filterTree(node.subcategorias, query);
-    if (matches || filteredChildren.length > 0) {
-      acc.push({
-        ...node,
-        subcategorias: matches ? node.subcategorias : filteredChildren,
-      });
-    }
-    return acc;
-  }, []);
 }
 
 function getDescendantIds(node: CategoriaTree): number[] {
@@ -67,65 +50,33 @@ function findCategoriaInTree(nodes: CategoriaTree[], id: number): CategoriaTree 
   return null;
 }
 
-/* ── Tree Row ── */
+/**
+ * Filters the tree recursively. When a descendant matches the query,
+ * ALL its ancestors are preserved so the user sees the full hierarchical path.
+ * A node matches when its `nombre` contains the query (case-insensitive).
+ */
+function filterTree(nodes: CategoriaTree[], query: string): CategoriaTree[] {
+  if (!query.trim()) return nodes;
+  const q = query.toLowerCase();
 
-function CategoryTreeRow({
-  categoria, depth, expanded, onToggle, onEdit, onDelete,
-}: {
-  categoria: CategoriaTree;
-  depth: number;
-  expanded: Set<number>;
-  onToggle: (id: number) => void;
-  onEdit: (cat: CategoriaTree) => void;
-  onDelete: (id: number) => void;
-}) {
-  const hasChildren = categoria.subcategorias.length > 0;
-  const isExpanded = expanded.has(categoria.id);
+  function matches(node: CategoriaTree): boolean {
+    return node.nombre.toLowerCase().includes(q);
+  }
 
-  return (
-    <>
-      <tr className="hover:bg-gray-100 border-b">
-        <td className="p-2" style={{ paddingLeft: `${12 + depth * 24}px` }}>
-          <span className="inline-flex items-center gap-1">
-            {hasChildren ? (
-              <button
-                onClick={() => onToggle(categoria.id)}
-                className="border border-gray-400 bg-white text-gray-700 hover:bg-gray-100 text-xs w-5 h-5 flex items-center justify-center rounded-sm cursor-pointer select-none"
-                title={isExpanded ? "Collapse" : "Expand"}
-              >
-                {isExpanded ? "-" : "+"}
-              </button>
-            ) : (
-              <span className="w-5 h-5 inline-block" />
-            )}
-            <span className="font-semibold text-gray-900">{categoria.nombre}</span>
-          </span>
-        </td>
-        <td className="p-2 text-sm text-gray-600">{categoria.descripcion ?? "-"}</td>
-        <td className="p-2">
-          <div className="flex gap-1">
-            <button onClick={() => onEdit(categoria)}
-              className="bg-yellow-500 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-yellow-600">Editar</button>
-            <button onClick={() => onDelete(categoria.id)}
-              className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700">Eliminar</button>
-          </div>
-        </td>
-      </tr>
-      {hasChildren && isExpanded && (
-        categoria.subcategorias.map((child) => (
-          <CategoryTreeRow
-            key={child.id}
-            categoria={child}
-            depth={depth + 1}
-            expanded={expanded}
-            onToggle={onToggle}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
-        ))
-      )}
-    </>
-  );
+  function filterRecursive(list: CategoriaTree[]): CategoriaTree[] {
+    const result: CategoriaTree[] = [];
+    for (const node of list) {
+      const filteredChildren = filterRecursive(node.subcategorias);
+      const selfMatches = matches(node);
+      const childrenMatch = filteredChildren.length > 0;
+      if (selfMatches || childrenMatch) {
+        result.push({ ...node, subcategorias: selfMatches ? node.subcategorias : filteredChildren });
+      }
+    }
+    return result;
+  }
+
+  return filterRecursive(nodes);
 }
 
 /* ── Selector de Categoria Padre (jerarquico) ── */
@@ -141,8 +92,8 @@ function ParentSelector({ treeData, currentId, onSelect, onClose }: {
     }
   }
 
-  const renderTreeOptions = (nodes: CategoriaTree[], depth = 0): React.ReactNode[] => {
-    const elements: React.ReactNode[] = [];
+  const renderTreeOptions = (nodes: CategoriaTree[], depth = 0): ReactNode[] => {
+    const elements: ReactNode[] = [];
     for (const node of nodes) {
       if (excludeIds.has(node.id)) continue;
       elements.push(
@@ -186,15 +137,98 @@ function ParentSelector({ treeData, currentId, onSelect, onClose }: {
   );
 }
 
+/* ── CategoryTreeRow (recursive) ── */
+
+function CategoryTreeRow({ categoria, depth, expanded, onToggle, onEdit, onDelete }: {
+  categoria: CategoriaTree;
+  depth: number;
+  expanded: Set<number>;
+  onToggle: (id: number) => void;
+  onEdit: (categoria: { id: number; nombre: string; descripcion: string | null; parent_id: number | null; orden_display: number }) => void;
+  onDelete: (id: number) => void;
+}) {
+  const hasChildren = categoria.subcategorias.length > 0;
+  const isExpanded = expanded.has(categoria.id);
+
+  const rows: ReactNode[] = [];
+
+  // Current node row
+  rows.push(
+    <tr key={categoria.id} className="hover:bg-blue-50 transition-colors border-b border-gray-100">
+      {/* Name column with indentation + toggle */}
+      <td className="px-3 py-2.5" style={{ paddingLeft: `${12 + depth * 20}px` }}>
+        <div className="flex items-center gap-1.5">
+          {/* Toggle button or spacer */}
+          {hasChildren ? (
+            <button
+              onClick={() => onToggle(categoria.id)}
+              className="min-w-[24px] min-h-[24px] w-6 h-6 flex items-center justify-center rounded text-sm font-bold border border-gray-300 bg-white hover:bg-gray-100 cursor-pointer transition-colors select-none leading-none"
+              aria-label={isExpanded ? "Colapsar" : "Expandir"}
+            >
+              {isExpanded ? "−" : "+"}
+            </button>
+          ) : (
+            <span className="inline-block w-6" />
+          )}
+          <span className="font-semibold text-gray-900">{categoria.nombre}</span>
+          {hasChildren && (
+            <span className="text-xs text-gray-400 ml-1">({categoria.subcategorias.length})</span>
+          )}
+        </div>
+      </td>
+      {/* Description column */}
+      <td className="px-3 py-2.5 text-sm text-gray-600 hidden md:table-cell">
+        {categoria.descripcion ?? "-"}
+      </td>
+      {/* Actions column */}
+      <td className="px-3 py-2.5">
+        <div className="flex gap-1">
+          <button
+            onClick={() => onEdit({ id: categoria.id, nombre: categoria.nombre, descripcion: categoria.descripcion, parent_id: categoria.parent_id, orden_display: categoria.orden_display })}
+            className="bg-yellow-500 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-yellow-600"
+          >
+            Editar
+          </button>
+          <button
+            onClick={() => onDelete(categoria.id)}
+            className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700"
+          >
+            Eliminar
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+
+  // Recursive children
+  if (hasChildren && isExpanded) {
+    for (const child of categoria.subcategorias) {
+      rows.push(
+        <CategoryTreeRow
+          key={child.id}
+          categoria={child}
+          depth={depth + 1}
+          expanded={expanded}
+          onToggle={onToggle}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      );
+    }
+  }
+
+  return <>{rows}</>;
+}
+
 /* ── Main Page ── */
 
 export default function CategoriasCRUD() {
   const [filter, setFilter] = useState("");
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [selectedParentName, setSelectedParentName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   // Cloudinary Upload Widget state
   const cloudinaryWidgetRef = useRef<unknown>(null);
@@ -203,9 +237,25 @@ export default function CategoriasCRUD() {
 
   // ── TanStack Query ──
   const { data: treeData = [], isLoading, isError, error } = useCategoriasTree();
+
   const createMutation = useCreateCategoria();
   const updateMutation = useUpdateCategoria();
   const deleteMutation = useDeleteCategoria();
+
+  // ── Tree state ──
+  const toggleExpand = (id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const filteredTree = filterTree(treeData, filter);
 
   const form = useAppForm<CategoriaCreate>({
     defaultValues: { nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagen_url: [] },
@@ -298,16 +348,7 @@ export default function CategoriasCRUD() {
     }
   };
 
-  const toggleExpand = (id: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleEdit = (cat: CategoriaTree) => {
+  const handleEdit = (cat: { id: number; nombre: string; descripcion: string | null; parent_id: number | null; orden_display: number }) => {
     setEditingId(cat.id);
     setShowForm(true);
     form.reset({
@@ -351,12 +392,19 @@ export default function CategoriasCRUD() {
       await deleteMutation.mutateAsync(id);
       addToast('exito', 'Categoria eliminada correctamente');
     } catch (err) {
-      addToast('error', (err as Error).message);
+      const msg = err instanceof AxiosError && err.response?.data
+        ? (err.response.data as { detail?: string }).detail ?? err.message
+        : (err as Error).message;
+      addToast('error', msg);
     }
   };
 
-  const displayTree = filter ? filterTree(treeData, filter) : treeData;
-  const flatForExport = flattenTree(displayTree);
+  const handleExport = () => {
+    const flatForExport = flattenTree(treeData);
+    exportToExcel(flatForExport.map(({ id, nombre, descripcion, parent_id, orden_display, depth }) => ({
+      Codigo: id, nombre, descripcion: descripcion ?? "", "Categoria padre": parent_id ?? "", Orden: orden_display, profundidad: depth,
+    })), "categorias");
+  };
 
   return (
     <div className="p-4">
@@ -370,9 +418,7 @@ export default function CategoriasCRUD() {
 
         <button onClick={handleCreate}
           className="bg-green-600 text-white px-4 py-1.5 rounded cursor-pointer hover:bg-green-700">+ Nueva</button>
-        <button onClick={() => exportToExcel(flatForExport.map(({ id, nombre, descripcion, parent_id, orden_display, depth }) => ({
-              Codigo: id, nombre, descripcion: descripcion ?? "", "Categoria padre": parent_id ?? "", Orden: orden_display, profundidad: depth,
-            })), "categorias")}
+        <button onClick={handleExport}
           className="bg-blue-600 text-white px-4 py-1.5 rounded cursor-pointer hover:bg-blue-700">Exportar Excel</button>
       </div>
 
@@ -453,36 +499,73 @@ export default function CategoriasCRUD() {
         />
       )}
 
-      {isLoading ? (
-        <p className="text-gray-500">Cargando...</p>
-      ) : (
-        <div className="max-h-96 overflow-auto">
-        <table className="w-full border-collapse border">
-          <thead><tr className="bg-gray-200">
-            <th className="border p-2 text-left">Nombre</th>
-            <th className="border p-2 text-left">Descripcion</th>
-            <th className="border p-2 text-left">Acciones</th>
-          </tr></thead>
-          <tbody>
-            {displayTree.length === 0 ? (
-              <tr><td colSpan={3} className="border p-2 text-center text-gray-500">Sin resultados</td></tr>
-            ) : (
-              displayTree.map((root) => (
+      {/* ── Tree Table ── */}
+      <div className="rounded-lg shadow border border-gray-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wider">
+                <th className="px-3 py-3 text-left font-semibold">Nombre</th>
+                <th className="px-3 py-3 text-left font-semibold hidden md:table-cell">Descripcion</th>
+                <th className="px-3 py-3 text-left font-semibold">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {/* Loading state */}
+              {isLoading && (
+                <tr>
+                  <td colSpan={3} className="px-3 py-12 text-center text-gray-400">
+                    Cargando categorias...
+                  </td>
+                </tr>
+              )}
+
+              {/* Error state (banner is above, but still show empty body) */}
+              {!isLoading && isError && (
+                <tr>
+                  <td colSpan={3} className="px-3 py-12 text-center text-gray-400">
+                    Error al cargar categorias
+                  </td>
+                </tr>
+              )}
+
+              {/* Empty state */}
+              {!isLoading && !isError && filteredTree.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-3 py-12 text-center text-gray-400">
+                    {filter.trim() ? "No hay categorias que coincidan con el filtro" : "No hay categorias"}
+                  </td>
+                </tr>
+              )}
+
+              {/* Tree rows */}
+              {!isLoading && !isError && filteredTree.map((node) => (
                 <CategoryTreeRow
-                  key={root.id}
-                  categoria={root}
+                  key={node.id}
+                  categoria={node}
                   depth={0}
                   expanded={expanded}
                   onToggle={toggleExpand}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                 />
-              ))
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
+
+        {/* Footer with item count */}
+        {!isLoading && !isError && filteredTree.length > 0 && (
+          <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200">
+            <span className="text-xs text-gray-500">
+              {filteredTree.length} {filteredTree.length === 1 ? "categoria visible" : "categorias visibles"}
+            </span>
+            {filter.trim() && (
+              <span className="text-xs text-blue-600">Filtro activo: "{filter}"</span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

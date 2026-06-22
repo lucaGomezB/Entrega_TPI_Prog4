@@ -14,7 +14,7 @@ Prefix: /ingredientes
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
-from typing import List
+from typing import List, Optional
 from core.database import get_session
 from core.paginated_response import PaginatedResponse
 from modules.IdentidadYAcceso.Auth.dependencies import require_roles
@@ -26,9 +26,9 @@ router = APIRouter(prefix="/ingredientes", tags=["Ingredientes"])
 # --- Public GET endpoints ---
 
 @router.get("/", response_model=PaginatedResponse[IngredienteRead])
-def read_ingredientes(skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
+def read_ingredientes(skip: int = 0, limit: int = 100, search: Optional[str] = None, session: Session = Depends(get_session)):
     """GET /ingredientes — List all ingredients with pagination. Public endpoint."""
-    return IngredienteService.get_all(session, skip=skip, limit=limit)
+    return IngredienteService.get_all(session, skip=skip, limit=limit, search=search)
 
 @router.get("/{ingrediente_id}", response_model=IngredienteRead)
 def read_ingrediente(ingrediente_id: int, session: Session = Depends(get_session)):

@@ -12,7 +12,7 @@ All operations use the IdentidadYAccesoUnitOfWork to ensure
 transactional consistency across related entities.
 """
 
-from typing import List, Optional
+from typing import Optional
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
@@ -20,13 +20,12 @@ from core.security import get_password_hash
 from core.paginated_response import PaginatedResponse
 
 from .models import Usuario
-from .repository import UsuarioRepository
 from .schemas import UsuarioCreate, UsuarioReadWithRoles, UsuarioUpdateWithRoles
-from ..Rol.models import Rol
+from ..usuario_rol import UsuarioRol
 from ..uow import IdentidadYAccesoUnitOfWork
 
 
-def crear_usuario(session: Session, datos: UsuarioCreate) -> Usuario:
+def crear_usuario(session: Session, datos: UsuarioCreate, admin_id: int = None) -> Usuario:
     """
     Create a new user with hashed password and optional role assignments.
 
@@ -34,7 +33,8 @@ def crear_usuario(session: Session, datos: UsuarioCreate) -> Usuario:
     1. Validate input via Unit of Work transaction.
     2. Create Usuario with bcrypt-hashed password (never plain text).
     3. Flush to get the auto-generated ID.
-    4. If roles_codigos provided, look up each Rol and assign via M:N relationship.
+    4. If roles_codigos provided, create UsuarioRol links explicitly
+       with asignado_por_id set to the admin who created the user.
     5. Commit the transaction.
     6. Refresh the user and eagerly load roles for the response.
     """
@@ -57,12 +57,17 @@ def crear_usuario(session: Session, datos: UsuarioCreate) -> Usuario:
         uow.usuarios.add(nuevo_usuario)
         uow.flush()
 
-        # Assign roles if specified
+        # Assign roles if specified (explicit UsuarioRol to set asignado_por_id)
         if datos.roles_codigos:
             for codigo in datos.roles_codigos:
                 rol = uow.roles.get_by_id(codigo)
                 if rol:
-                    nuevo_usuario.roles.append(rol)
+                    enlace = UsuarioRol(
+                        usuario_id=nuevo_usuario.id,
+                        rol_codigo=codigo,
+                        asignado_por_id=admin_id,
+                    )
+                    uow.add(enlace)
 
         uow.usuarios.refresh(nuevo_usuario)
         return uow.usuarios.get_with_roles(nuevo_usuario.id)
@@ -82,31 +87,24 @@ def listar_usuarios(
     Otherwise, returns all non-deleted users ordered by ID descending.
     When incluir_eliminados is True, includes soft-deleted records.
     """
-    repo = UsuarioRepository(session)
-    if incluir_eliminados:
-        repo.with_deleted(True)
+    with IdentidadYAccesoUnitOfWork(session) as uow:
+        if incluir_eliminados:
+            uow.usuarios.with_deleted(True)
 
-    if rol_codigo:
-        rows = repo.get_all_by_role(rol_codigo, skip=skip, limit=limit)
-    else:
-        rows = repo.get_all(skip=skip, limit=limit)
+        if rol_codigo:
+            rows = uow.usuarios.get_all_by_role(rol_codigo, skip=skip, limit=limit)
+            total = uow.usuarios.count_by_role(rol_codigo)
+        else:
+            rows = uow.usuarios.get_all(skip=skip, limit=limit)
+            total = uow.usuarios.count_all()
 
-    # Count with the same filters
-    count_repo = UsuarioRepository(session)
-    if incluir_eliminados:
-        count_repo.with_deleted(True)
-    if rol_codigo:
-        total = count_repo.count_by_role(rol_codigo)
-    else:
-        total = count_repo.count_all()
-
-    items = [UsuarioReadWithRoles.model_validate(u) for u in rows]
-    return PaginatedResponse(
-        items=items,
-        total=total,
-        skip=skip,
-        limit=limit,
-    )
+        items = [UsuarioReadWithRoles.model_validate(u) for u in rows]
+        return PaginatedResponse(
+            items=items,
+            total=total,
+            skip=skip,
+            limit=limit,
+        )
 
 
 def obtener_usuario(session: Session, usuario_id: int, incluir_eliminados: bool = False) -> Optional[Usuario]:
@@ -117,16 +115,17 @@ def obtener_usuario(session: Session, usuario_id: int, incluir_eliminados: bool 
     (the repository base already filters deleted_at IS NULL).
     When incluir_eliminados is True, includes soft-deleted records.
     """
-    repo = UsuarioRepository(session)
-    if incluir_eliminados:
-        repo.with_deleted(True)
-    return repo.get_with_roles(usuario_id)
+    with IdentidadYAccesoUnitOfWork(session) as uow:
+        if incluir_eliminados:
+            uow.usuarios.with_deleted(True)
+        return uow.usuarios.get_with_roles(usuario_id)
 
 
 def actualizar_usuario(
     session: Session,
     usuario_id: int,
     datos: UsuarioUpdateWithRoles,
+    admin_id: int = None,
 ) -> Optional[Usuario]:
     """
     Partially update a user's fields and/or reassign roles.
@@ -134,6 +133,9 @@ def actualizar_usuario(
     Uses exclude_unset=True to update only the fields sent by the client
     (PATCH semantics). If roles_codigos is provided, the entire role list
     is replaced. If omitted, roles remain unchanged.
+
+    When reassigning roles, creates UsuarioRol links explicitly with
+    asignado_por_id set to the admin performing the update.
     """
     with IdentidadYAccesoUnitOfWork(session) as uow:
         usuario = uow.usuarios.get_by_id(usuario_id)
@@ -158,12 +160,20 @@ def actualizar_usuario(
         uow.usuarios.add(usuario)
 
         # Reassign roles if the field was explicitly provided
+        # (explicit UsuarioRol to set asignado_por_id)
         if datos.roles_codigos is not None:
-            usuario.roles = []
+            # Remove existing role links via repository method
+            uow.usuarios.remove_all_roles(usuario.id)
+            # Create new UsuarioRol links with asignado_por_id
             for codigo in datos.roles_codigos:
                 rol = uow.roles.get_by_id(codigo)
                 if rol:
-                    usuario.roles.append(rol)
+                    enlace = UsuarioRol(
+                        usuario_id=usuario.id,
+                        rol_codigo=codigo,
+                        asignado_por_id=admin_id,
+                    )
+                    uow.add(enlace)
 
         return uow.usuarios.get_with_roles(usuario.id)
 

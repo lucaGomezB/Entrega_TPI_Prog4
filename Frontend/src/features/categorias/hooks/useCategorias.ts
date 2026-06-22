@@ -1,13 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { categoriasApi } from '../api/categorias'
-import type { CategoriaCreate, CategoriaUpdate } from '../api/categorias'
+import type { Categoria, CategoriaCreate, CategoriaUpdate } from '../api/categorias'
 import { queryKeys } from '@/shared/api/queryKeys'
+import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/client'
 
-/** Fetches all categorias with optional pagination (skip/limit). Uses TanStack Query. */
-export function useCategorias(skip = 0, limit = 100) {
-  return useQuery({
-    queryKey: queryKeys.categorias.all,
-    queryFn: () => categoriasApi.getAll(skip, limit),
+/** Fetches all categorias with pagination (skip/limit). Returns full response with total. */
+export function useCategorias(skip = 0, limit = 10) {
+  return useQuery<PaginatedResponse<Categoria>>({
+    queryKey: [...queryKeys.categorias.all, skip, limit] as const,
+    queryFn: () => apiFetchPaginatedFull<Categoria>(`/categorias/?skip=${skip}&limit=${limit}`),
   })
 }
 

@@ -13,23 +13,30 @@ import { apiFetch, apiFetchPaginated } from "@/shared/api/client";
 export interface Ingrediente {
   id: number;
   nombre: string;
+  descripcion?: string | null;
   es_alergeno: boolean;
   precio_actual: number;
   stock_actual: number;
+  unidad_medida_id?: number | null;
+  unidad_medida_simbolo?: string | null;
 }
 
 export interface IngredienteCreate {
   nombre: string;
+  descripcion?: string | null;
   es_alergeno?: boolean;
   precio_actual?: number;
   stock_actual?: number;
+  unidad_medida_id?: number | null;
 }
 
 export interface IngredienteUpdate {
   nombre?: string | null;
+  descripcion?: string | null;
   es_alergeno?: boolean | null;
   precio_actual?: number | null;
   stock_actual?: number | null;
+  unidad_medida_id?: number | null;
 }
 
 export const ingredientesApi = {

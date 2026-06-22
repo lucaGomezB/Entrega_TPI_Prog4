@@ -65,7 +65,6 @@ export function useAdminPedidoFeed(
 
     disconnect();
     connectingRef.current = true;
-    attemptRef.current = 0;
 
     const url = `${WS_BASE}/pedidos/ws/admin/pedidos?token=${accessToken}`;
     const socket = new WebSocket(url);
@@ -77,6 +76,7 @@ export function useAdminPedidoFeed(
         socket.close();
         return;
       }
+      attemptRef.current = 0;
       setStatus('connected');
       resetReconnect();
     };
@@ -110,7 +110,7 @@ export function useAdminPedidoFeed(
     };
 
     socket.onerror = () => {
-      // onclose will fire after onerror
+      // onclose will fire after onerror — handle reconnection there
     };
   }, [enabled, accessToken, disconnect, setStatus, setLastEvent, resetReconnect, incrementReconnect, onEvent]);
 

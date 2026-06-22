@@ -5,6 +5,7 @@ Extends BaseRepository with custom queries for managing the link tables
 ProductoCategoria and ProductoIngrediente, plus batch ingredient checks
 and price-recalculation support.
 """
+from decimal import Decimal
 from sqlmodel import Session, col, select
 from typing import List, Optional, Set, Tuple
 
@@ -13,6 +14,7 @@ from ..producto_categoria import ProductoCategoria
 from ..producto_ingrediente import ProductoIngrediente
 from ..Ingrediente.models import Ingrediente
 from ..Categoria.models import Categoria
+from ..UnidadMedida.models import UnidadMedida
 from .models import Producto
 
 
@@ -39,7 +41,8 @@ class ProductoRepository(BaseRepository[Producto]):
         es_removible: bool,
         es_principal: bool,
         orden: int = 0,
-        cantidad: int = 1,
+        cantidad: Decimal = Decimal("1"),
+        unidad_medida_id: Optional[int] = None,
     ):
         """Create a ProductoIngrediente link row with relationship metadata."""
         enlace = ProductoIngrediente(
@@ -49,20 +52,22 @@ class ProductoRepository(BaseRepository[Producto]):
             es_principal=es_principal,
             orden=orden,
             cantidad=cantidad,
+            unidad_medida_id=unidad_medida_id,
         )
         self.session.add(enlace)
         return enlace
 
     def get_ingredientes(self, producto_id: int):
-        """Return ingredients for a product JOINed with Ingrediente data.
+        """Return ingredients for a product JOINed with Ingrediente and UnidadMedida.
 
-        Uses a two-table join across the link table to collect both the
-        relationship metadata (cantidad, es_removible) and the ingredient
-        name. Results are ordered by the 'orden' display field.
+        Uses a three-table join: inner join on Ingrediente (always present),
+        left outer join on UnidadMedida (optional — ingredient might not have
+        a unit assigned). Results are ordered by the 'orden' display field.
         """
         statement = (
-            select(ProductoIngrediente, Ingrediente)
+            select(ProductoIngrediente, Ingrediente, UnidadMedida)
             .join(Ingrediente, ProductoIngrediente.ingrediente_id == Ingrediente.id)
+            .outerjoin(UnidadMedida, ProductoIngrediente.unidad_medida_id == UnidadMedida.id)
             .where(ProductoIngrediente.producto_id == producto_id)
             .order_by(ProductoIngrediente.orden)
         )
@@ -75,8 +80,11 @@ class ProductoRepository(BaseRepository[Producto]):
                 "es_removible": rel.es_removible,
                 "es_principal": rel.es_principal,
                 "orden": rel.orden,
+                "es_alergeno": ing.es_alergeno,
+                "unidad_medida_id": rel.unidad_medida_id,
+                "unidad_medida_simbolo": um.simbolo if um else None,
             }
-            for rel, ing in results
+            for rel, ing, um in results
         ]
 
     def get_categorias(self, producto_id: int):
@@ -128,13 +136,14 @@ class ProductoRepository(BaseRepository[Producto]):
         """Fetch a product by ID (uses BaseRepository.get_by_id with soft-delete filter)."""
         return self.get_by_id(producto_id)
 
-    def get_all_with_ingredient_flag(self, skip: int = 0, limit: int = 100) -> Tuple[List[Producto], Set[int]]:
+    def get_all_with_ingredient_flag(self, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> Tuple[List[Producto], Set[int]]:
         """Return paginated non-deleted products and the set of IDs that have ingredients.
 
+        Optionally filters by name ILIKE when search is provided.
         Returns (products, ids_with_ingredients) so the caller can set
         the tiene_ingredientes flag per product.
         """
-        productos = self.get_all(skip=skip, limit=limit)
+        productos = self.get_all_filtered(skip=skip, limit=limit, search=search)
         if not productos:
             return [], set()
 
@@ -145,6 +154,18 @@ class ProductoRepository(BaseRepository[Producto]):
         rows = self.session.exec(stmt).all()
         ids_with_ingredients = set(rows)
         return list(productos), ids_with_ingredients
+
+    def get_all_filtered(self, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> List[Producto]:
+        """List non-deleted products with optional name search, newest first."""
+        pk_col = self._get_pk_attr()
+        statement = select(self.model_class)
+        statement = statement.where(
+            col(self.model_class.deleted_at).is_(None)  # type: ignore[attr-defined]
+        )
+        if search:
+            statement = statement.where(col(Producto.nombre).ilike(f"%{search}%"))
+        statement = statement.offset(skip).limit(limit).order_by(pk_col.desc())
+        return self.session.exec(statement).all()
 
     def get_productos_afectados(self, ingrediente_id: int) -> List[int]:
         """Return distinct product IDs that use a given ingredient."""
@@ -182,12 +203,14 @@ class ProductoRepository(BaseRepository[Producto]):
         )
         return set(self.session.exec(statement).all())
 
-    def count_all(self) -> int:
-        """Count all non-deleted products."""
+    def count_all(self, search: Optional[str] = None) -> int:
+        """Count all non-deleted products, optionally filtered by name search."""
         from sqlmodel import func
         statement = select(func.count()).select_from(self.model_class)
         if self._is_soft_delete:
             from sqlalchemy import column
             statement = statement.where(column("deleted_at").is_(None))
+        if search:
+            statement = statement.where(col(Producto.nombre).ilike(f"%{search}%"))
         result = self.session.exec(statement)
         return result.one()

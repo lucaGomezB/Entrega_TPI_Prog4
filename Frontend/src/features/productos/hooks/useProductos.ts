@@ -1,13 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { productosApi } from '../api/productos'
-import type { ProductoCreate, ProductoUpdate } from '../api/productos'
+import type { Producto, ProductoCreate, ProductoUpdate } from '../api/productos'
 import { queryKeys } from '@/shared/api/queryKeys'
+import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/client'
 
-/** Fetches all productos with optional pagination (skip/limit). Uses TanStack Query. */
-export function useProductos(skip = 0, limit = 1000) {
-  return useQuery({
-    queryKey: queryKeys.productos.list({ skip, limit }),
-    queryFn: () => productosApi.getAll(skip, limit),
+/** Fetches all productos with pagination (skip/limit) and optional text search. Returns full response with total. */
+export function useProductos(skip = 0, limit = 10, search?: string) {
+  let url = `/productos/?skip=${skip}&limit=${limit}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  return useQuery<PaginatedResponse<Producto>>({
+    queryKey: queryKeys.productos.list({ skip, limit, search }),
+    queryFn: () => apiFetchPaginatedFull<Producto>(url),
   })
 }
 
@@ -35,6 +38,15 @@ export function useUpdateProducto() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: ProductoUpdate }) => productosApi.update(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.productos.all }),
+  })
+}
+
+/** Fetches ingredients for a single producto by its ID. Query disabled when productoId is falsy. */
+export function useProductoIngredientes(productoId: number) {
+  return useQuery({
+    queryKey: queryKeys.productos.ingredientes(productoId),
+    queryFn: () => productosApi.getIngredientes(productoId),
+    enabled: !!productoId,
   })
 }
 

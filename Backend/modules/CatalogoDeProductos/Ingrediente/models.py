@@ -15,6 +15,7 @@ from ..producto_ingrediente import ProductoIngrediente
 # TYPE_CHECKING prevents circular import at runtime
 if TYPE_CHECKING:
     from ..Producto.models import Producto
+    from ..UnidadMedida.models import UnidadMedida
 
 
 class IngredienteBase(TimestampModel):
@@ -24,6 +25,7 @@ class IngredienteBase(TimestampModel):
     es_alergeno: bool = Field(default=False)
     precio_actual: Decimal = Field(default=0, sa_column=Column(Numeric(10, 2)))
     stock_actual: int = Field(default=0, ge=0)
+    unidad_medida_id: Optional[int] = Field(default=None, foreign_key="unidadmedida.id")
 
 
 class Ingrediente(IngredienteBase, SoftDeleteModel, table=True):
@@ -34,3 +36,11 @@ class Ingrediente(IngredienteBase, SoftDeleteModel, table=True):
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     productos: List["Producto"] = Relationship(back_populates="ingredientes", link_model=ProductoIngrediente)
+    unidad_medida: Optional["UnidadMedida"] = Relationship()
+
+    @property
+    def unidad_medida_simbolo(self) -> Optional[str]:
+        """Convenience accessor for unidad_medida.simbolo."""
+        if self.unidad_medida:
+            return self.unidad_medida.simbolo
+        return None

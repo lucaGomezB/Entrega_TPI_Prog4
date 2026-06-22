@@ -50,10 +50,12 @@ export default function ProductosCliente() {
   const isAuth = !!getAccessToken();
 
   // TanStack Query: products
-  const { data: products = [], isLoading, isError, error } = useProductos(0, 1000);
+  const { data: productsData, isLoading, isError, error } = useProductos(0, 1000);
+  const products = productsData?.items ?? [];
 
   // TanStack Query: categories (for filter chips + image fallback)
-  const { data: categorias = [] } = useCategorias(0, 1000);
+  const { data: categoriasData } = useCategorias(0, 1000);
+  const categorias = categoriasData?.items ?? [];
 
   // UI-only state
   const [page, setPage] = useState(0);
@@ -99,11 +101,6 @@ export default function ProductosCliente() {
     }
     return map;
   }, [categorias]);
-
-  // Get the first available category image for any product
-  const firstCategoryImages = Object.values(categoryImagesMap).find(
-    (urls) => urls.length > 0
-  );
 
   // ── Derived data ──
 
@@ -190,7 +187,11 @@ export default function ProductosCliente() {
                 product={prod}
                 onAddToCart={handleAddToCart}
                 recentlyAdded={recentlyAdded}
-                categoryImages={firstCategoryImages}
+                categoryImages={
+                  prod.categoria_principal_id
+                    ? categoryImagesMap[prod.categoria_principal_id]
+                    : undefined
+                }
               />
             ))}
           </div>

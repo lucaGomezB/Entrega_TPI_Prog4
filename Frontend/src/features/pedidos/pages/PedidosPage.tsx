@@ -1,6 +1,7 @@
 /**
  * PedidosPage — Orders listing and management page.
  * Uses TanStack Query for data fetching and mutations.
+ * Uses DataTable with server-side pagination.
  */
 import { useEffect, useState, useRef } from "react";
 import { type Pedido, type DetallePedido, type StockInsuficienteDetalle } from "@/features/pedidos/api/pedidos";
@@ -15,6 +16,7 @@ import { useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { addToast } from "@/shared/components/Toast";
 import Modal from "@/shared/components/Modal";
+import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import {
   usePedidosActivos,
   usePedidosHistorial,
@@ -24,6 +26,8 @@ import {
   useHistorialPedido,
 } from "@/features/pedidos/hooks/usePedidos";
 import { usePagosByPedido } from "@/features/pedidos/hooks/usePagos";
+
+const DEFAULT_LIMIT = 10;
 
 const ESTADOS_COLORES: Record<string, string> = {
   PENDIENTE: "bg-yellow-100 text-yellow-800",
@@ -106,7 +110,7 @@ function PedidoWSSubscriber({ pedidoId, enabled }: { pedidoId: number; enabled: 
     qc.invalidateQueries({ queryKey: ['pedidos', 'activos'] });
     qc.invalidateQueries({ queryKey: ['pedidos', 'detail'] });
   });
-  return null; // invisible — side-effect only
+  return null;
 }
 
 function TimelineEstados({ pedidoId }: { pedidoId: number }) {
@@ -120,12 +124,10 @@ function TimelineEstados({ pedidoId }: { pedidoId: number }) {
       <div className="relative ml-2">
         {historial.map((entry, i) => (
           <div key={entry.id} className="flex gap-3 mb-3 relative">
-            {/* Timeline line and dot */}
             <div className="flex flex-col items-center">
               <div className={`w-3 h-3 rounded-full border-2 ${entry.es_sistema ? 'border-gray-300 bg-gray-200' : 'border-blue-500 bg-blue-400'} z-10`} />
               {i < historial.length - 1 && <div className="w-0.5 flex-1 bg-gray-300" />}
             </div>
-            {/* Content */}
             <div className="flex-1 pb-1">
               <p className="text-sm">
                 {entry.estado_desde ? (
@@ -157,7 +159,7 @@ function DetallesPopup({ pedido, detalles, onClose, esGestor, pagos }: {
   pedido: Pedido; detalles: DetallePedido[]; onClose: () => void; esGestor?: boolean; pagos?: PagoRead[];
 }) {
   return (
-    <Modal open={true} onClose={onClose} title={`Detalles del Pedido${esGestor ? ` #${pedido.id}` : ""}`}>
+    <Modal open={true} onClose={onClose} title={`Detalles del Pedido #${pedido.id}`}>
       <p className="text-sm text-gray-500 mb-1">
         Fecha: {new Date(pedido.created_at).toLocaleString("es-AR")}
       </p>
@@ -357,13 +359,16 @@ type ModoVista = "activos" | "historial";
 export default function PedidosPage() {
   const [modo, setModo] = useState<ModoVista>("activos");
   const esHistorial = modo === "historial";
+  const [skip, setSkip] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+  const [sortBy, setSortBy] = useState("id");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [detailPopup, setDetailPopup] = useState<Pedido | null>(null);
   const [selectedPedidoId, setSelectedPedidoId] = useState<number>(0);
   const [stockIssue, setStockIssue] = useState<{ pedido: Pedido; detalles: StockInsuficienteDetalle[] } | null>(null);
   const [cancelPopup, setCancelPopup] = useState<number | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [retryingPaymentId, setRetryingPaymentId] = useState<number | null>(null);
-  const [limiteExcedido, setLimiteExcedido] = useState(false);
 
   const autoOpenedRef = useRef(false);
   const { id: autoOpenId } = useParams<{ id: string }>();
@@ -380,20 +385,12 @@ export default function PedidosPage() {
   }, []);
 
   // ── TanStack Query: pedidos ──
-  const activosQuery = usePedidosActivos(0, 100);
-  const historialQuery = usePedidosHistorial(0, 100);
-  const { data: pedidosRaw = [], isLoading, isError, error } = esHistorial ? historialQuery : activosQuery;
-
-  // Client-side: limit to 10 for non-gestor
-  const pedidos = esGestor || esHistorial ? pedidosRaw : pedidosRaw.slice(0, 10);
-
-  useEffect(() => {
-    if (!esGestor && !esHistorial && pedidosRaw.length > 10) {
-      setLimiteExcedido(true);
-    } else {
-      setLimiteExcedido(false);
-    }
-  }, [pedidosRaw, esGestor, esHistorial]);
+  const activosQuery = usePedidosActivos(skip, limit, sortBy, sortOrder);
+  const historialQuery = usePedidosHistorial(skip, limit, sortBy, sortOrder);
+  const activeQuery = esHistorial ? historialQuery : activosQuery;
+  const { data, isLoading, isError, error } = activeQuery;
+  const pedidos = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   // ── TanStack Query: pagos for selected pedido ──
   const { data: pagosData } = usePagosByPedido(selectedPedidoId);
@@ -404,7 +401,6 @@ export default function PedidosPage() {
   const actualizarDetalleMutation = useActualizarDetalle();
 
   // WS callbacks: invalidate queries instead of manual loadPedidos
-  // Also invalidate detail/timeline queries so the historial refreshes on WS events
   useAdminPedidoFeed(esGestor && !esHistorial, () => {
     qc.invalidateQueries({ queryKey: ['pedidos', 'activos'] });
     qc.invalidateQueries({ queryKey: ['pedidos', 'detail'] });
@@ -426,7 +422,20 @@ export default function PedidosPage() {
   }, [pedidos, isLoading, autoOpenId, esGestor]);
 
   const cambiarModo = (nuevo: ModoVista) => {
-    if (nuevo !== modo) setModo(nuevo);
+    if (nuevo !== modo) {
+      setModo(nuevo);
+      setSkip(0);
+      setSortBy("id");
+      setSortOrder("desc");
+    }
+  };
+
+  const handlePageChange = (newSkip: number) => setSkip(newSkip);
+  const handleLimitChange = (newLimit: number) => { setLimit(newLimit); setSkip(0); };
+  const handleSort = (newSortBy: string, newSortOrder: "asc" | "desc") => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setSkip(0);
   };
 
   const handleAvanzar = async (id: number) => {
@@ -481,6 +490,70 @@ export default function PedidosPage() {
     }
   };
 
+  // Build columns based on role and mode
+  const columns: DataTableColumn<Pedido>[] = [
+    {
+      key: "id" as const,
+      label: "Pedido #",
+      render: (ped: Pedido) => <span className="font-mono">#{ped.id}</span>,
+      sortable: true,
+    },
+    ...(esGestor ? [
+      {
+        key: "usuario" as const,
+        label: "Usuario",
+        render: (ped: Pedido) => ped.usuario ? ped.usuario.email : `Usuario #${ped.usuario_id}`,
+        hideOnMobile: true,
+      },
+    ] : []),
+    {
+      key: "estado_codigo" as const,
+      label: "Estado",
+      render: (ped: Pedido) => (
+        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ESTADOS_COLORES[ped.estado_codigo] || "bg-gray-100"}`}>
+          {ETIQUETAS_ESTADO[ped.estado_codigo] || "Estado desconocido"}
+        </span>
+      ),
+      sortable: true,
+    },
+    {
+      key: "created_at" as const,
+      label: "Fecha",
+      render: (ped: Pedido) => (
+        <span className="text-sm">
+          {new Date(ped.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+        </span>
+      ),
+      hideOnMobile: true,
+      sortable: true,
+    },
+    {
+      key: "total" as const,
+      label: "Total",
+      render: (ped: Pedido) => <span className="font-mono font-semibold">${parseFloat(ped.total).toFixed(2)}</span>,
+      hideOnMobile: true,
+      sortable: true,
+    },
+    {
+      key: "acciones" as const,
+      label: "Acciones",
+      render: (ped: Pedido) => (
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => { setDetailPopup(ped); setSelectedPedidoId(ped.id); }} className="bg-gray-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-700">Ver Detalles</button>
+          {!esHistorial && esGestor && ETIQUETAS_AVANCE[ped.estado_codigo] && (
+            <button onClick={() => handleAvanzar(ped.id)} className="bg-blue-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-blue-700">{ETIQUETAS_AVANCE[ped.estado_codigo]}</button>
+          )}
+          {!esHistorial && (esGestor || ped.estado_codigo !== "EN_PREP") && (
+            <button onClick={() => handleCancelarClick(ped.id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700">Cancelar</button>
+          )}
+          {ped.estado_codigo === "PENDIENTE" && ped.forma_pago_codigo === "MERCADOPAGO" && (
+            <button onClick={async () => { setRetryingPaymentId(ped.id); try { const res = await pagosApi.initPayment(ped.id); if (res.init_point && res.init_point.startsWith("https://")) { window.location.href = res.init_point; } else { addToast('error', 'El servicio de pago no esta disponible'); setRetryingPaymentId(null); } } catch { addToast('error', 'El servicio de pago no esta disponible'); setRetryingPaymentId(null); } }} disabled={retryingPaymentId === ped.id} className="bg-green-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">{retryingPaymentId === ped.id ? "Redirigiendo..." : "Pagar con MercadoPago"}</button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="p-4">
       <div className="flex gap-1 mb-4 border-b border-gray-300">
@@ -506,72 +579,20 @@ export default function PedidosPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">Cargando pedidos...</span>
-        </div>
-      ) : pedidos.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          {esHistorial ? (
-            <>
-              <p className="text-lg mb-2">No hay historial de pedidos</p>
-              <p className="text-sm">Los pedidos entregados o cancelados apareceran aqui.</p>
-            </>
-          ) : (
-            <>
-              <p className="text-lg mb-2">No hay pedidos activos</p>
-              <p className="text-sm">Los pedidos finalizados o cancelados no se muestran aqui.</p>
-            </>
-          )}
-        </div>
-      ) : (
-        <>
-          {limiteExcedido && (
-            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded mb-4 text-sm">
-              Mostrando los ultimos 10 pedidos activos. Los anteriores estan disponibles en el historial.
-            </div>
-          )}
-
-          <table className="w-full border-collapse border">
-            <thead><tr className="bg-gray-200">
-              {esGestor && <th className="border p-2 text-left">Pedido #</th>}
-              {esGestor && <th className="border p-2 text-left">Usuario</th>}
-              <th className="border p-2 text-left">Fecha</th>
-              <th className="border p-2 text-left">Estado</th>
-              <th className="border p-2 text-left">Entrega</th>
-              <th className="border p-2 text-right">Total</th>
-              <th className="border p-2 text-left">Acciones</th>
-            </tr></thead>
-            <tbody>
-              {pedidos.map((ped) => (
-                <tr key={ped.id} className={`hover:bg-gray-100 border-b ${ped.deleted_at ? 'bg-red-50' : ''}`}>
-                  {esGestor && <td className="p-2 font-mono">#{ped.id}</td>}
-                  {esGestor && <td className="p-2">{ped.usuario ? ped.usuario.email : `Usuario #${ped.usuario_id}`}</td>}
-                  <td className="p-2 text-sm">{new Date(ped.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                  <td className="p-2"><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ESTADOS_COLORES[ped.estado_codigo] || "bg-gray-100"}`}>{ETIQUETAS_ESTADO[ped.estado_codigo] || "Estado desconocido"}</span></td>
-                  <td className="p-2 text-xs">{ped.direccion_id ? (<span className="text-blue-600 font-medium">Envio</span>) : (<span className="text-green-600 font-medium">Retiro en local</span>)}</td>
-                  <td className="p-2 text-right font-mono font-semibold">${parseFloat(ped.total).toFixed(2)}</td>
-                  <td className="p-2">
-                    <div className="flex gap-1 flex-wrap">
-                      <button onClick={() => { setDetailPopup(ped); setSelectedPedidoId(ped.id); }} className="bg-gray-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-700">Ver Detalles</button>
-                      {!esHistorial && esGestor && ETIQUETAS_AVANCE[ped.estado_codigo] && (
-                        <button onClick={() => handleAvanzar(ped.id)} className="bg-blue-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-blue-700">{ETIQUETAS_AVANCE[ped.estado_codigo]}</button>
-                      )}
-                      {!esHistorial && (esGestor || ped.estado_codigo !== "EN_PREP") && (
-                        <button onClick={() => handleCancelarClick(ped.id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700">Cancelar</button>
-                      )}
-                      {ped.estado_codigo === "PENDIENTE" && ped.forma_pago_codigo === "MERCADOPAGO" && (
-                        <button onClick={async () => { setRetryingPaymentId(ped.id); try { const res = await pagosApi.initPayment(ped.id); if (res.init_point && res.init_point.startsWith("https://")) { window.location.href = res.init_point; } else { addToast('error', 'El servicio de pago no esta disponible'); setRetryingPaymentId(null); } } catch { addToast('error', 'El servicio de pago no esta disponible'); setRetryingPaymentId(null); } }} disabled={retryingPaymentId === ped.id} className="bg-green-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">{retryingPaymentId === ped.id ? "Redirigiendo..." : "Pagar con MercadoPago"}</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        data={pedidos}
+        total={total}
+        skip={skip}
+        limit={limit}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSort={handleSort}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        isLoading={isLoading}
+        emptyMessage={esHistorial ? "No hay historial de pedidos" : "No hay pedidos activos"}
+      />
 
       {detailPopup && (
         <DetallesPopup pedido={detailPopup} detalles={detailPopup.detalles ?? []} onClose={() => setDetailPopup(null)} esGestor={esGestor} pagos={pagosData} />

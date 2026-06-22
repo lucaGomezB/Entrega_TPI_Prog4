@@ -27,6 +27,8 @@ export interface Producto {
   es_insumo: boolean;
   tiene_ingredientes?: boolean;
   categoria_principal_id?: number | null;
+  unidad_medida_id?: number | null;
+  unidad_medida_simbolo?: string | null;
 }
 
 export interface IngredienteAsignado {
@@ -35,6 +37,7 @@ export interface IngredienteAsignado {
   es_removible?: boolean;
   es_principal?: boolean;
   orden?: number;
+  unidad_medida_id?: number | null;
 }
 
 export interface ProductoCreate {
@@ -51,6 +54,7 @@ export interface ProductoCreate {
   categorias_ids?: number[];
   categoria_principal_id?: number | null;
   ingredientes?: IngredienteAsignado[];
+  unidad_medida_id?: number | null;
 }
 
 export interface ProductoUpdate {
@@ -64,6 +68,8 @@ export interface ProductoUpdate {
   disponible?: boolean | null;
   es_insumo?: boolean | null;
   categorias_ids?: number[] | null;
+  unidad_medida_id?: number | null;
+  ingredientes?: IngredienteAsignado[];
 }
 
 export interface ProductoIngredienteRead {
@@ -73,6 +79,9 @@ export interface ProductoIngredienteRead {
   es_principal: boolean;
   orden: number;
   cantidad: number;
+  es_alergeno: boolean;
+  unidad_medida_id?: number | null;
+  unidad_medida_simbolo?: string | null;
 }
 
 export interface ProductoCategoriaRead {
@@ -131,11 +140,11 @@ export const productosApi = {
       method: "DELETE",
     }),
 
-  /** Updates the quantity of an assigned ingredient for a product. */
-  updateIngredienteCantidad: (productoId: number, ingredienteId: number, cantidad: number) =>
+  /** Updates the quantity (and optionally unit) of an assigned ingredient for a product. */
+  updateIngredienteCantidad: (productoId: number, ingredienteId: number, cantidad: number, unidad_medida_id?: number | null) =>
     apiFetch<ProductoIngredienteRead[]>(`/productos/${productoId}/ingredientes/${ingredienteId}`, {
       method: "PATCH",
-      body: JSON.stringify({ cantidad }),
+      body: JSON.stringify({ cantidad, ...(unidad_medida_id !== undefined ? { unidad_medida_id } : {}) }),
     }),
 
   // Relaciones Producto-Categoria

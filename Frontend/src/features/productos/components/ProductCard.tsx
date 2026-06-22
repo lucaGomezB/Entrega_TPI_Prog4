@@ -5,14 +5,19 @@
  *  - Product image carousel (multiple images with arrow navigation)
  *  - Fallback chain when no product images: category image -> gray placeholder
  *  - Name, formatted price, availability status
+ *  - Allergen indicator when product has allergenic ingredients
+ *  - Click navigates to /productos/:id (except add-to-cart button)
  *  - "Agregar al carrito" button with green flash feedback on add
  *  - Disabled state for unavailable or out-of-stock products
  *
  * State management: simple props-driven; visual feedback via recentlyAdded Set.
  */
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Producto } from "@/features/productos/api/productos";
+import { useProductoIngredientes } from "@/features/productos/hooks/useProductos";
 import ImageCarousel from "@/shared/components/ImageCarousel";
+import AllergenBadge from "@/features/productos/components/AllergenBadge";
 
 // ── Fallback image when product has no own images ──
 
@@ -52,11 +57,33 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product, onAddToCart, recentlyAdded, categoryImages }: ProductCardProps) {
+  const navigate = useNavigate();
   const isUnavailable = !product.disponible || product.stock_cantidad <= 0;
   const isRecent = recentlyAdded.has(product.id);
 
+  // Fetch ingredients only when the product has ingredient associations
+  const { data: ingredients } = useProductoIngredientes(
+    product.tiene_ingredientes ? product.id : 0
+  );
+
+  const hasAllergens = product.tiene_ingredientes && ingredients
+    ? ingredients.some((ing) => ing.es_alergeno)
+    : false;
+
+  const handleCardClick = () => {
+    navigate(`/productos/${product.id}`);
+  };
+
+  const handleAddToCartClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent card navigation
+    onAddToCart(product);
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden transition-shadow hover:shadow-lg flex flex-col">
+    <div
+      onClick={handleCardClick}
+      className="bg-white rounded-lg shadow-md overflow-hidden transition-shadow hover:shadow-lg flex flex-col cursor-pointer"
+    >
       {/* Image section — carousel for multiple images, fallback for empty */}
       {product.imagenes_url.length > 0 ? (
         <ImageCarousel
@@ -74,7 +101,17 @@ export default function ProductCard({ product, onAddToCart, recentlyAdded, categ
         <h3 className="font-semibold text-lg mb-1">{product.nombre}</h3>
         <p className="text-gray-700 text-sm mb-2">
           ${Number(product.precio_actual).toFixed(2)}
+          {product.unidad_medida_simbolo && (
+            <> / {product.unidad_medida_simbolo}</>
+          )}
         </p>
+
+        {/* Allergen indicator */}
+        {hasAllergens && (
+          <div className="mb-2">
+            <AllergenBadge label="Contiene alergenos" />
+          </div>
+        )}
 
         {/* Availability indicator */}
         {!product.disponible && (
@@ -89,13 +126,14 @@ export default function ProductCard({ product, onAddToCart, recentlyAdded, categ
           {isUnavailable ? (
             <button
               disabled
+              onClick={(e) => e.stopPropagation()}
               className="w-full px-4 py-2 rounded-b-lg font-medium text-white transition-colors cursor-not-allowed disabled:bg-gray-400 disabled:text-gray-600"
             >
               {!product.disponible ? "No disponible" : "Sin stock"}
             </button>
           ) : (
             <button
-              onClick={() => onAddToCart(product)}
+              onClick={handleAddToCartClick}
               className={`w-full px-4 py-2 rounded-b-lg font-medium text-white transition-colors cursor-pointer ${
                 isRecent ? "bg-green-600" : "bg-blue-600 hover:bg-blue-700"
               }`}

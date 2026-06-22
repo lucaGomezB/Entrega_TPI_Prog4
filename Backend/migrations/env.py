@@ -38,6 +38,7 @@ from sqlmodel import SQLModel
 from modules.CatalogoDeProductos.Categoria.models import Categoria
 from modules.CatalogoDeProductos.Producto.models import Producto
 from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
 from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
 from modules.IdentidadYAcceso.Rol.models import Rol
@@ -51,6 +52,7 @@ from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
 from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
 from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
 from modules.VentasPagosTrazabilidad.Pago.models import Pago
+from modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
 
 # The combined metadata from all SQLModel models.
 # Alembic uses this as the source of truth to detect differences with the DB.

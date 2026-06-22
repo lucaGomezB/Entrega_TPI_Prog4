@@ -12,8 +12,8 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlmodel import Session
+from typing import Optional
 from .models import Producto
-from .repository import ProductoRepository
 from .schemas import ProductoCreate, ProductoRead, ProductoUpdate, IngredienteAsignado, CategoriaAsignada
 from core.paginated_response import PaginatedResponse
 from models.base import get_utc_now
@@ -21,6 +21,41 @@ from ..Categoria.models import Categoria
 from ..Ingrediente.models import Ingrediente
 from ..producto_ingrediente import ProductoIngrediente
 from ..uow import CatalogoDeProductosUnitOfWork
+
+# ── Unit conversion factors ──────────────────────────────────────────────
+# Each UnidadMedida ID maps to its conversion factor relative to the
+# canonical base unit of its tipo (gramo for masa, mililitro for volumen,
+# pieza for unidad, metro cuadrado for area).
+#
+# Base units (factor=1): g(2), mL(4), pieza(5), m²(7)
+_CONVERSION: dict[int, Decimal] = {
+    1: Decimal("1000"),   # kg → g
+    2: Decimal("1"),       # g (base)
+    3: Decimal("1000"),   # L → mL
+    4: Decimal("1"),       # mL (base)
+    5: Decimal("1"),       # pieza (base)
+    6: Decimal("12"),     # docena → pieza
+    7: Decimal("1"),       # m² (base)
+}
+
+
+def _convertir_cantidad(
+    cantidad: Decimal,
+    unidad_origen_id: int | None,
+    unidad_destino_id: int | None,
+) -> Decimal:
+    """Convert a quantity from one unit to another within the same tipo.
+
+    When both units are the same or either is None, returns cantidad unchanged.
+    Uses precomputed conversion factors relative to each tipo's base unit.
+    """
+    if unidad_origen_id is None or unidad_destino_id is None:
+        return cantidad
+    if unidad_origen_id == unidad_destino_id:
+        return cantidad
+    factor_origen = _CONVERSION.get(unidad_origen_id, Decimal("1"))
+    factor_destino = _CONVERSION.get(unidad_destino_id, Decimal("1"))
+    return cantidad * (factor_origen / factor_destino)
 
 
 class ProductoService:
@@ -31,15 +66,12 @@ class ProductoService:
         """Create a product with optional category and ingredient associations.
 
         Business rules:
-        - stock_cantidad == 0 automatically sets disponible = False
+        - stock_cantidad and disponible are independent flags
         - The price is recalculated from ingredients if any are assigned
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
             producto_data = data.model_dump(exclude={"categorias_ids", "categoria_principal_id", "ingredientes"})
             db_producto = Producto(**producto_data)
-            # Business rule: zero stock means the product is not available for sale.
-            if db_producto.stock_cantidad == 0:
-                db_producto.disponible = False
 
             # Set precio_actual default to precio_base if not provided
             if db_producto.precio_actual is None or db_producto.precio_actual == 0:
@@ -81,7 +113,50 @@ class ProductoService:
                         es_principal=ingrediente.es_principal,
                         orden=ingrediente.orden,
                         cantidad=ingrediente.cantidad,
+                        unidad_medida_id=ingrediente.unidad_medida_id,
                     )
+
+                # Task 5.1 & 5.2: Stock deduction on create (two-pass atomic)
+                # Only deduct when the product is being created with stock > 0
+                # AND has ingredient associations.
+                if db_producto.stock_cantidad > 0:
+                    associations = uow.productos.get_producto_ingredientes(db_producto.id)
+
+                    # Pass 1: validate ALL ingredients, collect every shortage
+                    shortages: list[str] = []
+                    for pi in associations:
+                        ing = uow.productos.get_ingrediente(pi.ingrediente_id)
+                        if ing:
+                            needed = (
+                                _convertir_cantidad(
+                                    Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                )
+                                * Decimal(db_producto.stock_cantidad)
+                            )
+                            if ing.stock_actual < needed:
+                                shortages.append(
+                                    f"'{ing.nombre}': necesita {needed}, tiene {ing.stock_actual}"
+                                )
+
+                    if shortages:
+                        lines = "\n".join(f"  - {s}" for s in shortages)
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Stock insuficiente en los siguientes ingredientes:\n{lines}"
+                        )
+
+                    # Pass 2: all validated — deduct now
+                    for pi in associations:
+                        ing = uow.productos.get_ingrediente(pi.ingrediente_id)
+                        if ing:
+                            needed = (
+                                _convertir_cantidad(
+                                    Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                )
+                                * Decimal(db_producto.stock_cantidad)
+                            )
+                            ing.stock_actual -= int(needed)
+                            uow.add(ing)
 
             # Recalculate price if the product has ingredients (skip for insumo)
             if not data.es_insumo and data.ingredientes:
@@ -97,8 +172,7 @@ class ProductoService:
         This method does NOT manage its own UoW — the calling method
         is responsible for the transaction boundary. All writes go through uow.add().
         """
-        repo = ProductoRepository(uow.session)
-        db_producto = repo.get_with_ingredients(producto_id)
+        db_producto = uow.productos.get_with_ingredients(producto_id)
         if not db_producto:
             return
 
@@ -107,16 +181,22 @@ class ProductoService:
             return
 
         # Fetch all ProductoIngrediente associations for this product
-        associations = repo.get_producto_ingredientes(producto_id)
+        associations = uow.productos.get_producto_ingredientes(producto_id)
 
         if not associations:
             return
 
         total = Decimal('0')
         for pi in associations:
-            ing = repo.get_ingrediente(pi.ingrediente_id)
+            ing = uow.productos.get_ingrediente(pi.ingrediente_id)
             if ing and ing.precio_actual:
-                total += ing.precio_actual * Decimal(pi.cantidad)
+                # Convert: pi.cantidad (in pi.unidad_medida) → ing.unidad_medida
+                cantidad_convertida = _convertir_cantidad(
+                    Decimal(pi.cantidad),
+                    pi.unidad_medida_id,
+                    ing.unidad_medida_id,
+                )
+                total += ing.precio_actual * cantidad_convertida
 
         db_producto.precio_base = total
 
@@ -134,13 +214,12 @@ class ProductoService:
         Manages its own UoW transaction. The UoW __exit__ handles commit.
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
-            repo = ProductoRepository(session)
-            producto_ids = repo.get_productos_afectados(ingrediente_id)
+            producto_ids = uow.productos.get_productos_afectados(ingrediente_id)
 
             # Exclude insumo products from recalculation (their price is manual).
             # Single batch query instead of N+1 individual session.get() calls.
             if producto_ids:
-                insumo_ids = repo.get_insumo_ids(producto_ids)
+                insumo_ids = uow.productos.get_insumo_ids(producto_ids)
                 producto_ids = [pid for pid in producto_ids if pid not in insumo_ids]
 
             for pid in producto_ids:
@@ -149,46 +228,46 @@ class ProductoService:
             # NOTE: No manual uow.commit() — the UoW __exit__ handles it automatically.
 
     @staticmethod
-    def get_all(session: Session, skip: int = 0, limit: int = 100) -> PaginatedResponse[ProductoRead]:
-        """List all non-deleted products with pagination and ingredient flag.
+    def get_all(session: Session, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> PaginatedResponse[ProductoRead]:
+        """List all non-deleted products with pagination, ingredient flag, and optional text search.
 
-        Read-only: does NOT use UoW because commit() would expire ORM objects,
-        causing FastAPI serialization errors.
+        Read-only: wrapped in UoW for consistent DB access. The data is already
+        in memory when returned so the UoW commit on exit is harmless.
 
         The tiene_ingredientes flag is computed in a batch query to
         avoid N+1 checks per product.
         """
-        repo = ProductoRepository(session)
-        productos, ids_with_ingredients = repo.get_all_with_ingredient_flag(skip=skip, limit=limit)
-        total = repo.count_all()
+        with CatalogoDeProductosUnitOfWork(session) as uow:
+            productos, ids_with_ingredients = uow.productos.get_all_with_ingredient_flag(skip=skip, limit=limit, search=search)
+            total = uow.productos.count_all(search=search)
 
-        # Build ProductoRead response with computed tiene_ingredientes
-        result = []
-        for p in productos:
-            if p.imagenes_url is None:
-                p.imagenes_url = []
-            base = ProductoRead.model_validate(p).model_dump(exclude={"tiene_ingredientes"})
-            result.append(
-                ProductoRead(
-                    **base,
-                    tiene_ingredientes=p.id in ids_with_ingredients,
+            # Build ProductoRead response with computed tiene_ingredientes
+            result = []
+            for p in productos:
+                if p.imagenes_url is None:
+                    p.imagenes_url = []
+                base = ProductoRead.model_validate(p).model_dump(exclude={"tiene_ingredientes"})
+                result.append(
+                    ProductoRead(
+                        **base,
+                        tiene_ingredientes=p.id in ids_with_ingredients,
+                    )
                 )
+            return PaginatedResponse(
+                items=result,
+                total=total,
+                skip=skip,
+                limit=limit,
             )
-        return PaginatedResponse(
-            items=result,
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
 
     @staticmethod
     def get_by_id(session: Session, producto_id: int):
         """Fetch a single non-deleted product by ID.
 
-        Read-only: uses repository directly (no UoW).
+        Read-only: wrapped in UoW for consistent DB access.
         """
-        repo = ProductoRepository(session)
-        return repo.get_with_ingredients(producto_id)
+        with CatalogoDeProductosUnitOfWork(session) as uow:
+            return uow.productos.get_with_ingredients(producto_id)
 
     @staticmethod
     def update(session: Session, producto_id: int, data: ProductoUpdate):
@@ -196,8 +275,8 @@ class ProductoService:
 
         Key business rules:
         - Increasing stock consumes ingredient stock (validates availability)
-        - Changing disponible from False -> True automatically adds 1 to stock
-        - Stock reaching 0 automatically flips disponible to False
+        - Decreasing stock restores ingredient stock
+        - stock_cantidad and disponible are independent flags
         - Price is recalculated if the product has ingredients
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
@@ -205,12 +284,14 @@ class ProductoService:
             if not db_producto:
                 return None
 
-            repo = ProductoRepository(session)
             values = data.model_dump(exclude_unset=True)
+
+            # Task 5.5: Handle ingredientes field — pop before the loop
+            # to avoid trying to setattr on a SQLAlchemy relationship.
+            nuevos_ingredientes = values.pop("ingredientes", None)
 
             # Track state before applying changes, for transition detection
             old_stock = db_producto.stock_cantidad
-            old_disponible = db_producto.disponible
 
             for key, value in values.items():
                 setattr(db_producto, key, value)
@@ -219,14 +300,19 @@ class ProductoService:
             new_stock = db_producto.stock_cantidad
             if 'stock_cantidad' in values and new_stock > old_stock:
                 diff = new_stock - old_stock
-                associations = repo.get_producto_ingredientes(producto_id)
+                associations = uow.productos.get_producto_ingredientes(producto_id)
 
                 # First pass: validate ALL ingredients, collect every shortage
                 shortages: list[str] = []
                 for pi in associations:
-                    ing = repo.get_ingrediente(pi.ingrediente_id)
+                    ing = uow.productos.get_ingrediente(pi.ingrediente_id)
                     if ing:
-                        needed = pi.cantidad * diff
+                        needed = (
+                            _convertir_cantidad(
+                                Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                            )
+                            * Decimal(diff)
+                        )
                         if ing.stock_actual < needed:
                             shortages.append(
                                 f"'{ing.nombre}': necesita {needed}, tiene {ing.stock_actual}"
@@ -242,19 +328,52 @@ class ProductoService:
 
                 # Second pass: all validated — deduct now
                 for pi in associations:
-                    ing = repo.get_ingrediente(pi.ingrediente_id)
+                    ing = uow.productos.get_ingrediente(pi.ingrediente_id)
                     if ing:
-                        needed = pi.cantidad * diff
-                        ing.stock_actual -= needed
+                        needed = (
+                            _convertir_cantidad(
+                                Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                            )
+                            * Decimal(diff)
+                        )
+                        ing.stock_actual -= int(needed)
                         uow.add(ing)
 
-            # Rule: transitioning from unavailable to available adds 1 to stock
-            if db_producto.disponible is True and old_disponible is False:
-                db_producto.stock_cantidad = (db_producto.stock_cantidad or 0) + 1
+            # Task 5.3: If stock was decreased, restore ingredient stock
+            elif 'stock_cantidad' in values and new_stock < old_stock:
+                diff = old_stock - new_stock  # positive absolute difference
+                associations = uow.productos.get_producto_ingredientes(producto_id)
 
-            # Rule: zero stock forces unavailable
-            if db_producto.stock_cantidad == 0:
-                db_producto.disponible = False
+                for pi in associations:
+                    ing = uow.productos.get_ingrediente(pi.ingrediente_id)
+                    if ing:
+                        needed = (
+                            _convertir_cantidad(
+                                Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                            )
+                            * Decimal(diff)
+                        )
+                        ing.stock_actual += int(needed)
+                        uow.add(ing)
+
+            # Task 5.5: Handle ingredientes field — full replacement of ingredient list
+            if nuevos_ingredientes is not None:
+                # Delete all existing ingredient associations for this product
+                existing = uow.productos.get_producto_ingredientes(producto_id)
+                for pi in existing:
+                    uow.delete(pi)
+
+                # Create new associations from the provided list
+                for ing_data in nuevos_ingredientes:
+                    uow.productos.add_ingrediente_relacion(
+                        producto_id=producto_id,
+                        ingrediente_id=ing_data.ingrediente_id,
+                        es_removible=ing_data.es_removible,
+                        es_principal=ing_data.es_principal,
+                        orden=ing_data.orden,
+                        cantidad=ing_data.cantidad,
+                        unidad_medida_id=ing_data.unidad_medida_id,
+                    )
 
             # Validate: if precio_actual was updated, it must not be lower than precio_base
             if 'precio_actual' in values and db_producto.precio_actual < db_producto.precio_base:
@@ -319,6 +438,7 @@ class ProductoService:
                 es_principal=data.es_principal,
                 orden=data.orden,
                 cantidad=data.cantidad,
+                unidad_medida_id=data.unidad_medida_id,
             )
             # Recalculate price after ingredient change (skip for insumo)
             if not db_producto.es_insumo:
@@ -336,14 +456,13 @@ class ProductoService:
             return result
 
     @staticmethod
-    def update_ingrediente_cantidad(session: Session, producto_id: int, ingrediente_id: int, cantidad: int):
+    def update_ingrediente_cantidad(session: Session, producto_id: int, ingrediente_id: int, cantidad: Decimal):
         """Update the cantidad of a ProductoIngrediente association.
 
         Returns the updated ingredient list on success, None if not found.
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
-            repo = ProductoRepository(session)
-            pi = repo.get_producto_ingrediente(producto_id, ingrediente_id)
+            pi = uow.productos.get_producto_ingrediente(producto_id, ingrediente_id)
             if not pi:
                 return None
 

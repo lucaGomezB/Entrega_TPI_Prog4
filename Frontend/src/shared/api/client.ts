@@ -304,6 +304,14 @@ export async function apiFetchOptional<T>(
   }
 }
 
+/** Full paginated response shape returned by all list endpoints. */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
 /**
  * Like apiFetch but extracts the `.items` array from a paginated backend response.
  *
@@ -319,4 +327,21 @@ export async function apiFetchPaginated<T>(
 ): Promise<T[]> {
   const data = await apiFetch<{ items: T[] } & Record<string, unknown>>(endpoint, options);
   return Array.isArray(data?.items) ? data.items : [];
+}
+
+/**
+ * Like apiFetchPaginated but returns the full response including pagination
+ * metadata (total, skip, limit) so consumers can render paginated UIs.
+ */
+export async function apiFetchPaginatedFull<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<PaginatedResponse<T>> {
+  const data = await apiFetch<{ items: T[]; total?: number; skip?: number; limit?: number }>(endpoint, options);
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    total: data?.total ?? 0,
+    skip: data?.skip ?? 0,
+    limit: data?.limit ?? 10,
+  };
 }
