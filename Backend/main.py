@@ -13,6 +13,7 @@ exposes its own APIRouter.
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from decimal import Decimal
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, status
@@ -169,6 +170,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Request timing middleware ───────────────────────────────────────────
+@app.middleware("http")
+async def log_request_timing(request: Request, call_next):
+    """Log every HTTP request with method, path, status, and elapsed time."""
+    start = datetime.now(timezone.utc)
+    response = await call_next(request)
+    elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
+    print(f"  [{request.method}] {request.url.path} → {response.status_code} ({elapsed_ms:.0f}ms)")
+    return response
 
 # Include all domain routers under the /api/v1 prefix
 # Identity & Access module

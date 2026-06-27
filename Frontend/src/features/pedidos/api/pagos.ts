@@ -55,6 +55,7 @@ export interface InitFromCartRequest {
 export interface InitPaymentResponse {
   pago: PagoRead;
   init_point: string | null;
+  error?: string | null;
 }
 
 export const pagosApi = {

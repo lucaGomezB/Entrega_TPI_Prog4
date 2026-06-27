@@ -79,7 +79,7 @@ async def init_payment_from_cart(
     Access: any authenticated user.
     """
     try:
-        pago_read, init_point = PagoService.init_from_cart(
+        pago_read, init_point, mp_error = PagoService.init_from_cart(
             session, data, current_user
         )
     except ValueError as e:
@@ -87,7 +87,13 @@ async def init_payment_from_cart(
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"pago": pago_read, "init_point": init_point}
+    if init_point is None:
+        return InitPaymentResponse(
+            pago=pago_read,
+            init_point=None,
+            error=mp_error or "MercadoPago no respondio con una URL de pago. Verifica el token MP_ACCESS_TOKEN en Backend/.env",
+        )
+    return InitPaymentResponse(pago=pago_read, init_point=init_point)
 
 
 def _validate_mp_signature(raw_body: bytes, headers) -> bool:

@@ -11,10 +11,7 @@ This is the most important file in the Sales module. It contains:
     - Append-only state change history
 
 PATTERN: Unit of Work (UoW)
-    All write operations go through VentasPagosTrazabilidadUnitOfWork,
-    which ensures atomicity: everything commits or everything rolls back.
-Read-only operations use the repository directly without UoW to avoid
-the commit/expire problem.
+    ALL operations (read and write) go through VentasPagosTrazabilidadUnitOfWork.
 """
 import logging
 from datetime import datetime
@@ -137,44 +134,35 @@ class PedidoService:
 
     @staticmethod
     def get_all(session: Session, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """List ALL orders with pagination. Intended for ADMIN/PEDIDOS users.
-
-        Read-only: uses repository directly (no UoW) to avoid commit/expire.
-        """
-        repo = PedidoRepository(session)
-        rows = repo.get_all_eager(skip=skip, limit=limit)
-        total = repo.count_all()
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        """List ALL orders with pagination. Intended for ADMIN/PEDIDOS users."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_all_eager(skip=skip, limit=limit)
+            total = uow.pedidos.count_all()
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_by_id(session: Session, pedido_id: int) -> Optional[Pedido]:
-        """Fetch a single order by its primary key with eager-loaded details.
-
-        Read-only: uses repository directly (no UoW).
-        """
-        repo = PedidoRepository(session)
-        return repo.get_by_id_eager(pedido_id)
+        """Fetch a single order by its primary key with eager-loaded details."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            return uow.pedidos.get_by_id_eager(pedido_id)
 
     @staticmethod
     def get_by_usuario_id(session: Session, usuario_id: int, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """Fetch non-deleted orders for a specific user, newest first.
-
-        Read-only: uses repository directly (no UoW).
-        """
-        repo = PedidoRepository(session)
-        rows = repo.get_by_usuario_id_eager(usuario_id, skip=skip, limit=limit)
-        total = repo.count_by_usuario_id(usuario_id)
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        """Fetch non-deleted orders for a specific user, newest first."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_by_usuario_id_eager(usuario_id, skip=skip, limit=limit)
+            total = uow.pedidos.count_by_usuario_id(usuario_id)
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_activos(session: Session, skip: int = 0, limit: int = 100,
@@ -182,17 +170,16 @@ class PedidoService:
         """Fetch non-terminal orders (not ENTREGADO or CANCELADO), with dynamic sorting.
 
         Used for the "active orders" dashboard.
-        Read-only: uses repository directly (no UoW).
         """
-        repo = PedidoRepository(session)
-        rows = repo.get_activos(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
-        total = repo.count_activos()
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_activos(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
+            total = uow.pedidos.count_activos()
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_historial(session: Session, skip: int = 0, limit: int = 100,
@@ -200,33 +187,29 @@ class PedidoService:
         """Fetch terminal-state orders (ENTREGADO or CANCELADO), with dynamic sorting.
 
         Used for the order history view.
-        Read-only: uses repository directly (no UoW).
         """
-        repo = PedidoRepository(session)
-        rows = repo.get_historial(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
-        total = repo.count_historial()
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_historial(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
+            total = uow.pedidos.count_historial()
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_historial_by_usuario(session: Session, usuario_id: int, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """Fetch terminal-state orders for a specific user, most recently updated first.
-
-        Read-only: uses repository directly (no UoW).
-        """
-        repo = PedidoRepository(session)
-        rows = repo.get_historial_by_usuario(usuario_id, skip=skip, limit=limit)
-        total = repo.count_by_usuario_id(usuario_id)
-        return PaginatedResponse(
-            items=[PedidoRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        """Fetch terminal-state orders for a specific user, most recently updated first."""
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            rows = uow.pedidos.get_historial_by_usuario(usuario_id, skip=skip, limit=limit)
+            total = uow.pedidos.count_by_usuario_id(usuario_id)
+            return PaginatedResponse(
+                items=[PedidoRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def create(session: Session, data: PedidoCreate, ws_manager=None) -> Pedido:
@@ -391,26 +374,26 @@ class PedidoService:
         errors in real-time. The REAL stock validation (with deduction)
         happens in avanzar_estado when the order transitions to CONFIRMADO.
         """
-        repo = PedidoRepository(session)
-        errores: list[ValidarStockDetalleResponse] = []
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            errores: list[ValidarStockDetalleResponse] = []
 
-        for det in data.detalles:
-            prod = repo.get_producto(det.producto_id)
-            if not prod:
-                raise HTTPException(status_code=404, detail=f"Producto {det.producto_id} no encontrado")
-            stock_disp = prod.stock_cantidad
-            if stock_disp < det.cantidad:
-                errores.append(ValidarStockDetalleResponse(
-                    producto_id=det.producto_id,
-                    nombre_producto=prod.nombre,
-                    cantidad_solicitada=det.cantidad,
-                    stock_disponible=stock_disp,
-                ))
+            for det in data.detalles:
+                prod = uow.pedidos.get_producto(det.producto_id)
+                if not prod:
+                    raise HTTPException(status_code=404, detail=f"Producto {det.producto_id} no encontrado")
+                stock_disp = prod.stock_cantidad
+                if stock_disp < det.cantidad:
+                    errores.append(ValidarStockDetalleResponse(
+                        producto_id=det.producto_id,
+                        nombre_producto=prod.nombre,
+                        cantidad_solicitada=det.cantidad,
+                        stock_disponible=stock_disp,
+                    ))
 
-        return ValidarStockResponse(
-            valido=len(errores) == 0,
-            detalles=errores,
-        )
+            return ValidarStockResponse(
+                valido=len(errores) == 0,
+                detalles=errores,
+            )
 
     @staticmethod
     def actualizar_detalle(session: Session, pedido_id: int, producto_id: int, cantidad: int) -> Pedido:

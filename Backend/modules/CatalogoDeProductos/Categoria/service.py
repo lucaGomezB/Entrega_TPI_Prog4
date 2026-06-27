@@ -17,6 +17,13 @@ from models.base import get_utc_now
 from ..uow import CatalogoDeProductosUnitOfWork
 
 
+def _filter_deleted_subcategorias(categories: List[Categoria]) -> None:
+    """Remove soft-deleted children from each category's subcategorias list, recursively."""
+    for cat in categories:
+        cat.subcategorias = [c for c in cat.subcategorias if c.deleted_at is None]
+        _filter_deleted_subcategorias(cat.subcategorias)
+
+
 class CategoriaService:
     """Business logic for Category CRUD and validation."""
 
@@ -24,35 +31,38 @@ class CategoriaService:
     def get_all(session: Session, skip: int = 0, limit: int = 100, parent_id: int | None = None) -> PaginatedResponse[CategoriaRead]:
         """List categories with optional parent_id filter for subtree navigation.
 
-        Read-only: uses repository directly (no UoW) to avoid commit/expire.
+        Read-only: wrapped in UoW for consistent DB access.
         """
-        repo = CategoriaRepository(session)
-        rows = repo.get_all(skip=skip, limit=limit, parent_id=parent_id)
-        total = repo.count_all()
-        return PaginatedResponse(
-            items=[CategoriaRead.model_validate(r) for r in rows],
-            total=total,
-            skip=skip,
-            limit=limit,
-        )
+        with CatalogoDeProductosUnitOfWork(session) as uow:
+            repo = CategoriaRepository(session)
+            rows = repo.get_all(skip=skip, limit=limit, parent_id=parent_id)
+            total = repo.count_all()
+            return PaginatedResponse(
+                items=[CategoriaRead.model_validate(r) for r in rows],
+                total=total,
+                skip=skip,
+                limit=limit,
+            )
 
     @staticmethod
     def get_by_id(session: Session, categoria_id: int) -> Optional[Categoria]:
         """Fetch a single non-deleted category.
 
-        Read-only: uses repository directly (no UoW).
+        Read-only: wrapped in UoW for consistent DB access.
         """
-        repo = CategoriaRepository(session)
-        return repo.get_by_id(categoria_id)
+        with CatalogoDeProductosUnitOfWork(session) as uow:
+            return uow.categorias.get_by_id(categoria_id)
 
     @staticmethod
     def get_root_categories(session: Session) -> List[Categoria]:
         """Fetch all root categories (no parent) — used to build the category tree.
 
-        Read-only: uses repository directly (no UoW).
+        Read-only: wrapped in UoW for consistent DB access.
         """
-        repo = CategoriaRepository(session)
-        return repo.get_root_categories()
+        with CatalogoDeProductosUnitOfWork(session) as uow:
+            roots = uow.categorias.get_root_categories()
+            _filter_deleted_subcategorias(roots)
+            return roots
 
     @staticmethod
     def create(session: Session, data: CategoriaCreate) -> Categoria:

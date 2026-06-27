@@ -116,7 +116,7 @@ def register(
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/15minutes")
 def login(
-    request: Request,
+    request: Request, #Parametro de Slowapi
     credentials: LoginRequest,
     response: Response,
     session: Session = Depends(get_session),

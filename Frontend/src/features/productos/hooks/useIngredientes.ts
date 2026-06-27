@@ -4,11 +4,13 @@ import type { Ingrediente, IngredienteCreate, IngredienteUpdate } from '../api/i
 import { queryKeys } from '@/shared/api/queryKeys'
 import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/client'
 
-/** Fetches all ingredientes with pagination (skip/limit). Returns full response with total. */
-export function useIngredientes(skip = 0, limit = 10) {
+/** Fetches all ingredientes with pagination (skip/limit) and optional text search. Returns full response with total. */
+export function useIngredientes(skip = 0, limit = 10, search?: string) {
+  let url = `/ingredientes/?skip=${skip}&limit=${limit}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
   return useQuery<PaginatedResponse<Ingrediente>>({
-    queryKey: [...queryKeys.ingredientes.all, skip, limit] as const,
-    queryFn: () => apiFetchPaginatedFull<Ingrediente>(`/ingredientes/?skip=${skip}&limit=${limit}`),
+    queryKey: [...queryKeys.ingredientes.all, skip, limit, search] as const,
+    queryFn: () => apiFetchPaginatedFull<Ingrediente>(url),
   })
 }
 

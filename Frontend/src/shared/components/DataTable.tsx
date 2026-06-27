@@ -56,6 +56,8 @@ export interface DataTableProps<T> {
   emptyMessage?: string;
   /** Optional CSS class for the wrapper. */
   className?: string;
+  /** Optional per-row className function. Receives the row data; return a CSS class string or undefined. */
+  getRowClassName?: (row: T) => string | undefined;
 }
 
 // ── Helpers ──
@@ -87,6 +89,7 @@ export default function DataTable<T>({
   isLoading = false,
   emptyMessage = "No hay datos disponibles",
   className = "",
+  getRowClassName,
 }: DataTableProps<T>) {
   const currentPage = Math.floor(skip / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -156,10 +159,12 @@ export default function DataTable<T>({
 
             {/* ── Data rows ── */}
             {!isLoading &&
-              data.map((row, rowIdx) => (
+              data.map((row, rowIdx) => {
+                const rowClass = getRowClassName ? getRowClassName(row) : undefined;
+                return (
                 <tr
                   key={(row as { id?: number }).id ?? rowIdx}
-                  className="hover:bg-blue-50 transition-colors"
+                  className={`hover:bg-blue-50 transition-colors ${rowClass ?? ""}`}
                 >
                   {columns.map((col) => (
                     <td
@@ -174,7 +179,8 @@ export default function DataTable<T>({
                     </td>
                   ))}
                 </tr>
-              ))}
+                );
+              })}
           </tbody>
         </table>
       </div>

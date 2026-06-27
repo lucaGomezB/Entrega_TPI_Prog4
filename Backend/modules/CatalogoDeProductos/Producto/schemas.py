@@ -7,13 +7,13 @@ leaving (Read) the API for the Product entity.
 from typing import Optional, List
 from decimal import Decimal
 from pydantic import ConfigDict, field_validator
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 
 class IngredienteAsignado(SQLModel):
     """Payload for assigning an ingredient to a product with metadata."""
     ingrediente_id: int = 0
-    cantidad: int = 1
+    cantidad: Decimal = Field(default=Decimal("1"), max_digits=10, decimal_places=3)
     es_removible: bool = True
     es_principal: bool = False
     orden: int = 0
@@ -45,6 +45,7 @@ class ProductoCreate(SQLModel):
     categorias_ids: List[int] = []
     categoria_principal_id: Optional[int] = None
     ingredientes: Optional[List[IngredienteAsignado]] = []
+    unidad_medida_id: Optional[int] = None
 
     @field_validator('categorias_ids')
     @classmethod
@@ -71,6 +72,8 @@ class ProductoUpdate(SQLModel):
     es_insumo: Optional[bool] = None
     imagenes_url: Optional[List[str]] = None
     categorias_ids: Optional[List[int]] = None
+    unidad_medida_id: Optional[int] = None
+    ingredientes: Optional[List[IngredienteAsignado]] = None
 
 
 class ProductoRead(SQLModel):
@@ -108,15 +111,18 @@ class ProductoIngredienteRead(SQLModel):
     """Response schema for an ingredient associated with a product.
 
     Includes data from the link table (cantidad, es_removible, orden)
-    plus the ingredient's name and allergen flag (joined from Ingrediente table).
+    plus the ingredient's name and allergen flag (joined from Ingrediente table),
+    and the unit of measure data (joined from UnidadMedida table).
     """
     ingrediente_id: int
     ingrediente_nombre: str
-    cantidad: int
+    cantidad: Decimal
     es_removible: bool
     es_principal: bool
     orden: int
     es_alergeno: bool
+    unidad_medida_id: Optional[int] = None
+    unidad_medida_simbolo: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 

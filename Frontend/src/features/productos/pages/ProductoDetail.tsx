@@ -166,6 +166,9 @@ export default function ProductoDetail() {
         )}
         <p className="text-2xl font-bold text-blue-700 mt-3">
           ${Number(product.precio_actual || product.precio_base).toFixed(2)}
+          {product.unidad_medida_simbolo && (
+            <> / {product.unidad_medida_simbolo}</>
+          )}
         </p>
 
         {/* Availability */}

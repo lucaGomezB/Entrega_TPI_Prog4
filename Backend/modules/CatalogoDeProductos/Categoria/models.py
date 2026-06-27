@@ -31,11 +31,13 @@ class Categoria(CategoriaBase, SoftDeleteModel, table=True):
     - productos: many-to-many via ProductoCategoria link table
 
     Soft deletion is used — rows are never physically removed from the DB.
+    Soft-deleted children are filtered at the application level in
+    CategoriaService.get_root_categories().
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     productos: List["Producto"] = Relationship(back_populates="categorias", link_model=ProductoCategoria)
     parent: Optional["Categoria"] = Relationship(
         back_populates="subcategorias",
-        sa_relationship_kwargs={"remote_side": "Categoria.id"}
+        sa_relationship_kwargs={"remote_side": "Categoria.id"},
     )
     subcategorias: List["Categoria"] = Relationship(back_populates="parent")

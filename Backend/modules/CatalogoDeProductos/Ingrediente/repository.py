@@ -17,14 +17,15 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
     def __init__(self, session: Session):
         super().__init__(session, Ingrediente)
 
-    def get_all_paginated(self, skip: int = 0, limit: int = 100):
-        """List non-deleted ingredients with pagination, newest first."""
+    def get_all_paginated(self, skip: int = 0, limit: int = 100, search: Optional[str] = None):
+        """List non-deleted ingredients with pagination and optional text search, newest first."""
         statement = (
             select(Ingrediente)
             .where(col(Ingrediente.deleted_at).is_(None))
-            .offset(skip).limit(limit)
-            .order_by(Ingrediente.id.desc())
         )
+        if search:
+            statement = statement.where(col(Ingrediente.nombre).ilike(f"%{search}%"))
+        statement = statement.offset(skip).limit(limit).order_by(Ingrediente.id.desc())
         return self.session.exec(statement).all()
 
     def get_by_id(self, ingrediente_id: int) -> Optional[Ingrediente]:
@@ -36,11 +37,13 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
         )
         return self.session.exec(statement).first()
 
-    def count_all(self) -> int:
-        """Count all non-deleted ingredients."""
+    def count_all(self, search: Optional[str] = None) -> int:
+        """Count all non-deleted ingredients, optionally filtered by name search."""
         from sqlmodel import func
         from sqlalchemy import column
         statement = select(func.count()).select_from(self.model_class)
         statement = statement.where(column("deleted_at").is_(None))
+        if search:
+            statement = statement.where(col(Ingrediente.nombre).ilike(f"%{search}%"))
         result = self.session.exec(statement)
         return result.one()

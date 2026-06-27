@@ -7,13 +7,18 @@ Design decisions (from design.md):
     - tipo is VARCHAR(20) with application-level Literal validation (D3)
 """
 from datetime import datetime, timezone
-from typing import Optional
-from sqlmodel import SQLModel, Field
+from typing import Optional, List, TYPE_CHECKING
+from sqlmodel import SQLModel, Field, Relationship
 
 
 def _utcnow():
     """Return current UTC datetime, timezone-aware."""
     return datetime.now(timezone.utc)
+
+
+if TYPE_CHECKING:
+    from ..Producto.models import Producto
+    from ..producto_ingrediente import ProductoIngrediente
 
 
 class UnidadMedida(SQLModel, table=True):
@@ -34,3 +39,7 @@ class UnidadMedida(SQLModel, table=True):
     simbolo: str = Field(max_length=10, nullable=False, unique=True)
     tipo: str = Field(max_length=20, nullable=False)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+    productos: List["Producto"] = Relationship(back_populates="unidad_medida")
+    producto_ingredientes: List["ProductoIngrediente"] = Relationship(back_populates="unidad_medida")
+    # ingredientes: one-way from Ingrediente side only (avoids circular import)

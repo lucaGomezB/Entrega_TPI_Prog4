@@ -6,7 +6,7 @@ queries: finding users by email, filtering by role, and eager-loading
 role relationships.
 """
 
-from sqlmodel import Session, select, col
+from sqlmodel import Session, select, col, delete
 from sqlalchemy.orm import selectinload
 
 from .models import Usuario
@@ -102,3 +102,15 @@ class UsuarioRepository(BaseRepository[Usuario]):
 
             statement = statement.where(column("deleted_at").is_(None))
         return self.session.exec(statement).first()
+
+    def remove_all_roles(self, usuario_id: int) -> None:
+        """
+        Delete all UsuarioRol links for a given user, then flush.
+
+        Used during role reassignment to atomically replace the entire
+        role set. The flush ensures any subsequent role inserts within
+        the same UoW transaction see a clean state.
+        """
+        stmt = delete(UsuarioRol).where(UsuarioRol.usuario_id == usuario_id)
+        self.session.exec(stmt)
+        self.session.flush()

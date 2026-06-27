@@ -36,6 +36,8 @@ class IngredienteRead(BaseModel):
     es_alergeno: bool = False
     precio_actual: Decimal = Decimal('0')
     stock_actual: int = 0
+    unidad_medida_id: Optional[int] = None
+    unidad_medida_simbolo: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("precio_actual", mode="before")

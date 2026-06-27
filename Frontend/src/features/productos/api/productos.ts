@@ -69,6 +69,7 @@ export interface ProductoUpdate {
   es_insumo?: boolean | null;
   categorias_ids?: number[] | null;
   unidad_medida_id?: number | null;
+  ingredientes?: IngredienteAsignado[];
 }
 
 export interface ProductoIngredienteRead {
@@ -79,6 +80,8 @@ export interface ProductoIngredienteRead {
   orden: number;
   cantidad: number;
   es_alergeno: boolean;
+  unidad_medida_id?: number | null;
+  unidad_medida_simbolo?: string | null;
 }
 
 export interface ProductoCategoriaRead {
@@ -137,11 +140,11 @@ export const productosApi = {
       method: "DELETE",
     }),
 
-  /** Updates the quantity of an assigned ingredient for a product. */
-  updateIngredienteCantidad: (productoId: number, ingredienteId: number, cantidad: number) =>
+  /** Updates the quantity (and optionally unit) of an assigned ingredient for a product. */
+  updateIngredienteCantidad: (productoId: number, ingredienteId: number, cantidad: number, unidad_medida_id?: number | null) =>
     apiFetch<ProductoIngredienteRead[]>(`/productos/${productoId}/ingredientes/${ingredienteId}`, {
       method: "PATCH",
-      body: JSON.stringify({ cantidad }),
+      body: JSON.stringify({ cantidad, ...(unidad_medida_id !== undefined ? { unidad_medida_id } : {}) }),
     }),
 
   // Relaciones Producto-Categoria

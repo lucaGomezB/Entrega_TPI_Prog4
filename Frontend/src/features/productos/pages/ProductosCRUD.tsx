@@ -107,7 +107,7 @@ function IngredienteSelector({ allIngredientes, unidades, selected, onSelect, on
   };
 
   return (
-    <Modal open={true} onClose={onClose} title="Seleccionar Ingredientes / Insumos" maxWidth="max-w-3xl">
+    <Modal open={true} onClose={onClose} title="Seleccionar Ingredientes" maxWidth="max-w-3xl">
       <table className="w-full border-collapse border mb-4">
           <thead><tr className="bg-gray-200">
             <th className="border p-2 text-left">Sel.</th>
@@ -115,8 +115,7 @@ function IngredienteSelector({ allIngredientes, unidades, selected, onSelect, on
             <th className="border p-2 text-left">Alerg.</th>
             <th className="border p-2 text-left">Precio</th>
             <th className="border p-2 text-left">Stock</th>
-            <th className="border p-2 text-left">Cant.</th>
-            <th className="border p-2 text-left">U. Medida</th>
+            <th className="border p-2 text-left">Cantidad</th>
             <th className="border p-2 text-left">Max Prod.</th>
           </tr></thead>
           <tbody>
@@ -130,37 +129,37 @@ function IngredienteSelector({ allIngredientes, unidades, selected, onSelect, on
                 <td className="border p-2">{ing.nombre}</td>
                 <td className="border p-2">{ing.es_alergeno ? "Si" : "No"}</td>
                 <td className="border p-2">${Number(ing.precio_actual).toFixed(2)}</td>
-                <td className="border p-2">{ing.stock_actual}</td>
                 <td className="border p-2">
-                  {sel && (
-                    <input type="number" min="1"
-                      value={sel.cantidad}
-                      onChange={(e) => {
-                        const newCant = parseInt(e.target.value) || 1;
-                        setLocalSelected(prev =>
-                          prev.map(s => s.id === ing.id ? { ...s, cantidad: newCant } : s)
-                        );
-                      }}
-                      className="border px-2 py-1 rounded w-16" />
-                  )}
+                  {ing.stock_actual}{ing.unidad_medida_simbolo ? ` ${ing.unidad_medida_simbolo}` : ""}
                 </td>
                 <td className="border p-2">
                   {sel && (
-                    <select
-                      value={sel.unidad_medida_id ?? ""}
-                      onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : null;
-                        setLocalSelected(prev =>
-                          prev.map(s => s.id === ing.id ? { ...s, unidad_medida_id: val } : s)
-                        );
-                      }}
-                      className="border px-1 py-1 rounded w-24 text-xs"
-                    >
-                      <option value="">--</option>
-                      {unidades.map((u) => (
-                        <option key={u.id} value={u.id}>{u.simbolo}</option>
-                      ))}
-                    </select>
+                    <span className="inline-flex items-center gap-1">
+                      <input type="number" step="0.001" min="0.001"
+                        value={sel.cantidad}
+                        onChange={(e) => {
+                          const newCant = Number(e.target.value) || 0.001;
+                          setLocalSelected(prev =>
+                            prev.map(s => s.id === ing.id ? { ...s, cantidad: newCant } : s)
+                          );
+                        }}
+                        className="border px-2 py-1 rounded w-16" />
+                      <select
+                        value={sel.unidad_medida_id ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : null;
+                          setLocalSelected(prev =>
+                            prev.map(s => s.id === ing.id ? { ...s, unidad_medida_id: val } : s)
+                          );
+                        }}
+                        className="border px-1 py-1 rounded text-xs"
+                      >
+                        <option value="">--</option>
+                        {unidades.map((u) => (
+                          <option key={u.id} value={u.id}>{u.simbolo}</option>
+                        ))}
+                      </select>
+                    </span>
                   )}
                 </td>
                 <td className="border p-2">
@@ -181,8 +180,9 @@ function IngredienteSelector({ allIngredientes, unidades, selected, onSelect, on
 
 /* ── Popup de Ingredientes ── */
 
-function IngredientesPopup({ productoId, productoNombre, unidades, onClose }: {
+function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIngredientsChange }: {
   productoId: number; productoNombre: string; unidades: UnidadMedida[]; onClose: () => void;
+  onIngredientsChange?: (ings: { ingrediente_id: number; cantidad: number; unidad_medida_id?: number | null }[]) => void;
 }) {
   const [ings, setIngs] = useState<ProductoIngredienteRead[]>([]);
   const [allIngs, setAllIngs] = useState<Ingrediente[]>([]);
@@ -210,7 +210,14 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose }: {
     ]);
     setIngs(prodIngs);
     setAllIngs(available);
-  }, [productoId]);
+    if (onIngredientsChange) {
+      onIngredientsChange(prodIngs.map(ing => ({
+        ingrediente_id: ing.ingrediente_id,
+        cantidad: ing.cantidad,
+        unidad_medida_id: ing.unidad_medida_id ?? null,
+      })));
+    }
+  }, [productoId, onIngredientsChange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -220,23 +227,25 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose }: {
       await productosApi.addIngrediente(productoId, addForm);
       setShowAdd(false);
       setAddForm({ ingrediente_id: 0, cantidad: 1, es_removible: true, es_principal: false, orden: 0, unidad_medida_id: null });
-      refresh();
+      await refresh();
       addToast('exito', 'Ingrediente agregado correctamente');
     } catch {
       addToast('error', 'Error al agregar ingrediente');
     }
   };
 
-  const handleCantidadChange = async (ingredienteId: number, newCantidad: number) => {
-    if (newCantidad < 1) return;
+  const handleCantidadChange = async (ingredienteId: number, newCantidad: number, unidadMedidaId?: number | null) => {
+    if (newCantidad <= 0) return;
     setUpdatingCantidad(ingredienteId);
-    setIngs(prev => prev.map(ing =>
+    const updatedIngs = ings.map(ing =>
       ing.ingrediente_id === ingredienteId
         ? { ...ing, cantidad: newCantidad }
         : ing
-    ));
+    );
+    setIngs(updatedIngs);
     try {
-      await productosApi.updateIngredienteCantidad(productoId, ingredienteId, newCantidad);
+      await productosApi.updateIngredienteCantidad(productoId, ingredienteId, newCantidad, unidadMedidaId);
+      notifyIngredientsChanged(updatedIngs);
     } catch {
       refresh();
     } finally {
@@ -248,10 +257,20 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose }: {
     if (!confirm("Quitar este ingrediente?")) return;
     try {
       await productosApi.removeIngrediente(productoId, ingredienteId);
-      refresh();
+      await refresh();
       addToast('exito', 'Ingrediente quitado correctamente');
     } catch {
       addToast('error', 'Error al quitar ingrediente');
+    }
+  };
+
+  const notifyIngredientsChanged = (currentIngs: ProductoIngredienteRead[]) => {
+    if (onIngredientsChange) {
+      onIngredientsChange(currentIngs.map(ing => ({
+        ingrediente_id: ing.ingrediente_id,
+        cantidad: ing.cantidad,
+        unidad_medida_id: ing.unidad_medida_id ?? null,
+      })));
     }
   };
 
@@ -279,7 +298,7 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose }: {
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded p-6 w-full max-w-2xl max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Ingredientes / Insumos de &quot;{productoNombre}&quot;</h2>
+          <h2 className="text-lg font-bold">Ingredientes de &quot;{productoNombre}&quot;</h2>
           <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
         </div>
 
@@ -318,11 +337,16 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose }: {
                               <td className="border p-2">{ing.orden}</td>
                               <td className="border p-2">{ing.ingrediente_nombre}</td>
                               <td className="border p-2">
-                                <input type="number" min="1"
-                                  value={ing.cantidad}
-                                  disabled={updatingCantidad === ing.ingrediente_id}
-                                  onChange={(e) => handleCantidadChange(ing.ingrediente_id, parseInt(e.target.value) || 1)}
-                                  className="border px-2 py-1 rounded w-20" />
+                                <span className="inline-flex items-center gap-1">
+                                  <input type="number" step="0.001" min="0.001"
+                                    value={ing.cantidad}
+                                    disabled={updatingCantidad === ing.ingrediente_id}
+                                    onChange={(e) => handleCantidadChange(ing.ingrediente_id, Number(e.target.value) || 0.001, ing.unidad_medida_id)}
+                                    className="border px-2 py-1 rounded w-20" />
+                                  <span className="text-gray-600 text-sm font-medium">
+                                    {ing.unidad_medida_simbolo ?? ""}
+                                  </span>
+                                </span>
                               </td>
                               <td className="border p-2 font-mono">
                                 ${cost.toFixed(2)}
@@ -385,28 +409,27 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose }: {
                   </div>
                   <div>
                     <label className="block text-sm font-medium">Cantidad</label>
-                    <input type="number" min="1" value={addForm.cantidad}
-                      onChange={(e) => setAddForm({ ...addForm, cantidad: parseInt(e.target.value) || 1 })}
-                      className="border px-2 py-1 rounded w-full" />
+                    <span className="inline-flex gap-1">
+                      <input type="number" step="0.001" min="0.001" value={addForm.cantidad}
+                        onChange={(e) => setAddForm({ ...addForm, cantidad: Number(e.target.value) || 0.001 })}
+                        className="border px-2 py-1 rounded w-20" />
+                      <select
+                        value={addForm.unidad_medida_id ?? ""}
+                        onChange={(e) => setAddForm({ ...addForm, unidad_medida_id: e.target.value ? Number(e.target.value) : null })}
+                        className="border px-1 py-1 rounded text-sm flex-1"
+                      >
+                        <option value="">--</option>
+                        {unidades.map((u) => (
+                          <option key={u.id} value={u.id}>{u.simbolo}</option>
+                        ))}
+                      </select>
+                    </span>
                   </div>
                   <div>
                     <label className="block text-sm font-medium">Orden</label>
                     <input type="number" value={addForm.orden}
                       onChange={(e) => setAddForm({ ...addForm, orden: Number(e.target.value) })}
                       className="border px-2 py-1 rounded w-full" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium">Unidad Medida</label>
-                    <select
-                      value={addForm.unidad_medida_id ?? ""}
-                      onChange={(e) => setAddForm({ ...addForm, unidad_medida_id: e.target.value ? Number(e.target.value) : null })}
-                      className="border px-2 py-1 rounded w-full"
-                    >
-                      <option value="">-- Sin unidad --</option>
-                      {unidades.map((u) => (
-                        <option key={u.id} value={u.id}>{u.nombre} ({u.simbolo})</option>
-                      ))}
-                    </select>
                   </div>
                   <div className="flex items-center gap-2">
                     <label className="text-sm">Removible</label>
@@ -573,6 +596,17 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const [skip, setSkip] = useState(0);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [filter, setFilter] = useState("");
+  const [debouncedFilter, setDebouncedFilter] = useState("");
+
+  // Debounce filter: wait 300ms after last keystroke before sending search to API
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFilter(filter);
+      setSkip(0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [filter]);
+
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [stockEditOnly, setStockEditOnly] = useState(false);
@@ -582,6 +616,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const [showIngredienteSelector, setShowIngredienteSelector] = useState(false);
   const [ingPopup, setIngPopup] = useState<{ id: number; nombre: string } | null>(null);
   const [catPopup, setCatPopup] = useState<{ id: number; nombre: string } | null>(null);
+  const [pendingIngredientesUpdate, setPendingIngredientesUpdate] = useState<{ ingrediente_id: number; cantidad: number; unidad_medida_id?: number | null }[] | null>(null);
   const [recentlyAdded, setRecentlyAdded] = useState<Set<number>>(new Set());
   const addTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -591,7 +626,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const [uploadingImages, setUploadingImages] = useState(false);
 
   // ── TanStack Query: products (paginated) ──
-  const { data, isLoading, isError, error } = useProductos(skip, limit);
+  const { data, isLoading, isError, error } = useProductos(skip, limit, debouncedFilter || undefined);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
@@ -759,7 +794,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       imagenes_url: [],
       categorias_ids: [],
       ingredientes: [],
-      unidad_medida_id: null,
+      unidad_medida_id: 5,
     },
     onSubmit: async ({ value }) => {
       try {
@@ -768,6 +803,8 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             await updateMutation.mutateAsync({ id: editingId, data: {
               stock_cantidad: value.stock_cantidad,
               disponible: value.disponible,
+              es_insumo: value.es_insumo,
+              unidad_medida_id: value.unidad_medida_id,
             }});
           } else {
             const original = items.find(p => p.id === editingId);
@@ -785,6 +822,13 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             }
             if (Number(value.tiempo_prep_min) !== Number(original?.tiempo_prep_min ?? 0)) changed.tiempo_prep_min = value.tiempo_prep_min;
             if (value.unidad_medida_id !== original?.unidad_medida_id) changed.unidad_medida_id = value.unidad_medida_id ?? null;
+            if (pendingIngredientesUpdate) {
+              changed.ingredientes = pendingIngredientesUpdate.map(pi => ({
+                ingrediente_id: pi.ingrediente_id,
+                cantidad: pi.cantidad,
+                unidad_medida_id: pi.unidad_medida_id ?? null,
+              }));
+            }
             await updateMutation.mutateAsync({ id: editingId, data: changed });
           }
           addToast('exito', 'Producto actualizado correctamente');
@@ -870,6 +914,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     setStockEditOnly(false);
     setSelectedCategorias([]);
     setSelectedIngredientes([]);
+    setPendingIngredientesUpdate(null);
   };
 
   const handleStartStockEdit = (prod: Producto) => {
@@ -892,6 +937,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     setStockEditOnly(true);
     setSelectedCategorias([]);
     setSelectedIngredientes([]);
+    setPendingIngredientesUpdate(null);
   };
 
   const handleCloseForm = () => {
@@ -904,6 +950,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     setSelectedIngredientes([]);
     setShowCategoriaSelector(false);
     setShowIngredienteSelector(false);
+    setPendingIngredientesUpdate(null);
   };
 
   const handleDelete = async (id: number) => {
@@ -939,9 +986,15 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       key: "stock_cantidad" as const,
       label: "Stock",
       render: (p: Producto) => (
-        <span className={`font-mono font-semibold text-sm ${p.stock_cantidad === 0 ? 'text-red-600' : 'text-green-700'}`}>
-          {p.stock_cantidad}
-        </span>
+        p.stock_cantidad === 0 ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+            Sin stock
+          </span>
+        ) : (
+          <span className="font-mono font-semibold text-sm text-green-700">
+            {p.stock_cantidad}
+          </span>
+        )
       ),
     }] : []),
     ...(!readOnly && !isStockMode ? [{
@@ -955,7 +1008,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       label: "Disponible",
       render: (p: Producto) => (
         <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${p.disponible ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-          {p.disponible ? "Si" : "No"}
+          {p.disponible ? "Disponible" : "No disponible"}
         </span>
       ),
     },
@@ -969,12 +1022,12 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     }] : []),
     ...(!readOnly && (!isStockMode || role === 'stock') ? [{
       key: "relaciones" as const,
-      label: isStockMode ? "Ingredientes" : "Relaciones",
+      label: isStockMode ? "Ingredientes" : "Componentes",
       hideOnMobile: true,
       render: (p: Producto) => (
         <div className="flex gap-1">
           <button onClick={() => setIngPopup({ id: p.id, nombre: p.nombre })}
-            className="bg-purple-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-purple-700 transition-colors">Insumos</button>
+            className="bg-purple-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-purple-700 transition-colors">Ingredientes</button>
           {!hideCategoriasBtn && (
             <button onClick={() => setCatPopup({ id: p.id, nombre: p.nombre })}
               className="bg-teal-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-teal-700 transition-colors">Categorias</button>
@@ -1089,6 +1142,24 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                   </div>
                 )}
               </form.Field>
+              {!readOnly && (
+                <form.Field name="unidad_medida_id">
+                  {(field) => (
+                    <div>
+                      <label className="block text-sm font-medium">Unidad de Medida</label>
+                      <select value={field.state.value ?? ""}
+                        onChange={(e) => field.handleChange(e.target.value ? Number(e.target.value) : null)}
+                        onBlur={field.handleBlur}
+                        className="border px-2 py-1 rounded w-full">
+                        <option value="5">Por unidad</option>
+                        {unidades.map((u) => (
+                          <option key={u.id} value={u.id}>{u.simbolo} ({u.nombre})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </form.Field>
+              )}
             </div>
           ) : (
             <>
@@ -1116,7 +1187,17 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 )}
               </form.Field>
               <div>
-                <label className="block text-sm font-medium">Precio Base</label>
+                <label className="block text-sm font-medium">
+                  Precio Base
+                  {(() => {
+                    const unidadId = form.getFieldValue('unidad_medida_id');
+                    if (unidadId) {
+                      const u = unidades.find(un => un.id === unidadId);
+                      if (u) return <span className="text-gray-500 font-normal"> / {u.simbolo}</span>;
+                    }
+                    return null;
+                  })()}
+                </label>
                 {(() => {
                   const editingProduct = editingId ? items.find(p => p.id === editingId) : null;
                   const hasIngredients = editingProduct?.tiene_ingredientes ?? false;
@@ -1147,7 +1228,17 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 })()}
               </div>
               <div>
-                <label className="block text-sm font-medium">Precio de venta</label>
+                <label className="block text-sm font-medium">
+                  Precio de venta
+                  {(() => {
+                    const unidadId = form.getFieldValue('unidad_medida_id');
+                    if (unidadId) {
+                      const u = unidades.find(un => un.id === unidadId);
+                      if (u) return <span className="text-gray-500 font-normal"> / {u.simbolo}</span>;
+                    }
+                    return null;
+                  })()}
+                </label>
                 <form.Field name="precio_actual">
                   {(field) => (
                     <input type="number" step="0.01" value={field.state.value ?? 0}
@@ -1157,11 +1248,12 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                   )}
                 </form.Field>
               </div>
-              <div className="col-span-2">
-                <form.Field name="receta">
-                  {(field) => (
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Receta / Preparacion</label>
+              {!form.getFieldValue('es_insumo') && (
+                <div className="col-span-2">
+                  <form.Field name="receta">
+                    {(field) => (
+                      <div>
+                        <label className="block text-sm font-medium mb-1">Receta / Preparacion</label>
                       <textarea value={field.state.value ?? ""}
                         onChange={(e) => field.handleChange(e.target.value)}
                         onBlur={field.handleBlur}
@@ -1172,6 +1264,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                   )}
                 </form.Field>
               </div>
+              )}
               <form.Field name="stock_cantidad">
                 {(field) => (
                   <div>
@@ -1203,6 +1296,16 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                   </div>
                 )}
               </form.Field>
+              <form.Field name="es_insumo">
+                {(field) => (
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={field.state.value ?? false}
+                      onChange={(e) => field.handleChange(e.target.checked)}
+                      className="cursor-pointer" />
+                    <label className="text-sm font-medium">Es Insumo? (revender sin receta)</label>
+                  </div>
+                )}
+              </form.Field>
               <form.Field name="unidad_medida_id">
                 {(field) => (
                   <div>
@@ -1210,7 +1313,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                     <select value={field.state.value ?? ""}
                       onChange={(e) => field.handleChange(e.target.value ? Number(e.target.value) : null)}
                       className="border px-2 py-1 rounded w-full">
-                      <option value="">-- Sin unidad --</option>
+                      <option value="5">Por unidad</option>
                       {["masa", "volumen", "unidad", "area"].map((tipo) => {
                         const grupo = unidades.filter((u) => u.tipo === tipo);
                         if (grupo.length === 0) return null;
@@ -1275,7 +1378,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
 
               {!form.getFieldValue('es_insumo') && (
               <div className="border p-4 mb-4 rounded bg-gray-50">
-                <h3 className="text-lg font-medium mb-2">Ingredientes / Insumos</h3>
+                <h3 className="text-lg font-medium mb-2">Ingredientes</h3>
                 {selectedIngredientes.length > 0 && (
                   <table className="w-full border-collapse border mb-2">
                     <thead><tr className="bg-gray-200">
@@ -1285,21 +1388,24 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                       <th className="border p-2 text-left">Accion</th>
                     </tr></thead>
                     <tbody>
-                      {selectedIngredientes.map((i) => (
+                      {selectedIngredientes.map((i) => {
+                        const u = unidades.find(un => un.id === i.unidad_medida_id);
+                        return (
                         <tr key={i.id}>
                           <td className="border p-2">{i.nombre}</td>
                           <td className="border p-2">{i.es_alergeno ? "Si" : "No"}</td>
-                          <td className="border p-2">{i.cantidad}</td>
+                          <td className="border p-2">{i.cantidad}{u ? ` ${u.simbolo}` : ""}</td>
                           <td className="border p-2">
                             <button type="button" onClick={() => setSelectedIngredientes(prev => prev.filter(si => si.id !== i.id))} className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Quitar</button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}
                 <button type="button" onClick={() => setShowIngredienteSelector(true)}
-                  className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Seleccionar Insumos</button>
+                  className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Seleccionar Ingredientes</button>
               </div>
               )}
             </>
@@ -1325,6 +1431,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         isLoading={isLoading}
+        getRowClassName={(p: Producto) => !p.disponible ? "bg-gray-100 opacity-60" : undefined}
       />
 
       {/* Extra actions below table */}
@@ -1341,7 +1448,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       </div>
 
       {/* Popups */}
-      {ingPopup && <IngredientesPopup productoId={ingPopup.id} productoNombre={ingPopup.nombre} unidades={unidades} onClose={() => setIngPopup(null)} />}
+      {ingPopup && <IngredientesPopup productoId={ingPopup.id} productoNombre={ingPopup.nombre} unidades={unidades} onClose={() => setIngPopup(null)} onIngredientsChange={setPendingIngredientesUpdate} />}
       {catPopup && <CategoriasPopup productoId={catPopup.id} productoNombre={catPopup.nombre} onClose={() => setCatPopup(null)} />}
       {showCategoriaSelector && (
         <CategoriaSelector

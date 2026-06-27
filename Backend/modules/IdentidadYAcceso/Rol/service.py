@@ -61,5 +61,5 @@ def delete_rol(session: Session, codigo: str):
     with IdentidadYAccesoUnitOfWork(session) as uow:
         db_rol = uow.roles.get_by_codigo(codigo)
         if db_rol:
-            uow.session.delete(db_rol)
+            uow.delete(db_rol)
         return db_rol

@@ -37,25 +37,27 @@ from core.dependencies import fire_broadcast, fire_broadcast_admin, get_ws_manag
 
 logger = logging.getLogger(__name__)
 
-# ── MercadoPago SDK singleton (lazy init) ──
+# ── MercadoPago SDK singleton ──
 _sdk: mercadopago.SDK | None = None
+_cached_token: str | None = None
 
 
 def _get_mp_sdk() -> mercadopago.SDK:
-    """Return a singleton MercadoPago SDK instance.
+    """Return a MercadoPago SDK instance.
 
-    Reads MP_ACCESS_TOKEN from environment on first call.
-    Raises RuntimeError if the token is missing or still a placeholder.
+    Reads MP_ACCESS_TOKEN from environment. The SDK is re-created when
+    the token changes (supports hot-reload of .env without restart).
     """
-    global _sdk
-    if _sdk is None:
-        token = os.getenv("MP_ACCESS_TOKEN", "")
-        if not token or "000000" in token:
-            raise RuntimeError(
-                "MP_ACCESS_TOKEN no configurado o es un placeholder. "
-                "Configuralo en Backend/.env con un token real de MercadoPago."
-            )
+    global _sdk, _cached_token
+    token = os.getenv("MP_ACCESS_TOKEN", "")
+    if not token or "000000" in token:
+        raise RuntimeError(
+            "MP_ACCESS_TOKEN no configurado o es un placeholder. "
+            "Configuralo en Backend/.env con un token real de MercadoPago."
+        )
+    if _sdk is None or token != _cached_token:
         _sdk = mercadopago.SDK(token)
+        _cached_token = token
     return _sdk
 
 
@@ -145,6 +147,27 @@ class PagoService:
 
         # ── Step 2: Idempotency — detect duplicate init ──
         fingerprint = _cart_fingerprint(data, usuario.id)
+
+        # Check for existing Pago with same idempotency key (double-click guard)
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            existing_pago = uow.pagos.get_by_idempotency_key(fingerprint)
+            if existing_pago:
+                # Return the existing pago — re-create the init_point if needed
+                pago_read = PagoRead.model_validate(existing_pago)
+                # Try to get a fresh init_point in case the old one expired
+                try:
+                    sdk = _get_mp_sdk()
+                    mp_pago = sdk.payment().get(existing_pago.mp_payment_id)
+                    mp_data = mp_pago.get("response", {})
+                    init_point = (
+                        mp_data.get("sandbox_init_point")
+                        or mp_data.get("init_point")
+                    )
+                    if init_point:
+                        return pago_read, init_point, None
+                except Exception:
+                    pass  # fall through — MP lookup failed, but Pago exists
+                return pago_read, None, None
 
         # ── Step 3: Generate external_reference (shared with snapshot) ──
         external_reference = str(uuid.uuid4())
@@ -252,12 +275,15 @@ class PagoService:
                 response_data = preference_response.get("response", {})
 
                 if preference_response.get("status") not in (200, 201):
+                    mp_message = preference_response.get("response", {}).get("message", "unknown error")
+                    mp_status = preference_response.get("status", "?")
                     logger.error(
-                        "MP preference creation failed: %s",
-                        preference_response.get("response", {}).get("message", "unknown error"),
+                        "MP preference creation failed [status=%s]: %s",
+                        mp_status, mp_message,
                     )
+                    logger.error("Full MP response: %s", preference_response)
                     pago_read = PagoRead.model_validate(pago)
-                    return pago_read, None
+                    return pago_read, None, f"MP[{mp_status}]: {mp_message}"
 
                 init_point = (
                     response_data.get("sandbox_init_point")
@@ -272,12 +298,12 @@ class PagoService:
                     uow.add(pago)
 
                 pago_read = PagoRead.model_validate(pago)
-                return pago_read, init_point
+                return pago_read, init_point, None
 
             except Exception as exc:
                 logger.exception("Error creating MP preference from cart for user %s", usuario.id)
                 pago_read = PagoRead.model_validate(pago)
-                return pago_read, None
+                return pago_read, None, str(exc)
 
     # ──────────────────────────────────────────────────────────────────────
     # LEGACY: init_mp_payment — kept for backward-compat, deprecated

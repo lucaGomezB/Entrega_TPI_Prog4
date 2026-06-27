@@ -4,11 +4,13 @@ import type { Producto, ProductoCreate, ProductoUpdate } from '../api/productos'
 import { queryKeys } from '@/shared/api/queryKeys'
 import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/client'
 
-/** Fetches all productos with pagination (skip/limit). Returns full response with total. */
-export function useProductos(skip = 0, limit = 10) {
+/** Fetches all productos with pagination (skip/limit) and optional text search. Returns full response with total. */
+export function useProductos(skip = 0, limit = 10, search?: string) {
+  let url = `/productos/?skip=${skip}&limit=${limit}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
   return useQuery<PaginatedResponse<Producto>>({
-    queryKey: queryKeys.productos.list({ skip, limit }),
-    queryFn: () => apiFetchPaginatedFull<Producto>(`/productos/?skip=${skip}&limit=${limit}`),
+    queryKey: queryKeys.productos.list({ skip, limit, search }),
+    queryFn: () => apiFetchPaginatedFull<Producto>(url),
   })
 }
 

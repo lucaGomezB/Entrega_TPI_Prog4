@@ -43,6 +43,7 @@ function EditarUsuarioModal({
     usuario.roles.map((r) => r.codigo)
   );
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   interface EditarForm {
     nombre: string;
@@ -69,6 +70,10 @@ function EditarUsuarioModal({
           roles_codigos: rolesSel,
         });
         onClose();
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } };
+        const msg = axiosErr?.response?.data?.detail ?? (err as Error).message ?? 'Error desconocido';
+        setError(msg);
       } finally {
         setGuardando(false);
       }
@@ -88,6 +93,7 @@ function EditarUsuarioModal({
       <div className="bg-white rounded p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold mb-4">Editar Usuario #{usuario.id}</h2>
         <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
+          {error && <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
@@ -183,6 +189,10 @@ function CrearUsuarioModal({
           roles_codigos: rolesSel,
         });
         onClose();
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { detail?: string } } };
+        const msg = axiosErr?.response?.data?.detail ?? (err as Error).message ?? 'Error desconocido';
+        setError(msg);
       } finally {
         setGuardando(false);
       }

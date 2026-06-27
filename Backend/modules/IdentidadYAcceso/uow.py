@@ -63,3 +63,22 @@ class IdentidadYAccesoUnitOfWork:
     def rollback(self):
         """Undo all pending changes since the last commit."""
         self.session.rollback()
+
+    def add(self, entity):
+        """
+        Stage any entity (including join-table rows like UsuarioRol)
+        for insert/update in the current session.
+
+        This is a generic pass-through to session.add() for entities
+        that are not covered by the typed domain repositories.
+        """
+        self.session.add(entity)
+
+    def delete(self, entity):
+        """
+        Stage any entity for hard-delete in the current session.
+
+        This is a generic pass-through to session.delete() for entities
+        that are not covered by the typed domain repositories.
+        """
+        self.session.delete(entity)

@@ -102,11 +102,6 @@ export default function ProductosCliente() {
     return map;
   }, [categorias]);
 
-  // Get the first available category image for any product
-  const firstCategoryImages = Object.values(categoryImagesMap).find(
-    (urls) => urls.length > 0
-  );
-
   // ── Derived data ──
 
   /** Filter: only available products matching the text filter AND selected category. */
@@ -192,7 +187,11 @@ export default function ProductosCliente() {
                 product={prod}
                 onAddToCart={handleAddToCart}
                 recentlyAdded={recentlyAdded}
-                categoryImages={firstCategoryImages}
+                categoryImages={
+                  prod.categoria_principal_id
+                    ? categoryImagesMap[prod.categoria_principal_id]
+                    : undefined
+                }
               />
             ))}
           </div>

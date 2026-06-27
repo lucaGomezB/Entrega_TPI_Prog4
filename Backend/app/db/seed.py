@@ -94,39 +94,77 @@ CATEGORIAS_SEED = [
 
 # Ingredients with stock levels, prices, and allergen flags.
 # es_alergeno=True means this ingredient is a common allergen.
+# Names are CLEAN — no unit suffixes. Unit/quantity data is now structured
+# in ProductoIngrediente rows via unidad_medida_id and Decimal cantidad.
 INGREDIENTES_SEED = [
-    ("Pan de Hamburguesa x und",     "Pan suave para hamburguesas, unidad",                                 False, Decimal("50"),   500),
-    ("Pan de Miga x und",           "Pan de miga para sandwich, unidad",                                    False, Decimal("60"),   300),
-    ("Pan Ciabatta x und",          "Pan italiano tipo ciabatta, unidad",                                   False, Decimal("80"),   200),
-    ("Medallón de Carne Res x und", "Medallón de carne vacuna, unidad",                                     False, Decimal("200"),  200),
-    ("Pechuga de Pollo x kg",       "Pechuga de pollo fresca, por kilogramo",                               False, Decimal("1800"), 50),
-    ("Queso Cheddar x kg",          "Queso cheddar, por kilogramo",                                         True,  Decimal("800"),  30),
-    ("Queso Mozzarella x kg",       "Queso mozzarella, por kilogramo",                                      True,  Decimal("900"),  25),
-    ("Lechuga x und",               "Lechuga fresca, unidad",                                               False, Decimal("30"),   150),
-    ("Tomate x kg",                 "Tomate fresco, por kilogramo",                                         False, Decimal("250"),  18),
-    ("Cebolla x kg",                "Cebolla fresca, por kilogramo",                                        False, Decimal("200"),  20),
-    ("Huevo x docena",              "Huevo fresco, por docena",                                             True,  Decimal("180"),  50),
-    ("Mayonesa x 1 lt",             "Mayonesa, por litro",                                                  True,  Decimal("400"),  20),
-    ("Mostaza x 1 lt",              "Mostaza, por litro",                                                   False, Decimal("350"),  15),
-    ("Ketchup x 1 lt",              "Kétchup, por litro",                                                   False, Decimal("300"),  20),
-    ("Papa x kg",                   "Papa fresca, por kilogramo",                                           False, Decimal("450"),  60),
-    ("Aceite Girasol x 1 lt",       "Aceite de girasol, por litro",                                         False, Decimal("600"),  20),
-    ("Sal Fina x 1 kg",             "Sal fina, por kilogramo",                                              False, Decimal("100"),  20),
-    ("Café Molido x 1/2 kg",        "Café molido, por medio kilogramo",                                     False, Decimal("1500"), 10),
-    ("Cartón de Leche Entera 1 lt", "Leche entera pasteurizada, por litro",                                 True,  Decimal("700"),  30),
-    ("Crema de Leche x 1 lt",       "Crema de leche, por litro",                                            True,  Decimal("900"),  15),
-    ("Chocolate cobertura x kg",    "Chocolate para cobertura, por kilogramo",                              True,  Decimal("1200"), 10),
-    ("Paquete de Harina 0000 1 kg", "Harina 0000, por kilogramo",                                           True,  Decimal("400"),  40),
-    ("Azúcar x kg",                 "Azúcar refinada, por kilogramo",                                       False, Decimal("350"),  30),
-    ("Agua mineral x 1 lt",         "Agua mineral sin gas, por litro",                                      False, Decimal("50"),   200),
-    ("Gasificación x 1 lt",         "Agua gasificada, por litro",                                           False, Decimal("100"),  50),
-    ("Levadura x 100 gr",           "Levadura fresca, por 100 gramos",                                      False, Decimal("250"),  20),
-    ("Manteca x 200 gr",            "Manteca, por 200 gramos",                                              True,  Decimal("800"),  15),
-    ("Dulce de Leche x 1 kg",       "Dulce de leche, por kilogramo",                                        True,  Decimal("1100"), 10),
-    ("Esencia de Vainilla x 50 ml", "Esencia de vainilla, por 50 mililitros",                               False, Decimal("200"),  20),
-    ("Hielo x bolsa 2 kg",          "Hielo en bolsa, por 2 kilogramos",                                     False, Decimal("50"),   100),
-    ("Jamón Cocido x kg",           "Jamón cocido, por kilogramo",                                          False, Decimal("1200"), 15),
+    ("Pan de Hamburguesa",     "Pan suave para hamburguesas",                                      False, Decimal("50"),   500),
+    ("Pan de Miga",            "Pan de miga para sandwich",                                        False, Decimal("60"),   300),
+    ("Pan Ciabatta",           "Pan italiano tipo ciabatta",                                       False, Decimal("80"),   200),
+    ("Medallón de Carne Res",  "Medallón de carne vacuna",                                         False, Decimal("200"),  200),
+    ("Pechuga de Pollo",       "Pechuga de pollo fresca",                                          False, Decimal("1800"), 50),
+    ("Queso Cheddar",          "Queso cheddar",                                                    True,  Decimal("800"),  30),
+    ("Queso Mozzarella",       "Queso mozzarella",                                                 True,  Decimal("900"),  25),
+    ("Lechuga",                "Lechuga fresca",                                                   False, Decimal("30"),   150),
+    ("Tomate",                 "Tomate fresco",                                                    False, Decimal("250"),  18),
+    ("Cebolla",                "Cebolla fresca",                                                   False, Decimal("200"),  20),
+    ("Huevo",                  "Huevo fresco",                                                     True,  Decimal("180"),  50),
+    ("Mayonesa",               "Mayonesa",                                                         True,  Decimal("400"),  20),
+    ("Mostaza",                "Mostaza",                                                          False, Decimal("350"),  15),
+    ("Ketchup",                "Ketchup",                                                          False, Decimal("300"),  20),
+    ("Papa",                   "Papa fresca",                                                      False, Decimal("450"),  60),
+    ("Aceite Girasol",         "Aceite de girasol",                                                False, Decimal("600"),  20),
+    ("Sal Fina",               "Sal fina",                                                         False, Decimal("100"),  20),
+    ("Café Molido",            "Café molido",                                                      False, Decimal("1500"), 10),
+    ("Leche Entera",           "Leche entera pasteurizada",                                        True,  Decimal("700"),  30),
+    ("Crema de Leche",         "Crema de leche",                                                   True,  Decimal("900"),  15),
+    ("Chocolate Cobertura",    "Chocolate para cobertura",                                         True,  Decimal("1200"), 10),
+    ("Harina 0000",            "Harina 0000",                                                      True,  Decimal("400"),  40),
+    ("Azúcar",                 "Azúcar refinada",                                                  False, Decimal("350"),  30),
+    ("Agua Mineral",           "Agua mineral sin gas",                                             False, Decimal("50"),   200),
+    ("Gasificación",           "Agua gasificada",                                                  False, Decimal("100"),  50),
+    ("Levadura",               "Levadura fresca",                                                  False, Decimal("250"),  20),
+    ("Manteca",                "Manteca",                                                          True,  Decimal("800"),  15),
+    ("Dulce de Leche",         "Dulce de leche",                                                   True,  Decimal("1100"), 10),
+    ("Esencia de Vainilla",    "Esencia de vainilla",                                              False, Decimal("200"),  20),
+    ("Hielo",                  "Hielo en bolsa",                                                   False, Decimal("50"),   100),
+    ("Jamón Cocido",           "Jamón cocido",                                                     False, Decimal("1200"), 15),
 ]
+
+# Mapping old suffixed ingredient names to new clean names.
+# Used by the seeder for idempotent rename (task 7.9).
+_INGREDIENT_NAME_RENAME = {
+    "Pan de Hamburguesa x und":     "Pan de Hamburguesa",
+    "Pan de Miga x und":           "Pan de Miga",
+    "Pan Ciabatta x und":          "Pan Ciabatta",
+    "Medallón de Carne Res x und": "Medallón de Carne Res",
+    "Pechuga de Pollo x kg":       "Pechuga de Pollo",
+    "Queso Cheddar x kg":          "Queso Cheddar",
+    "Queso Mozzarella x kg":       "Queso Mozzarella",
+    "Lechuga x und":               "Lechuga",
+    "Tomate x kg":                 "Tomate",
+    "Cebolla x kg":                "Cebolla",
+    "Huevo x docena":              "Huevo",
+    "Mayonesa x 1 lt":             "Mayonesa",
+    "Mostaza x 1 lt":              "Mostaza",
+    "Ketchup x 1 lt":              "Ketchup",
+    "Papa x kg":                   "Papa",
+    "Aceite Girasol x 1 lt":       "Aceite Girasol",
+    "Sal Fina x 1 kg":             "Sal Fina",
+    "Café Molido x 1/2 kg":        "Café Molido",
+    "Cartón de Leche Entera 1 lt": "Leche Entera",
+    "Crema de Leche x 1 lt":       "Crema de Leche",
+    "Chocolate cobertura x kg":    "Chocolate Cobertura",
+    "Paquete de Harina 0000 1 kg": "Harina 0000",
+    "Azúcar x kg":                 "Azúcar",
+    "Agua mineral x 1 lt":         "Agua Mineral",
+    "Gasificación x 1 lt":         "Gasificación",
+    "Levadura x 100 gr":           "Levadura",
+    "Manteca x 200 gr":            "Manteca",
+    "Dulce de Leche x 1 kg":       "Dulce de Leche",
+    "Esencia de Vainilla x 50 ml": "Esencia de Vainilla",
+    "Hielo x bolsa 2 kg":          "Hielo",
+    "Jamón Cocido x kg":           "Jamón Cocido",
+}
 
 # Products with their category assignments and ingredient compositions.
 # Products with ingredients get their precio_base recalculated from
@@ -166,6 +204,8 @@ PRODUCTOS_SEED = [
         ingredientes=[],
     ),
     # ── Made-to-order products (with ingredient recipes) ──
+    # Ingredient tuples are 6-element: (ing_nombre, removible, principal, orden, cantidad, unidad_medida_id)
+    # cantidad uses Decimal; unidad_medida_id: 1=kg, 2=g, 3=L, 4=mL, 5=pieza, 6=docena
     dict(
         nombre="Café con Leche",
         descripcion="Café expreso con leche cremada",
@@ -173,8 +213,8 @@ PRODUCTOS_SEED = [
         receta="Café expreso combinado con leche entera cremada", imagenes_url=[], es_insumo=False,
         categorias=[("Bebidas Calientes", True)],
         ingredientes=[
-            ("Café Molido x 1/2 kg", False, True, 1, 1),
-            ("Cartón de Leche Entera 1 lt", True, False, 2, 1),
+            ("Café Molido", False, True, 1, Decimal("0.500"), 1),
+            ("Leche Entera", True, False, 2, Decimal("1"), 3),
         ],
     ),
     dict(
@@ -184,11 +224,11 @@ PRODUCTOS_SEED = [
         receta="Medallón de res a la parrilla con queso cheddar, lechuga fresca y tomate en pan de hamburguesa", imagenes_url=[], es_insumo=False,
         categorias=[("Sandwichs Calientes", True)],
         ingredientes=[
-            ("Pan de Hamburguesa x und", False, False, 1, 1),
-            ("Medallón de Carne Res x und", False, True, 2, 1),
-            ("Queso Cheddar x kg", True, False, 3, 1),
-            ("Lechuga x und", True, False, 4, 1),
-            ("Tomate x kg", True, False, 5, 1),
+            ("Pan de Hamburguesa", False, False, 1, Decimal("1"), 5),
+            ("Medallón de Carne Res", False, True, 2, Decimal("1"), 5),
+            ("Queso Cheddar", True, False, 3, Decimal("1"), 1),
+            ("Lechuga", True, False, 4, Decimal("1"), 5),
+            ("Tomate", True, False, 5, Decimal("1"), 1),
         ],
     ),
     dict(
@@ -198,10 +238,10 @@ PRODUCTOS_SEED = [
         receta="Capas de pan de miga con jamón cocido, queso mozzarella y mayonesa", imagenes_url=[], es_insumo=False,
         categorias=[("Sandwichs Fríos", True)],
         ingredientes=[
-            ("Pan de Miga x und", False, False, 1, 2),
-            ("Queso Mozzarella x kg", False, True, 2, 1),
-            ("Mayonesa x 1 lt", True, False, 3, 1),
-            ("Jamón Cocido x kg", False, False, 4, 1),
+            ("Pan de Miga", False, False, 1, Decimal("2"), 5),
+            ("Queso Mozzarella", False, True, 2, Decimal("1"), 1),
+            ("Mayonesa", True, False, 3, Decimal("1"), 3),
+            ("Jamón Cocido", False, False, 4, Decimal("1"), 1),
         ],
     ),
     dict(
@@ -210,10 +250,11 @@ PRODUCTOS_SEED = [
         precio=Decimal("2200.00"), precio_actual=Decimal("2200.00"), tiempo=8, disponible=True, stock_cantidad=120,
         receta="Papas cortadas en bastón fritas en aceite de girasol y sazonadas con sal", imagenes_url=[], es_insumo=False,
         categorias=[("Guarniciones", True)],
+        unidad_medida_id=5,
         ingredientes=[
-            ("Papa x kg", False, True, 1, 1),
-            ("Aceite Girasol x 1 lt", False, False, 2, 1),
-            ("Sal Fina x 1 kg", False, False, 3, 1),
+            ("Papa", False, True, 1, Decimal("1"), 1),
+            ("Aceite Girasol", False, False, 2, Decimal("1"), 3),
+            ("Sal Fina", False, False, 3, Decimal("1"), 1),
         ],
     ),
     dict(
@@ -223,10 +264,10 @@ PRODUCTOS_SEED = [
         receta="Flan casero a base de huevo, leche y esencia de vainilla, servido con dulce de leche y crema", imagenes_url=[], es_insumo=False,
         categorias=[("Postres", True)],
         ingredientes=[
-            ("Huevo x docena", False, True, 1, 1),
-            ("Cartón de Leche Entera 1 lt", False, False, 2, 1),
-            ("Dulce de Leche x 1 kg", True, False, 3, 1),
-            ("Esencia de Vainilla x 50 ml", False, False, 4, 1),
+            ("Huevo", False, True, 1, Decimal("1"), 6),
+            ("Leche Entera", False, False, 2, Decimal("1"), 3),
+            ("Dulce de Leche", True, False, 3, Decimal("1"), 1),
+            ("Esencia de Vainilla", False, False, 4, Decimal("50"), 4),
         ],
     ),
     dict(
@@ -235,10 +276,11 @@ PRODUCTOS_SEED = [
         precio=Decimal("3000.00"), precio_actual=Decimal("3000.00"), tiempo=15, disponible=True, stock_cantidad=90,
         receta="Masa de pizza con salsa de tomate y queso mozzarella, horneada", imagenes_url=[], es_insumo=False,
         categorias=[("Pizzas", True)],
+        unidad_medida_id=5,
         ingredientes=[
-            ("Paquete de Harina 0000 1 kg", False, False, 1, 1),
-            ("Queso Mozzarella x kg", False, True, 2, 1),
-            ("Tomate x kg", False, False, 3, 1),
+            ("Harina 0000", False, False, 1, Decimal("1"), 1),
+            ("Queso Mozzarella", False, True, 2, Decimal("1"), 1),
+            ("Tomate", False, False, 3, Decimal("1"), 1),
         ],
     ),
     dict(
@@ -248,10 +290,10 @@ PRODUCTOS_SEED = [
         receta="Masa de tarta rellena de jamón cocido, queso mozzarella y huevo", imagenes_url=[], es_insumo=False,
         categorias=[("Tartas", True)],
         ingredientes=[
-            ("Paquete de Harina 0000 1 kg", False, True, 1, 1),
-            ("Huevo x docena", False, False, 2, 1),
-            ("Queso Mozzarella x kg", False, False, 3, 1),
-            ("Jamón Cocido x kg", False, False, 4, 1),
+            ("Harina 0000", False, True, 1, Decimal("1"), 1),
+            ("Huevo", False, False, 2, Decimal("1"), 6),
+            ("Queso Mozzarella", False, False, 3, Decimal("1"), 1),
+            ("Jamón Cocido", False, False, 4, Decimal("1"), 1),
         ],
     ),
 ]
@@ -430,9 +472,26 @@ def seed_ingredientes(session: Session):
     """
     Create ingredients with stock and pricing information.
 
-    Idempotent: skips ingredients that already exist (matched by name).
-    Each ingredient tracks current stock, unit price, and allergen status.
+    Idempotent: first renames any existing ingredients from old suffixed names
+    to clean names (task 7.9), then creates ingredients that don't yet exist.
     """
+    # Step 1: Rename old-named ingredients to clean names (idempotent)
+    for old_name, new_name in _INGREDIENT_NAME_RENAME.items():
+        existing = _get_by_name(session, Ingrediente, old_name)
+        if existing:
+            # Check if the clean name already exists (conflict)
+            conflict = _get_by_name(session, Ingrediente, new_name)
+            if conflict and conflict.id != existing.id:
+                # Another ingredient already has the clean name — skip rename
+                # (this is unlikely in practice; old-named and clean-named
+                #  ingredients shouldn't coexist unless manually inserted)
+                continue
+            existing.nombre = new_name
+            session.add(existing)
+
+    session.commit()
+
+    # Step 2: Create any ingredients that don't exist yet (matched by clean name)
     for nombre, descripcion, alergeno, precio, stock in INGREDIENTES_SEED:
         existing = _get_by_name(session, Ingrediente, nombre)
         if existing:
@@ -479,6 +538,7 @@ def seed_productos(session: Session):
             tiempo_prep_min=prod_data["tiempo"],
             disponible=disponible,
             es_insumo=prod_data.get("es_insumo", False),
+            unidad_medida_id=prod_data.get("unidad_medida_id"),
         )
         session.add(producto)
         session.flush()
@@ -494,7 +554,10 @@ def seed_productos(session: Session):
                 ))
 
         # Assign ingredients to the product recipe
-        for ing_nombre, removible, principal, orden, cantidad in prod_data["ingredientes"]:
+        # 6-element tuple: (ing_nombre, removible, principal, orden, cantidad, unidad_medida_id)
+        for ing_tuple in prod_data["ingredientes"]:
+            ing_nombre, removible, principal, orden, cantidad = ing_tuple[:5]
+            unidad_medida_id = ing_tuple[5] if len(ing_tuple) >= 6 else None
             ing = _get_by_name(session, Ingrediente, ing_nombre)
             if ing:
                 session.add(ProductoIngrediente(
@@ -504,6 +567,7 @@ def seed_productos(session: Session):
                     es_principal=principal,
                     orden=orden,
                     cantidad=cantidad,
+                    unidad_medida_id=unidad_medida_id,
                 ))
 
         # Recalculate base price from ingredient costs if applicable

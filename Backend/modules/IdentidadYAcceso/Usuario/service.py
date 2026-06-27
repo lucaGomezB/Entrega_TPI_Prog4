@@ -12,7 +12,7 @@ All operations use the IdentidadYAccesoUnitOfWork to ensure
 transactional consistency across related entities.
 """
 
-from typing import List, Optional
+from typing import Optional
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
@@ -20,9 +20,7 @@ from core.security import get_password_hash
 from core.paginated_response import PaginatedResponse
 
 from .models import Usuario
-from .repository import UsuarioRepository
 from .schemas import UsuarioCreate, UsuarioReadWithRoles, UsuarioUpdateWithRoles
-from ..Rol.models import Rol
 from ..usuario_rol import UsuarioRol
 from ..uow import IdentidadYAccesoUnitOfWork
 
@@ -69,7 +67,7 @@ def crear_usuario(session: Session, datos: UsuarioCreate, admin_id: int = None) 
                         rol_codigo=codigo,
                         asignado_por_id=admin_id,
                     )
-                    session.add(enlace)
+                    uow.add(enlace)
 
         uow.usuarios.refresh(nuevo_usuario)
         return uow.usuarios.get_with_roles(nuevo_usuario.id)
@@ -89,31 +87,24 @@ def listar_usuarios(
     Otherwise, returns all non-deleted users ordered by ID descending.
     When incluir_eliminados is True, includes soft-deleted records.
     """
-    repo = UsuarioRepository(session)
-    if incluir_eliminados:
-        repo.with_deleted(True)
+    with IdentidadYAccesoUnitOfWork(session) as uow:
+        if incluir_eliminados:
+            uow.usuarios.with_deleted(True)
 
-    if rol_codigo:
-        rows = repo.get_all_by_role(rol_codigo, skip=skip, limit=limit)
-    else:
-        rows = repo.get_all(skip=skip, limit=limit)
+        if rol_codigo:
+            rows = uow.usuarios.get_all_by_role(rol_codigo, skip=skip, limit=limit)
+            total = uow.usuarios.count_by_role(rol_codigo)
+        else:
+            rows = uow.usuarios.get_all(skip=skip, limit=limit)
+            total = uow.usuarios.count_all()
 
-    # Count with the same filters
-    count_repo = UsuarioRepository(session)
-    if incluir_eliminados:
-        count_repo.with_deleted(True)
-    if rol_codigo:
-        total = count_repo.count_by_role(rol_codigo)
-    else:
-        total = count_repo.count_all()
-
-    items = [UsuarioReadWithRoles.model_validate(u) for u in rows]
-    return PaginatedResponse(
-        items=items,
-        total=total,
-        skip=skip,
-        limit=limit,
-    )
+        items = [UsuarioReadWithRoles.model_validate(u) for u in rows]
+        return PaginatedResponse(
+            items=items,
+            total=total,
+            skip=skip,
+            limit=limit,
+        )
 
 
 def obtener_usuario(session: Session, usuario_id: int, incluir_eliminados: bool = False) -> Optional[Usuario]:
@@ -124,10 +115,10 @@ def obtener_usuario(session: Session, usuario_id: int, incluir_eliminados: bool 
     (the repository base already filters deleted_at IS NULL).
     When incluir_eliminados is True, includes soft-deleted records.
     """
-    repo = UsuarioRepository(session)
-    if incluir_eliminados:
-        repo.with_deleted(True)
-    return repo.get_with_roles(usuario_id)
+    with IdentidadYAccesoUnitOfWork(session) as uow:
+        if incluir_eliminados:
+            uow.usuarios.with_deleted(True)
+        return uow.usuarios.get_with_roles(usuario_id)
 
 
 def actualizar_usuario(
@@ -171,11 +162,8 @@ def actualizar_usuario(
         # Reassign roles if the field was explicitly provided
         # (explicit UsuarioRol to set asignado_por_id)
         if datos.roles_codigos is not None:
-            # Remove existing role links (direct session delete for explicit control)
-            from sqlmodel import select, delete
-            stmt = delete(UsuarioRol).where(UsuarioRol.usuario_id == usuario.id)
-            session.exec(stmt)  # type: ignore[attr-defined]
-            session.flush()
+            # Remove existing role links via repository method
+            uow.usuarios.remove_all_roles(usuario.id)
             # Create new UsuarioRol links with asignado_por_id
             for codigo in datos.roles_codigos:
                 rol = uow.roles.get_by_id(codigo)
@@ -185,7 +173,7 @@ def actualizar_usuario(
                         rol_codigo=codigo,
                         asignado_por_id=admin_id,
                     )
-                    session.add(enlace)
+                    uow.add(enlace)
 
         return uow.usuarios.get_with_roles(usuario.id)
 

@@ -55,7 +55,7 @@ class Producto(ProductoBase, SoftDeleteModel, table=True):
     # String-based relationship names prevent circular import issues at module load time.
     categorias: List["Categoria"] = Relationship(back_populates="productos", link_model=ProductoCategoria)
     ingredientes: List["Ingrediente"] = Relationship(back_populates="productos", link_model=ProductoIngrediente)
-    unidad_medida: Optional["UnidadMedida"] = Relationship()
+    unidad_medida: Optional["UnidadMedida"] = Relationship(back_populates="productos")
 
     @property
     def unidad_medida_simbolo(self) -> Optional[str]:

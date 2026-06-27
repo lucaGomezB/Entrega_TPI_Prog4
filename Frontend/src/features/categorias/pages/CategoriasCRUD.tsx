@@ -9,6 +9,7 @@
  *   - Excel export of the flattened (depth-annotated) tree.
  */
 import { useEffect, useState, useRef, type ReactNode } from "react";
+import { AxiosError } from "axios";
 import type { CategoriaCreate, CategoriaTree } from "@/features/categorias/api/categorias";
 import { useCategoriasTree, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from "@/features/categorias/hooks/useCategorias";
 import { uploadsApi } from "@/shared/api/uploads";
@@ -391,7 +392,10 @@ export default function CategoriasCRUD() {
       await deleteMutation.mutateAsync(id);
       addToast('exito', 'Categoria eliminada correctamente');
     } catch (err) {
-      addToast('error', (err as Error).message);
+      const msg = err instanceof AxiosError && err.response?.data
+        ? (err.response.data as { detail?: string }).detail ?? err.message
+        : (err as Error).message;
+      addToast('error', msg);
     }
   };
 

@@ -159,7 +159,7 @@ function DetallesPopup({ pedido, detalles, onClose, esGestor, pagos }: {
   pedido: Pedido; detalles: DetallePedido[]; onClose: () => void; esGestor?: boolean; pagos?: PagoRead[];
 }) {
   return (
-    <Modal open={true} onClose={onClose} title={`Detalles del Pedido${esGestor ? ` #${pedido.id}` : ""}`}>
+    <Modal open={true} onClose={onClose} title={`Detalles del Pedido #${pedido.id}`}>
       <p className="text-sm text-gray-500 mb-1">
         Fecha: {new Date(pedido.created_at).toLocaleString("es-AR")}
       </p>
@@ -492,14 +492,12 @@ export default function PedidosPage() {
 
   // Build columns based on role and mode
   const columns: DataTableColumn<Pedido>[] = [
-    ...(esGestor ? [
-      {
-        key: "id" as const,
-        label: "Pedido #",
-        render: (ped: Pedido) => <span className="font-mono">#{ped.id}</span>,
-        sortable: true,
-      },
-    ] : []),
+    {
+      key: "id" as const,
+      label: "Pedido #",
+      render: (ped: Pedido) => <span className="font-mono">#{ped.id}</span>,
+      sortable: true,
+    },
     ...(esGestor ? [
       {
         key: "usuario" as const,

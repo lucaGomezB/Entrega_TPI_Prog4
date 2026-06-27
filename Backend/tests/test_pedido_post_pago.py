@@ -74,7 +74,7 @@ class TestInitFromCartHappyPath:
         mock_sdk_instance.preference.return_value = mock_pref
         mock_sdk.return_value = mock_sdk_instance
 
-        pago_read, _ = PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
+        pago_read, _, __ = PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
 
         assert pago_read.pedido_id is None
         assert pago_read.mp_status == "pending"
@@ -100,7 +100,7 @@ class TestInitFromCartHappyPath:
         mock_sdk_instance.preference.return_value = mock_pref
         mock_sdk.return_value = mock_sdk_instance
 
-        _, init_point = PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
+        _, init_point, __ = PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
         assert init_point == "https://mp.com/checkout"
 
 

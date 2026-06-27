@@ -58,9 +58,10 @@ class PedidoRepository(BaseRepository[Pedido]):
     # ------------------------------------------------------------------
 
     def get_all_eager(self, skip: int = 0, limit: int = 100) -> List[Pedido]:
-        """List all orders with eager-loaded relationships, paginated."""
+        """List all non-deleted orders with eager-loaded relationships, paginated."""
         statement = (
             select(Pedido)
+            .where(col(Pedido.deleted_at).is_(None))
             .options(*self._eager_options())
             .offset(skip)
             .limit(limit)
@@ -69,11 +70,11 @@ class PedidoRepository(BaseRepository[Pedido]):
         return self.session.exec(statement).all()
 
     def get_by_id_eager(self, pedido_id: int) -> Optional[Pedido]:
-        """Fetch a single order by ID with eager-loaded relationships."""
+        """Fetch a single non-deleted order by ID with eager-loaded relationships."""
         statement = (
             select(Pedido)
             .options(*self._eager_options())
-            .where(Pedido.id == pedido_id)
+            .where(Pedido.id == pedido_id, col(Pedido.deleted_at).is_(None))
         )
         return self.session.exec(statement).first()
 

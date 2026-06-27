@@ -65,6 +65,7 @@ class InitPaymentResponse(BaseModel):
     """Response schema after initiating a MercadoPago payment."""
     pago: PagoRead
     init_point: Optional[str] = None
+    error: Optional[str] = None
 
 
 class CartItemInput(BaseModel):

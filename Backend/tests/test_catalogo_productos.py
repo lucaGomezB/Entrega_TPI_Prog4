@@ -290,6 +290,67 @@ class TestProductoEndpoints:
         assert ingredients[0]["ingrediente_nombre"] == "Safe Ing"
 
 
+    # ── search parameter ──
+
+    def test_list_productos_search_filters_by_name(self, client, db_session):
+        """Search param filters productos by nombre ILIKE."""
+        db_session.add(Producto(nombre="Pizza Margarita", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=15, disponible=True))
+        db_session.add(Producto(nombre="Pizza Napolitana", descripcion="Test", precio_base=600, precio_actual=600, stock_cantidad=8, tiempo_prep_min=20, disponible=True))
+        db_session.add(Producto(nombre="Empanada de Carne", descripcion="Test", precio_base=200, precio_actual=200, stock_cantidad=30, tiempo_prep_min=5, disponible=True))
+        db_session.flush()
+
+        response = client.get("/api/v1/productos/?skip=0&limit=10&search=pizza")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        names = [item["nombre"] for item in data["items"]]
+        assert all("pizza" in name.lower() for name in names)
+
+    def test_list_productos_search_empty_returns_all(self, client, db_session):
+        """Empty search param returns unfiltered results."""
+        db_session.add(Producto(nombre="Prod A", descripcion="Test", precio_base=100, precio_actual=100, stock_cantidad=5, tiempo_prep_min=5, disponible=True))
+        db_session.add(Producto(nombre="Prod B", descripcion="Test", precio_base=200, precio_actual=200, stock_cantidad=10, tiempo_prep_min=5, disponible=True))
+        db_session.flush()
+
+        response = client.get("/api/v1/productos/?skip=0&limit=10&search=")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] >= 2
+
+    def test_list_productos_search_no_match_returns_empty(self, client, db_session):
+        """Search with no matches returns empty items."""
+        db_session.add(Producto(nombre="Test Prod", descripcion="Test", precio_base=100, precio_actual=100, stock_cantidad=5, tiempo_prep_min=5, disponible=True))
+        db_session.flush()
+
+        response = client.get("/api/v1/productos/?skip=0&limit=10&search=zzz_nonexistent")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    def test_list_productos_search_with_pagination(self, client, db_session):
+        """Search combines with pagination correctly."""
+        for i in range(10):
+            db_session.add(Producto(nombre=f"Art {chr(97+i)}", descripcion="Test", precio_base=100, precio_actual=100, stock_cantidad=5, tiempo_prep_min=5, disponible=True))
+        db_session.flush()
+
+        response = client.get("/api/v1/productos/?skip=5&limit=5&search=a")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["skip"] == 5
+        assert data["limit"] == 5
+
+    def test_list_productos_search_without_param_works(self, client, db_session):
+        """Omitting search param preserves existing behavior."""
+        db_session.add(Producto(nombre="NoSearch", descripcion="Test", precio_base=100, precio_actual=100, stock_cantidad=5, tiempo_prep_min=5, disponible=True))
+        db_session.flush()
+
+        response = client.get("/api/v1/productos/?skip=0&limit=10")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] >= 1
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # INGREDIENTE ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════
@@ -378,3 +439,51 @@ class TestIngredienteEndpoints:
         # Verify deleted
         get_resp = client.get(f"/api/v1/ingredientes/{i.id}")
         assert get_resp.status_code == 404
+
+    # ── search parameter ──
+
+    def test_list_ingredientes_search_filters_by_name(self, client, db_session):
+        """Search param filters ingredients by nombre ILIKE."""
+        db_session.add(Ingrediente(nombre="Harina Integral", descripcion="Test", precio_actual=10, stock_actual=50))
+        db_session.add(Ingrediente(nombre="Azucar Refinada", descripcion="Test", precio_actual=5, stock_actual=100))
+        db_session.add(Ingrediente(nombre="Harina Comun", descripcion="Test", precio_actual=8, stock_actual=80))
+        db_session.flush()
+
+        response = client.get("/api/v1/ingredientes/?skip=0&limit=10&search=harina")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        names = [item["nombre"] for item in data["items"]]
+        assert all("harina" in name.lower() for name in names)
+
+    def test_list_ingredientes_search_empty_returns_all(self, client, db_session):
+        """Empty search param returns unfiltered results."""
+        db_session.add(Ingrediente(nombre="Ing A", descripcion="Test", precio_actual=10, stock_actual=50))
+        db_session.add(Ingrediente(nombre="Ing B", descripcion="Test", precio_actual=5, stock_actual=100))
+        db_session.flush()
+
+        response = client.get("/api/v1/ingredientes/?skip=0&limit=10&search=")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] >= 2
+
+    def test_list_ingredientes_search_no_match_returns_empty(self, client, db_session):
+        """Search with no matches returns empty items."""
+        db_session.add(Ingrediente(nombre="Test Ing", descripcion="Test", precio_actual=10, stock_actual=50))
+        db_session.flush()
+
+        response = client.get("/api/v1/ingredientes/?skip=0&limit=10&search=zzz_nonexistent")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    def test_list_ingredientes_search_without_param_works(self, client, db_session):
+        """Omitting search param preserves existing behavior."""
+        db_session.add(Ingrediente(nombre="NoSearch", descripcion="Test", precio_actual=10, stock_actual=50))
+        db_session.flush()
+
+        response = client.get("/api/v1/ingredientes/?skip=0&limit=10")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] >= 1

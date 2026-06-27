@@ -57,5 +57,5 @@ class FormaPagoService:
             db_obj = uow.formas_pago.get_by_codigo(codigo)
             if not db_obj:
                 return False
-            uow.session.delete(db_obj)
+            uow.delete(db_obj)
             return True
