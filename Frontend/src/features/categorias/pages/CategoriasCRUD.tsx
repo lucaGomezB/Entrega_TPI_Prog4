@@ -17,6 +17,7 @@ import ImageCarousel from "@/shared/components/ImageCarousel";
 import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
+import Modal from "@/shared/components/Modal";
 
 /* ── Helpers ── */
 
@@ -116,14 +117,16 @@ function ParentSelector({ treeData, currentId, onSelect, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded p-6 w-full max-w-md max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Seleccionar Categoria superior</h2>
-          <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
-        </div>
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Seleccionar Categoria superior"
+      maxWidth="max-w-md"
+      footer={
         <button onClick={() => onSelect(null, "")}
-          className="mb-4 bg-gray-600 text-white px-4 py-1 rounded cursor-pointer hover:bg-gray-700">Ninguna (raiz)</button>
+          className="bg-gray-600 text-white px-4 py-1 rounded cursor-pointer hover:bg-gray-700">Ninguna (raiz)</button>
+      }
+    >
         <table className="w-full border-collapse border">
           <thead><tr className="bg-gray-200">
             <th className="border p-2 text-left">Nombre</th>
@@ -132,8 +135,7 @@ function ParentSelector({ treeData, currentId, onSelect, onClose }: {
           </tr></thead>
           <tbody>{renderTreeOptions(treeData)}</tbody>
         </table>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -155,6 +157,10 @@ function CategoryTreeRow({ categoria, depth, expanded, onToggle, onEdit, onDelet
   // Current node row
   rows.push(
     <tr key={categoria.id} className="hover:bg-blue-50 transition-colors border-b border-gray-100">
+      {/* ID column (hidden on mobile) */}
+      <td className="px-3 py-2.5 text-xs text-gray-400 font-mono hidden md:table-cell">
+        #{categoria.id}
+      </td>
       {/* Name column with indentation + toggle */}
       <td className="px-3 py-2.5" style={{ paddingLeft: `${12 + depth * 20}px` }}>
         <div className="flex items-center gap-1.5">
@@ -505,6 +511,7 @@ export default function CategoriasCRUD() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wider">
+                <th className="px-3 py-3 text-left font-semibold hidden md:table-cell">Codigo</th>
                 <th className="px-3 py-3 text-left font-semibold">Nombre</th>
                 <th className="px-3 py-3 text-left font-semibold hidden md:table-cell">Descripcion</th>
                 <th className="px-3 py-3 text-left font-semibold">Acciones</th>
@@ -514,7 +521,7 @@ export default function CategoriasCRUD() {
               {/* Loading state */}
               {isLoading && (
                 <tr>
-                  <td colSpan={3} className="px-3 py-12 text-center text-gray-400">
+                  <td colSpan={4} className="px-3 py-12 text-center text-gray-400">
                     Cargando categorias...
                   </td>
                 </tr>
@@ -523,7 +530,7 @@ export default function CategoriasCRUD() {
               {/* Error state (banner is above, but still show empty body) */}
               {!isLoading && isError && (
                 <tr>
-                  <td colSpan={3} className="px-3 py-12 text-center text-gray-400">
+                  <td colSpan={4} className="px-3 py-12 text-center text-gray-400">
                     Error al cargar categorias
                   </td>
                 </tr>
@@ -532,7 +539,7 @@ export default function CategoriasCRUD() {
               {/* Empty state */}
               {!isLoading && !isError && filteredTree.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-3 py-12 text-center text-gray-400">
+                  <td colSpan={4} className="px-3 py-12 text-center text-gray-400">
                     {filter.trim() ? "No hay categorias que coincidan con el filtro" : "No hay categorias"}
                   </td>
                 </tr>

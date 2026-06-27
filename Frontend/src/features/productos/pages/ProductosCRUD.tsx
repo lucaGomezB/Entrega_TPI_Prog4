@@ -31,6 +31,8 @@ import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useCartStore } from "@/shared/store/cartStore";
 import { AxiosError } from "axios";
 import { getAccessToken } from "@/shared/api/client";
+import SearchFilter from "@/shared/components/SearchFilter";
+import { usePagination } from "@/shared/hooks/usePagination";
 
 const DEFAULT_LIMIT = 10;
 
@@ -295,13 +297,20 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
   );
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded p-6 w-full max-w-2xl max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Ingredientes de &quot;{productoNombre}&quot;</h2>
-          <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
-        </div>
-
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={`Ingredientes de "${productoNombre}"`}
+      maxWidth="max-w-2xl"
+      footer={
+        showAdd ? (
+          <>
+            <button onClick={handleAdd} className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Confirmar</button>
+            <button onClick={() => setShowAdd(false)} className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
+          </>
+        ) : undefined
+      }
+    >
         {loading ? <p>Cargando...</p> : (
           <>
             {ings.length === 0 ? (
@@ -452,8 +461,7 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
             )}
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -510,12 +518,20 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
   );
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded p-6 w-full max-w-lg max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Categorias de &quot;{productoNombre}&quot;</h2>
-          <button onClick={onClose} className="text-gray-500 text-xl cursor-pointer">X</button>
-        </div>
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={`Categorias de "${productoNombre}"`}
+      maxWidth="max-w-lg"
+      footer={
+        showAdd ? (
+          <>
+            <button onClick={handleAdd} className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Confirmar</button>
+            <button onClick={() => setShowAdd(false)} className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
+          </>
+        ) : undefined
+      }
+    >
         {loading ? <p>Cargando...</p> : (
           <>
             {cats.length === 0 ? (
@@ -575,8 +591,7 @@ function CategoriasPopup({ productoId, productoNombre, onClose }: {
             )}
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -593,19 +608,14 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const hideExport = role === 'client' || role === 'stock';
 
   // ── UI-only state ──
-  const [skip, setSkip] = useState(0);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
-  const [filter, setFilter] = useState("");
-  const [debouncedFilter, setDebouncedFilter] = useState("");
+  const [search, setSearch] = useState("");
 
-  // Debounce filter: wait 300ms after last keystroke before sending search to API
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedFilter(filter);
-      setSkip(0);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [filter]);
+  const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
+
+  const handleSearch = useCallback((value: string) => {
+    setSearch(value);
+    handlePageChange(0);
+  }, [handlePageChange]);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -626,7 +636,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const [uploadingImages, setUploadingImages] = useState(false);
 
   // ── TanStack Query: products (paginated) ──
-  const { data, isLoading, isError, error } = useProductos(skip, limit, debouncedFilter || undefined);
+  const { data, isLoading, isError, error } = useProductos(skip, limit, search || undefined);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
@@ -963,9 +973,6 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     }
   };
 
-  const handlePageChange = (newSkip: number) => setSkip(newSkip);
-  const handleLimitChange = (newLimit: number) => { setLimit(newLimit); setSkip(0); };
-
   // Build columns based on role
   const columns: DataTableColumn<Producto>[] = [
     ...(!readOnly ? [{ key: "id" as const, label: "Codigo", hideOnMobile: true, render: (p: Producto) => <span className="text-gray-500 text-xs">{p.id}</span> }] : []),
@@ -1044,8 +1051,10 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             <button onClick={() => handleStartEdit(p)}
               className="bg-yellow-500 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-yellow-600 transition-colors">Editar</button>
           )}
-          <button onClick={() => handleStartStockEdit(p)}
-            className="bg-amber-700 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-amber-800 transition-colors">Stock</button>
+          {isStockMode && (
+            <button onClick={() => handleStartStockEdit(p)}
+              className="bg-amber-700 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-amber-800 transition-colors">Stock</button>
+          )}
           {!isStockMode && !hideDelete && (
             <button onClick={() => handleDelete(p.id)}
               className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700 transition-colors">Eliminar</button>
@@ -1093,11 +1102,9 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
           <button onClick={handleStartCreate}
             className="bg-green-600 text-white px-4 py-1 rounded cursor-pointer">Crear Producto</button>
         )}
-        <input type="text" placeholder="Filtrar por nombre..." value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="border px-2 py-1 rounded flex-grow" />
+        <SearchFilter onSearch={handleSearch} placeholder="Filtrar por nombre..." />
         {!hideExport && (
-          <button onClick={() => exportToExcel(items.filter(p => p.nombre.toLowerCase().includes(filter.toLowerCase())).map(({ id, nombre, precio_actual, stock_cantidad, disponible, tiempo_prep_min }) => ({
+          <button onClick={() => exportToExcel(items.filter(p => p.nombre.toLowerCase().includes(search.toLowerCase())).map(({ id, nombre, precio_actual, stock_cantidad, disponible, tiempo_prep_min }) => ({
               id, nombre, Precio: precio_actual, Stock: stock_cantidad, "Tiempo prep. (min)": tiempo_prep_min, Disponible: disponible ? "Si" : "No",
             })), "productos")}
             className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">Exportar Excel</button>

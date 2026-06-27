@@ -2,12 +2,13 @@
 Usuario repository module.
 
 Provides database access for Usuario entities with domain-specific
-queries: finding users by email, filtering by role, and eager-loading
-role relationships.
+queries: finding users by email, filtering by role, textual search,
+and eager-loading role relationships.
 """
 
 from sqlmodel import Session, select, col, delete
 from sqlalchemy.orm import selectinload
+from sqlalchemy import or_
 
 from .models import Usuario
 from ..usuario_rol import UsuarioRol
@@ -73,6 +74,76 @@ class UsuarioRepository(BaseRepository[Usuario]):
             from sqlalchemy import column
 
             statement = statement.where(column("deleted_at").is_(None))
+        result = self.session.exec(statement)
+        return result.one()
+
+    def search_users(self, search: str, rol_codigo: str | None = None, skip: int = 0, limit: int = 100):
+        """
+        Search users by text on nombre, apellido, or email (ILIKE).
+
+        Combines ILIKE conditions with OR. When rol_codigo is provided,
+        the search is ANDed with the role filter via an INNER JOIN on UsuarioRol.
+        Eager-loads roles via selectinload to prevent N+1 queries.
+        """
+        from sqlmodel import func
+
+        search_term = f"%{search}%"
+
+        where_clause = or_(
+            Usuario.nombre.ilike(search_term),
+            Usuario.apellido.ilike(search_term),
+            Usuario.email.ilike(search_term),
+        )
+
+        statement = select(Usuario).where(where_clause)
+
+        if rol_codigo:
+            statement = (
+                statement
+                .join(UsuarioRol, Usuario.id == UsuarioRol.usuario_id)
+                .where(UsuarioRol.rol_codigo == rol_codigo)
+            )
+
+        if self._is_soft_delete and not self._incluir_eliminados:
+            statement = statement.where(col(Usuario.deleted_at).is_(None))
+
+        statement = (
+            statement
+            .options(selectinload(Usuario.roles))
+            .offset(skip)
+            .limit(limit)
+            .order_by(Usuario.id.desc())
+        )
+        return self.session.exec(statement).all()
+
+    def count_by_search(self, search: str, rol_codigo: str | None = None) -> int:
+        """
+        Count users matching a text search on nombre, apellido, or email.
+
+        When rol_codigo is provided, ANDs the role filter via UsuarioRol join.
+        Respects soft-delete filter.
+        """
+        from sqlmodel import func
+
+        search_term = f"%{search}%"
+
+        where_clause = or_(
+            Usuario.nombre.ilike(search_term),
+            Usuario.apellido.ilike(search_term),
+            Usuario.email.ilike(search_term),
+        )
+
+        statement = select(func.count(Usuario.id)).where(where_clause)
+
+        if rol_codigo:
+            statement = statement.join(
+                UsuarioRol, Usuario.id == UsuarioRol.usuario_id
+            ).where(UsuarioRol.rol_codigo == rol_codigo)
+
+        if self._is_soft_delete:
+            from sqlalchemy import column
+            statement = statement.where(column("deleted_at").is_(None))
+
         result = self.session.exec(statement)
         return result.one()
 

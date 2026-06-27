@@ -3,7 +3,7 @@
  * Uses TanStack Query for data fetching and mutations.
  * Uses DataTable with server-side pagination.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AxiosError } from "axios";
 import type { Ingrediente, IngredienteCreate } from "@/features/productos/api/ingredientes";
 import { ingredientesApi } from "@/features/productos/api/ingredientes";
@@ -14,23 +14,26 @@ import { addToast } from "@/shared/components/Toast";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import type { UnidadMedida } from "@/features/unidades-medida/types";
 import { unidadesMedidaApi } from "@/features/unidades-medida/api/unidadesMedidaApi";
+import SearchFilter from "@/shared/components/SearchFilter";
+import { usePagination } from "@/shared/hooks/usePagination";
+import { getUserRoles } from "@/shared/api/client";
 
 const DEFAULT_LIMIT = 10;
 
 export default function IngredientesCRUD() {
-  const [skip, setSkip] = useState(0);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
-  const [filter, setFilter] = useState("");
-  const [debouncedFilter, setDebouncedFilter] = useState("");
+  const [search, setSearch] = useState("");
 
-  // Debounce filter: wait 300ms after last keystroke before sending search to API
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedFilter(filter);
-      setSkip(0);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [filter]);
+  const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
+
+  const handleSearch = useCallback((value: string) => {
+    setSearch(value);
+    handlePageChange(0);
+  }, [handlePageChange]);
+
+  const userRoles = getUserRoles();
+  const esAdmin = userRoles.includes("ADMIN");
+  const esStock = userRoles.includes("STOCK");
+  const showId = esAdmin || esStock;
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -44,7 +47,7 @@ export default function IngredientesCRUD() {
   }, []);
 
   // ── TanStack Query ──
-  const { data, isLoading, isError, error } = useIngredientes(skip, limit, debouncedFilter || undefined);
+  const { data, isLoading, isError, error } = useIngredientes(skip, limit, search || undefined);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
@@ -108,7 +111,7 @@ export default function IngredientesCRUD() {
       const allData = await ingredientesApi.getAll(0, 10000);
       const exportData = allData
         .filter((i) =>
-          i.nombre.toLowerCase().includes(filter.toLowerCase())
+          i.nombre.toLowerCase().includes(search.toLowerCase())
         )
         .map(({ id, nombre, es_alergeno, precio_actual, stock_actual }) => ({
           id,
@@ -164,17 +167,27 @@ export default function IngredientesCRUD() {
     }
   };
 
-  const handlePageChange = (newSkip: number) => {
-    setSkip(newSkip);
-  };
-
-  const handleLimitChange = (newLimit: number) => {
-    setLimit(newLimit);
-    setSkip(0);
-  };
-
   const columns: DataTableColumn<Ingrediente>[] = [
-    { key: "nombre", label: "Nombre" },
+    ...(showId ? [{
+      key: "id" as const,
+      label: "Codigo",
+      hideOnMobile: true,
+      render: (ing: Ingrediente) => <span className="text-gray-500 text-xs">#{ing.id}</span>,
+    }] : []),
+    {
+      key: "nombre",
+      label: "Nombre",
+      render: (ing) => (
+        <span className="flex items-center gap-2">
+          {ing.nombre}
+          {ing.unidad_medida_simbolo && (
+            <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+              {ing.unidad_medida_simbolo}
+            </span>
+          )}
+        </span>
+      ),
+    },
     {
       key: "descripcion",
       label: "Descripcion",
@@ -248,9 +261,7 @@ export default function IngredientesCRUD() {
       <h1 className="text-2xl font-bold mb-4">Insumos</h1>
       {isError && <div className="bg-red-100 text-red-700 p-2 mb-4 rounded">{(error as Error)?.message || "Error al cargar"}</div>}
       <div className="flex gap-2 mb-4 flex-wrap">
-        <input type="text" placeholder="Filtrar por nombre..." value={filter}
-          onChange={(e) => { setFilter(e.target.value); }}
-          className="border px-3 py-1 rounded" />
+        <SearchFilter onSearch={handleSearch} placeholder="Filtrar por nombre..." />
         <button onClick={handleStartCreate}
           className="bg-green-600 text-white px-4 py-1 rounded cursor-pointer">+ Nuevo</button>
         <button onClick={handleExport}

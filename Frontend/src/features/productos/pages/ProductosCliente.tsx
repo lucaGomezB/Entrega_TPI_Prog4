@@ -17,7 +17,7 @@ import type { Producto } from "@/features/productos/api/productos";
 import { useProductos } from "@/features/productos/hooks/useProductos";
 import { useCategorias } from "@/features/categorias/hooks/useCategorias";
 import { useCartStore } from "@/shared/store/cartStore";
-import { getAccessToken } from "@/shared/api/client";
+import { getAccessToken, getUserRoles } from "@/shared/api/client";
 import ProductCard from "@/features/productos/components/ProductCard";
 
 const PAGE_SIZE = 12;
@@ -48,6 +48,7 @@ function SkeletonGrid() {
 export default function ProductosCliente() {
   const navigate = useNavigate();
   const isAuth = !!getAccessToken();
+  const esAdmin = getUserRoles().includes("ADMIN");
 
   // TanStack Query: products
   const { data: productsData, isLoading, isError, error } = useProductos(0, 1000);
@@ -192,6 +193,7 @@ export default function ProductosCliente() {
                     ? categoryImagesMap[prod.categoria_principal_id]
                     : undefined
                 }
+                showId={esAdmin}
               />
             ))}
           </div>

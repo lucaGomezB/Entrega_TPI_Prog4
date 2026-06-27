@@ -20,11 +20,13 @@ export interface ModalProps {
   title: string
   children: ReactNode
   maxWidth?: string // default 'max-w-2xl'
+  /** Optional footer rendered below children with border separator and flex layout for action buttons. */
+  footer?: ReactNode
 }
 
 // ── Component ──
 
-export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-2xl' }: ModalProps) {
+export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-2xl', footer }: ModalProps) {
   if (!open) return null
 
   return (
@@ -44,6 +46,13 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
 
         {/* Body */}
         {children}
+
+        {/* Footer (optional, backward-compatible) */}
+        {footer && (
+          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

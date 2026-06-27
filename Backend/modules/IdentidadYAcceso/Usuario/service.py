@@ -78,20 +78,25 @@ def listar_usuarios(
     skip: int = 0,
     limit: int = 100,
     rol_codigo: Optional[str] = None,
+    search: Optional[str] = None,
     incluir_eliminados: bool = False,
 ) -> PaginatedResponse[UsuarioReadWithRoles]:
     """
-    List users with pagination and optional role filtering.
+    List users with pagination and optional filters (role, text search).
 
-    When rol_codigo is provided, filters by the UsuarioRol join table.
-    Otherwise, returns all non-deleted users ordered by ID descending.
+    When search is provided (non-empty), delegates to search_users / count_by_search
+    to filter by nombre, apellido, or email (ILIKE). Combines with rol_codigo via AND.
+    When search is absent, maintains original behavior (get_all_by_role or get_all).
     When incluir_eliminados is True, includes soft-deleted records.
     """
     with IdentidadYAccesoUnitOfWork(session) as uow:
         if incluir_eliminados:
             uow.usuarios.with_deleted(True)
 
-        if rol_codigo:
+        if search and search.strip():
+            rows = uow.usuarios.search_users(search, rol_codigo=rol_codigo, skip=skip, limit=limit)
+            total = uow.usuarios.count_by_search(search, rol_codigo=rol_codigo)
+        elif rol_codigo:
             rows = uow.usuarios.get_all_by_role(rol_codigo, skip=skip, limit=limit)
             total = uow.usuarios.count_by_role(rol_codigo)
         else:

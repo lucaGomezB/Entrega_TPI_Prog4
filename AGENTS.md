@@ -37,8 +37,8 @@ features/<feature>/
 SOLO codigo usado por 2+ features. Si una sola feature lo usa, DEBE estar dentro
 de esa feature. Contiene:
 
-- `shared/api/` — cliente HTTP (Axios) y modulo de uploads (Cloudinary)
-- `shared/components/` — componentes reusables (ImageCarousel, Modal, Skeleton, Toast)
+- `shared/api/` — cliente HTTP (Axios), uploads (Cloudinary), y query keys (TanStack Query)
+- `shared/components/` — componentes reusables (DataTable, ImageCarousel, Modal, Skeleton, Toast)
 - `shared/hooks/` — hook de formulario base (useAppForm)
 - `shared/store/` — stores globales (authStore, cartStore, filtrosStore, uiStore)
 - `shared/utils/` — utilidades (exportExcel)
@@ -88,6 +88,7 @@ Contiene EXCLUSIVAMENTE el cascaron de la aplicacion:
 - `App.tsx` — bootstrap de sesion, barra de navegacion, renderizado de rutas
 - `router.tsx` — componente puro que recibe flags de rol y retorna `<Routes>`
 - `main.tsx` — punto de entrada, monta React con BrowserRouter
+- `queryClient.ts` — configuracion de TanStack Query (stale time, retries)
 - `App.css`, `index.css` — estilos globales
 
 NO contiene logica de negocio ni estado de features.
@@ -105,6 +106,17 @@ feature individual.
 - NO cross-feature imports de componentes, paginas, stores, o hooks
 - NO logica de features en `shared/` (YAGNI: no compartir prematuramente)
 
+### Features del proyecto
+
+| Feature (frontend) | Modulo backend asociado | Responsabilidad |
+|---|---|---|
+| `auth/` | IdentidadYAcceso | Login, registro, admin de usuarios |
+| `categorias/` | CatalogoDeProductos/Categoria | CRUD de categorias |
+| `productos/` | CatalogoDeProductos/Producto | CRUD de productos, detalle publico |
+| `unidades-medida/` | CatalogoDeProductos/UnidadMedida | CRUD de unidades de medida |
+| `pedidos/` | VentasPagosTrazabilidad | Carrito, checkout, seguimiento, pagos |
+| `estadisticas/` | Estadisticas | Dashboard KPIs y graficos |
+
 ---
 
 ## Backend
@@ -116,10 +128,32 @@ Proyecto FastAPI organizado en modulos de dominio en `modules/` con bounded cont
 | Modulo | Responsabilidad |
 |--------|----------------|
 | IdentidadYAcceso | Autenticacion JWT, refresh tokens, usuarios, roles |
-| CatalogoDeProductos | Productos, categorias, ingredientes |
-| VentasPagosTrazabilidad | Pedidos, pagos (MercadoPago), direcciones |
+| CatalogoDeProductos | Productos, categorias, ingredientes, unidades de medida |
+| VentasPagosTrazabilidad | Pedidos, pagos (MercadoPago), carrito snapshots, direcciones |
 | Estadisticas | Dashboard KPIs, graficos |
 | Uploads | Imagenes via Cloudinary |
+
+### Estructura de sub-modulos
+
+Cada modulo de dominio contiene sub-modulos que encapsulan una entidad o
+conjunto de entidades relacionadas. Ejemplo de `VentasPagosTrazabilidad`:
+
+```
+VentasPagosTrazabilidad/
+├── uow.py                    # Unit of Work del modulo (inyecta repositorios)
+├── Pedido/                   # Sub-modulo: pedidos
+│   ├── models.py
+│   ├── schemas.py
+│   ├── repository.py
+│   ├── service.py
+│   └── router.py
+├── DetallePedido/            # Sub-modulo: lineas del pedido
+├── Pago/                     # Sub-modulo: pagos y webhook MercadoPago
+├── CarritoSnapshot/           # Sub-modulo: snapshots del carrito pre-pago
+├── EstadoPedido/             # Sub-modulo: catalogo de estados
+├── HistorialEstadoPedido/    # Sub-modulo: bitacora de cambios de estado
+└── FormaPago/                # Sub-modulo: catalogo de formas de pago
+```
 
 ### Patron de capas (ESTRICTO)
 
@@ -153,7 +187,7 @@ Router → Service → Unit of Work → Repository → SQLModel
 
 - Autenticacion JWT en handshake (?token=...)
 - Broadcast post-commit (eventos se emiten despues del commit exitoso)
-- Canales: `/ws/pedidos/{id}` (cliente), `/ws/admin/pedidos` (staff)
+- Canales: `/api/v1/pedidos/ws/pedidos/{id}` (cliente), `/api/v1/pedidos/ws/admin/pedidos` (staff)
 - Eventos: `estado_cambiado`, `pedido_cancelado`, `pago_confirmado`
 
 ### Seeders
@@ -168,6 +202,50 @@ Router → Service → Unit of Work → Repository → SQLModel
 - NO queries SQL raw fuera de repositorios
 - NO `float` para dinero (usar `Decimal`)
 - NO eliminar dependencias del Unit of Work (los servicios dependen de UoW, no de repositorios directamente)
+
+---
+
+## Testing
+
+### Backend
+
+- **Runner**: `pytest Backend/tests/` (con `pytest-cov` para cobertura)
+- **Base de datos**: SQLite en memoria (`:memory:`) con `StaticPool`. Cada test corre
+  dentro de una transaccion que se revierte al finalizar -- tests 100% aislados.
+- **Fixtures compartidos**: `conftest.py` (467 lineas) provee:
+  - `engine` (session-scoped): engine SQLite en memoria
+  - `db_session` (function-scoped): sesion transaccional con rollback automatico
+  - `client` (function-scoped): TestClient de FastAPI con override de sesion
+  - Headers de auth por rol: `admin_headers`, `client_headers`, `pedidos_headers`
+  - Seeders: `_seed_roles`, `_seed_estados_pedido`, `_seed_formas_pago`
+  - Factories: `producto_factory`, `categoria_factory`, `ingrediente_factory`,
+    `pedido_factory`, `direccion_factory`
+- **Convencion de nombres**: `test_<modulo>.py`, clases `Test<Comportamiento>`,
+  metodos `test_<accion_esperada>`
+- **Estrategia de capas**: servicios y repositorios se testean via TestClient
+  (integracion). No se mockea la base de datos.
+- **WebSocket**: `test_websocket.py` prueba los endpoints reales con TestClient
+
+Archivos de test existentes (12):
+
+| Archivo | Modulo testeado |
+|---|---|
+| `test_identidad_acceso.py` | Auth, usuarios, roles |
+| `test_catalogo_productos.py` | Productos, categorias |
+| `test_unidad_medida.py` | Unidades de medida |
+| `test_pedidos.py` | Pedidos |
+| `test_catalogos_pedido.py` | Estados, formas de pago |
+| `test_pedido_post_pago.py` | Flujo post-pago MercadoPago |
+| `test_pago_service.py` | Servicio de pagos |
+| `test_historial_estado_pedido_service.py` | Historial de estados |
+| `test_estadisticas.py` | Dashboard KPIs |
+| `test_websocket.py` | WebSocket pedidos/admin |
+| `test_cloudinary_uploads.py` | Uploads a Cloudinary |
+
+### Frontend
+
+- **No hay tests** de frontend (`vitest`, `jest`, o `testing-library` no estan
+  instalados en `package.json`). Esto es deuda tecnica conocida.
 
 ---
 

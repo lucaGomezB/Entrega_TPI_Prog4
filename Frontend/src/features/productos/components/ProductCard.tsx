@@ -54,9 +54,10 @@ interface ProductCardProps {
   onAddToCart: (prod: Producto) => void;
   recentlyAdded: Set<number>;
   categoryImages?: string[];
+  showId?: boolean;
 }
 
-export default function ProductCard({ product, onAddToCart, recentlyAdded, categoryImages }: ProductCardProps) {
+export default function ProductCard({ product, onAddToCart, recentlyAdded, categoryImages, showId }: ProductCardProps) {
   const navigate = useNavigate();
   const isUnavailable = !product.disponible || product.stock_cantidad <= 0;
   const isRecent = recentlyAdded.has(product.id);
@@ -98,7 +99,14 @@ export default function ProductCard({ product, onAddToCart, recentlyAdded, categ
 
       {/* Content */}
       <div className="p-4 flex flex-col flex-1">
-        <h3 className="font-semibold text-lg mb-1">{product.nombre}</h3>
+        <h3 className="font-semibold text-lg mb-1">
+          {product.nombre}
+          {showId && (
+            <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-xs font-mono font-normal bg-gray-100 text-gray-500 align-middle">
+              #{product.id}
+            </span>
+          )}
+        </h3>
         <p className="text-gray-700 text-sm mb-2">
           ${Number(product.precio_actual).toFixed(2)}
           {product.unidad_medida_simbolo && (

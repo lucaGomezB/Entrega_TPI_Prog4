@@ -16,6 +16,7 @@ import { useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { addToast } from "@/shared/components/Toast";
 import Modal from "@/shared/components/Modal";
+import { usePagination } from "@/shared/hooks/usePagination";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import {
   usePedidosActivos,
@@ -260,12 +261,18 @@ function StockModal({ pedido, detalles, onResolve, onCancel }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onCancel}>
-      <div className="bg-white rounded p-6 w-full max-w-lg" style={{ overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-amber-800">Stock Insuficiente</h2>
-          <button onClick={onCancel} className="text-gray-500 text-xl cursor-pointer">X</button>
-        </div>
+    <Modal
+      open={true}
+      onClose={onCancel}
+      title="Stock Insuficiente"
+      maxWidth="max-w-lg"
+      footer={
+        <>
+          <button type="button" onClick={onCancel} disabled={resolving} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer disabled:opacity-50">Cancelar</button>
+          <button type="button" onClick={handleConfirmar} disabled={resolving} className="px-4 py-2 text-sm bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer disabled:opacity-50">{resolving ? "Aplicando..." : "Aplicar cambios y confirmar"}</button>
+        </>
+      }
+    >
         <p className="text-sm text-gray-600 mb-4">
           El pedido <strong>#{pedido.id}</strong> tiene productos con stock insuficiente.
           Ajusta las cantidades o marca para eliminar los que no tengan stock.
@@ -311,12 +318,7 @@ function StockModal({ pedido, detalles, onResolve, onCancel }: {
           </tbody>
         </table>
 
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onCancel} disabled={resolving} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer disabled:opacity-50">Cancelar</button>
-          <button type="button" onClick={handleConfirmar} disabled={resolving} className="px-4 py-2 text-sm bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer disabled:opacity-50">{resolving ? "Aplicando..." : "Aplicar cambios y confirmar"}</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -332,25 +334,26 @@ function CancelMotivoPopup({ pedidoId, onConfirm, onCancel, loading }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onCancel}>
-      <div className="bg-white rounded p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Cancelar Pedido</h2>
-          <button onClick={onCancel} className="text-gray-500 text-xl cursor-pointer" disabled={loading}>X</button>
-        </div>
+    <Modal
+      open={true}
+      onClose={onCancel}
+      title="Cancelar Pedido"
+      maxWidth="max-w-md"
+      footer={
+        <>
+          <button type="button" onClick={onCancel} disabled={loading} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer disabled:opacity-50">Cancelar</button>
+          <button type="submit" form="cancel-pedido-form" disabled={!trimmed || loading} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 cursor-pointer disabled:opacity-50">{loading ? "Cancelando..." : "Confirmar Cancelacion"}</button>
+        </>
+      }
+    >
         <p className="text-sm text-gray-700 mb-4">
           Esta seguro que desea cancelar el pedido <strong>#{pedidoId}</strong>?
           No podra cancelarlo hasta rellenar el motivo:
         </p>
-        <form onSubmit={handleSubmit}>
+        <form id="cancel-pedido-form" onSubmit={handleSubmit}>
           <input type="text" value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Escriba el motivo de la cancelacion..." className="w-full border border-gray-300 rounded px-3 py-2 mb-4 text-sm focus:outline-none focus:border-red-400" autoFocus disabled={loading} maxLength={500} />
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onCancel} disabled={loading} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer disabled:opacity-50">Cancelar</button>
-            <button type="submit" disabled={!trimmed || loading} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 cursor-pointer disabled:opacity-50">{loading ? "Cancelando..." : "Confirmar Cancelacion"}</button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -359,8 +362,8 @@ type ModoVista = "activos" | "historial";
 export default function PedidosPage() {
   const [modo, setModo] = useState<ModoVista>("activos");
   const esHistorial = modo === "historial";
-  const [skip, setSkip] = useState(0);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+
+  const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [detailPopup, setDetailPopup] = useState<Pedido | null>(null);
@@ -424,18 +427,16 @@ export default function PedidosPage() {
   const cambiarModo = (nuevo: ModoVista) => {
     if (nuevo !== modo) {
       setModo(nuevo);
-      setSkip(0);
+      handlePageChange(0);
       setSortBy("id");
       setSortOrder("desc");
     }
   };
 
-  const handlePageChange = (newSkip: number) => setSkip(newSkip);
-  const handleLimitChange = (newLimit: number) => { setLimit(newLimit); setSkip(0); };
   const handleSort = (newSortBy: string, newSortOrder: "asc" | "desc") => {
     setSortBy(newSortBy);
     setSortOrder(newSortOrder);
-    setSkip(0);
+    handlePageChange(0);
   };
 
   const handleAvanzar = async (id: number) => {

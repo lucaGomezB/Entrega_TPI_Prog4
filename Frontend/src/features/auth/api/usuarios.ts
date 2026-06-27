@@ -53,11 +53,12 @@ export const usuariosApi = {
 
   /**
    * Fetches a paginated list of users.
-   * Optionally filters by role code (e.g., "ADMIN", "CLIENTE").
+   * Optionally filters by role code (e.g., "ADMIN", "CLIENTE") or text search.
    */
-  getAll: (skip = 0, limit = 100, rolCodigo?: string) => {
+  getAll: (skip = 0, limit = 100, rolCodigo?: string, search?: string) => {
     let url = `/usuarios/?skip=${skip}&limit=${limit}`;
     if (rolCodigo) url += `&rol_codigo=${rolCodigo}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
     return apiFetchPaginated<Usuario>(url);
   },
 

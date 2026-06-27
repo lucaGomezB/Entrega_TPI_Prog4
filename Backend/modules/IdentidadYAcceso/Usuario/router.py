@@ -49,17 +49,19 @@ def list_usuarios(
     limit: int = Query(100, ge=1, le=500),
     incluir_eliminados: bool = Query(False, description="Incluir usuarios soft-deleteados (solo ADMIN)"),
     rol_codigo: Optional[str] = Query(None, description="Filter by role code (e.g., ADMIN, CLIENT)"),
+    search: Optional[str] = Query(None, description="Busqueda textual por nombre, apellido o email"),
     session: Session = Depends(get_session),
 ):
     """
-    GET /usuarios — List users with pagination and optional role filter.
+    GET /usuarios — List users with pagination and optional filters.
 
     Paginated: skip (offset) and limit (max 500) prevent unbounded queries.
     Optional rol_codigo filters users by a specific role.
+    Optional search performs ILIKE matching on nombre, apellido, and email.
     Optional incluir_eliminados includes soft-deleted records (ADMIN only).
     Returns each user with their assigned roles. ADMIN only.
     """
-    return service.listar_usuarios(session, skip=skip, limit=limit, rol_codigo=rol_codigo, incluir_eliminados=incluir_eliminados)
+    return service.listar_usuarios(session, skip=skip, limit=limit, rol_codigo=rol_codigo, search=search, incluir_eliminados=incluir_eliminados)
 
 
 @router.get("/{usuario_id}", response_model=UsuarioReadWithRoles,

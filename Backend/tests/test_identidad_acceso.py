@@ -437,6 +437,171 @@ class TestUsuarioPatchSoftDelete:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# USUARIO SEARCH ENDPOINT — /api/v1/usuarios/?search=
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestUsuarioSearch:
+    """GET /api/v1/usuarios?search= — textual search on nombre/apellido/email."""
+
+    def test_search_by_partial_name(self, client, admin_headers, db_session):
+        """Search 'juan' matches nombre 'Juan' and apellido 'Juana'."""
+        u1 = Usuario(
+            nombre="Juan", apellido="Perez",
+            email="juan@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        u2 = Usuario(
+            nombre="Maria", apellido="Juana",
+            email="maria@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        u3 = Usuario(
+            nombre="Pedro", apellido="Gomez",
+            email="pedro@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        db_session.add_all([u1, u2, u3])
+        db_session.flush()
+        db_session.add(UsuarioRol(usuario_id=u1.id, rol_codigo="ADMIN"))
+        db_session.add(UsuarioRol(usuario_id=u2.id, rol_codigo="CLIENT"))
+        db_session.add(UsuarioRol(usuario_id=u3.id, rol_codigo="PEDIDOS"))
+        db_session.flush()
+
+        response = client.get("/api/v1/usuarios/?search=juan", headers=admin_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        emails = [item["email"] for item in data["items"]]
+        assert "juan@test.com" in emails
+        assert "maria@test.com" in emails
+        assert "pedro@test.com" not in emails
+
+    def test_search_combined_with_role_filter(self, client, admin_headers, db_session):
+        """Search 'juan' + rol_codigo=ADMIN returns only the ADMIN match."""
+        u1 = Usuario(
+            nombre="Juan", apellido="Perez",
+            email="juanp@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        u2 = Usuario(
+            nombre="Juana", apellido="Lopez",
+            email="juana_lopez@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        db_session.add_all([u1, u2])
+        db_session.flush()
+        db_session.add(UsuarioRol(usuario_id=u1.id, rol_codigo="ADMIN"))
+        db_session.add(UsuarioRol(usuario_id=u2.id, rol_codigo="CLIENT"))
+        db_session.flush()
+
+        response = client.get(
+            "/api/v1/usuarios/?search=juan&rol_codigo=ADMIN",
+            headers=admin_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["email"] == "juanp@test.com"
+
+    def test_search_no_results(self, client, admin_headers, db_session):
+        """Search for a non-existent term returns empty list."""
+        u = Usuario(
+            nombre="Existente", apellido="User",
+            email="exist@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        db_session.add(u)
+        db_session.flush()
+        db_session.add(UsuarioRol(usuario_id=u.id, rol_codigo="CLIENT"))
+        db_session.flush()
+
+        response = client.get(
+            "/api/v1/usuarios/?search=xyznotfound",
+            headers=admin_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["items"] == []
+
+    def test_search_empty_param(self, client, admin_headers, db_session):
+        """Empty search param returns all users (same as omitting search)."""
+        u = Usuario(
+            nombre="EmptySearch", apellido="Test",
+            email="emptysearch@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        db_session.add(u)
+        db_session.flush()
+        db_session.add(UsuarioRol(usuario_id=u.id, rol_codigo="CLIENT"))
+        db_session.flush()
+
+        # With empty search
+        r1 = client.get("/api/v1/usuarios/?search=", headers=admin_headers)
+        # Without search param
+        r2 = client.get("/api/v1/usuarios/", headers=admin_headers)
+
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert r1.json()["total"] == r2.json()["total"]
+
+    def test_search_with_pagination(self, client, admin_headers, db_session):
+        """Search + pagination: total reflects filtered count, items respect limit."""
+        for i in range(5):
+            u = Usuario(
+                nombre=f"Mar{i}", apellido="Test",
+                email=f"mar{i}@test.com",
+                password_hash=get_password_hash("pass"),
+            )
+            db_session.add(u)
+            db_session.flush()
+            db_session.add(UsuarioRol(usuario_id=u.id, rol_codigo="CLIENT"))
+            db_session.flush()
+
+        response = client.get(
+            "/api/v1/usuarios/?search=mar&skip=0&limit=3",
+            headers=admin_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 5
+        assert len(data["items"]) == 3
+        assert data["skip"] == 0
+        assert data["limit"] == 3
+
+    def test_search_sql_injection_attempt(self, client, admin_headers, db_session):
+        """Search with SQL injection characters returns no results without crashing."""
+        u = Usuario(
+            nombre="Safe", apellido="User",
+            email="safe@test.com",
+            password_hash=get_password_hash("pass"),
+        )
+        db_session.add(u)
+        db_session.flush()
+        db_session.add(UsuarioRol(usuario_id=u.id, rol_codigo="CLIENT"))
+        db_session.flush()
+
+        response = client.get(
+            "/api/v1/usuarios/?search='; DROP TABLE usuario--",
+            headers=admin_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Should return empty results (no crash / no table damage)
+        assert isinstance(data["items"], list)
+
+    def test_search_client_rejected(self, client, client_headers):
+        """Client role cannot search users (403)."""
+        response = client.get("/api/v1/usuarios/?search=juan", headers=client_headers)
+        assert response.status_code == 403
+
+    def test_search_unauthenticated_returns_401(self, client):
+        """No auth returns 401."""
+        response = client.get("/api/v1/usuarios/?search=juan")
+        assert response.status_code == 401
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # USUARIO CREATE / UPDATE — asignado_por_id tracking
 # ═══════════════════════════════════════════════════════════════════════════
 

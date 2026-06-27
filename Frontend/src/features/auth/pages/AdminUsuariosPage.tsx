@@ -1,9 +1,9 @@
 /**
  * AdminUsuariosPage — User management admin page (RBAC).
  * Uses TanStack Query for data fetching and mutations.
- * Uses DataTable with server-side pagination.
+ * Uses DataTable with server-side pagination, SearchFilter, and Modal.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { type Usuario, type UsuarioCreate, type UsuarioUpdate } from "@/features/auth/api/usuarios";
 import { apiFetch, getUserRoles } from "@/shared/api/client";
@@ -11,6 +11,9 @@ import { useUsuarios, useCreateUsuario, useUpdateUsuario, useDeleteUsuario } fro
 import { useAppForm, required, email, minLength, composeValidators } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
+import SearchFilter from "@/shared/components/SearchFilter";
+import Modal from "@/shared/components/Modal";
+import { usePagination } from "@/shared/hooks/usePagination";
 
 const DEFAULT_LIMIT = 10;
 
@@ -89,62 +92,65 @@ function EditarUsuarioModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">Editar Usuario #{usuario.id}</h2>
-        <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
-          {error && <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-              <form.Field name="nombre" validators={{ onChange: composeValidators(required()) }}>
-                {(field) => (
-                  <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-                )}
-              </form.Field>
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
-              <form.Field name="apellido" validators={{ onChange: composeValidators(required()) }}>
-                {(field) => (
-                  <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-                )}
-              </form.Field>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <form.Field name="email" validators={{ onChange: composeValidators(required(), email()) }}>
-              {(field) => (
-                <input type="email" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
-              )}
-            </form.Field>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
-            <form.Field name="celular">
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={`Editar Usuario #${usuario.id}`}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer">Cancelar</button>
+          <button type="submit" form="edit-user-form" disabled={guardando} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer">{guardando ? "Guardando..." : "Guardar"}</button>
+        </>
+      }
+    >
+      <form id="edit-user-form" onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
+        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+            <form.Field name="nombre" validators={{ onChange: composeValidators(required()) }}>
               {(field) => (
                 <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
               )}
             </form.Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
-            <div className="flex flex-wrap gap-2">
-              {todosRoles.map((rol) => (
-                <button key={rol.codigo} type="button" onClick={() => toggleRol(rol.codigo)} className={`px-3 py-1 rounded text-sm border cursor-pointer transition-colors ${rolesSel.includes(rol.codigo) ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"}`}>
-                  {rol.nombre}
-                </button>
-              ))}
-            </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
+            <form.Field name="apellido" validators={{ onChange: composeValidators(required()) }}>
+              {(field) => (
+                <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+              )}
+            </form.Field>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer">Cancelar</button>
-            <button type="submit" disabled={guardando} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer">{guardando ? "Guardando..." : "Guardar"}</button>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <form.Field name="email" validators={{ onChange: composeValidators(required(), email()) }}>
+            {(field) => (
+              <input type="email" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+            )}
+          </form.Field>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
+          <form.Field name="celular">
+            {(field) => (
+              <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />
+            )}
+          </form.Field>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
+          <div className="flex flex-wrap gap-2">
+            {todosRoles.map((rol) => (
+              <button key={rol.codigo} type="button" onClick={() => toggleRol(rol.codigo)} className={`px-3 py-1 rounded text-sm border cursor-pointer transition-colors ${rolesSel.includes(rol.codigo) ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"}`}>
+                {rol.nombre}
+              </button>
+            ))}
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -204,66 +210,69 @@ function CrearUsuarioModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">Crear Usuario</h2>
-        <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
-          {error && <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-              <form.Field name="nombre" validators={{ onChange: composeValidators(required()) }}>
-                {(field) => <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
-              </form.Field>
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
-              <form.Field name="apellido" validators={{ onChange: composeValidators(required()) }}>
-                {(field) => <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
-              </form.Field>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <form.Field name="email" validators={{ onChange: composeValidators(required(), email()) }}>
-              {(field) => <input type="email" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
-            </form.Field>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
-            <form.Field name="celular">
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Crear Usuario"
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer">Cancelar</button>
+          <button type="submit" form="create-user-form" disabled={guardando} className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 cursor-pointer">{guardando ? "Creando..." : "Crear usuario"}</button>
+        </>
+      }
+    >
+      <form id="create-user-form" onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
+        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded text-sm">{error}</div>}
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+            <form.Field name="nombre" validators={{ onChange: composeValidators(required()) }}>
               {(field) => <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
             </form.Field>
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
-              <form.Field name="password" validators={{ onChange: composeValidators(required(), minLength(6)) }}>
-                {(field) => <input type="password" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
-              </form.Field>
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contrasena</label>
-              <form.Field name="confirmPassword" validators={{ onChange: composeValidators(required(), minLength(6)) }}>
-                {(field) => <input type="password" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
-              </form.Field>
-            </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
+            <form.Field name="apellido" validators={{ onChange: composeValidators(required()) }}>
+              {(field) => <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
+            </form.Field>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
-            <div className="flex flex-wrap gap-2">
-              {todosRoles.map((rol) => (
-                <button key={rol.codigo} type="button" onClick={() => toggleRol(rol.codigo)} className={`px-3 py-1 rounded text-sm border cursor-pointer transition-colors ${rolesSel.includes(rol.codigo) ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"}`}>{rol.nombre}</button>
-              ))}
-            </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <form.Field name="email" validators={{ onChange: composeValidators(required(), email()) }}>
+            {(field) => <input type="email" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
+          </form.Field>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
+          <form.Field name="celular">
+            {(field) => <input value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
+          </form.Field>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
+            <form.Field name="password" validators={{ onChange: composeValidators(required(), minLength(6)) }}>
+              {(field) => <input type="password" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
+            </form.Field>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer">Cancelar</button>
-            <button type="submit" disabled={guardando} className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 cursor-pointer">{guardando ? "Creando..." : "Crear usuario"}</button>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contrasena</label>
+            <form.Field name="confirmPassword" validators={{ onChange: composeValidators(required(), minLength(6)) }}>
+              {(field) => <input type="password" value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} className="w-full border border-gray-300 rounded px-3 py-2 text-sm" />}
+            </form.Field>
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Roles</label>
+          <div className="flex flex-wrap gap-2">
+            {todosRoles.map((rol) => (
+              <button key={rol.codigo} type="button" onClick={() => toggleRol(rol.codigo)} className={`px-3 py-1 rounded text-sm border cursor-pointer transition-colors ${rolesSel.includes(rol.codigo) ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"}`}>{rol.nombre}</button>
+            ))}
+          </div>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -271,12 +280,13 @@ function CrearUsuarioModal({
 
 export default function AdminUsuariosPage() {
   const navigate = useNavigate();
-  const [skip, setSkip] = useState(0);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [rolFiltro, setRolFiltro] = useState("");
+  const [search, setSearch] = useState("");
   const [todosRoles, setTodosRoles] = useState<RolOption[]>([]);
   const [editando, setEditando] = useState<Usuario | null>(null);
   const [creando, setCreando] = useState(false);
+
+  const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
 
   const userRoles = getUserRoles();
   const esAdmin = userRoles.includes("ADMIN");
@@ -284,8 +294,13 @@ export default function AdminUsuariosPage() {
     if (!esAdmin) navigate("/productos", { replace: true });
   }, [esAdmin, navigate]);
 
+  const handleSearch = useCallback((value: string) => {
+    setSearch(value);
+    handlePageChange(0);
+  }, [handlePageChange]);
+
   // ── TanStack Query ──
-  const { data, isLoading, isError, error } = useUsuarios(skip, limit, rolFiltro || undefined);
+  const { data, isLoading, isError, error } = useUsuarios(skip, limit, rolFiltro || undefined, search || undefined);
   const usuarios = data?.items ?? [];
   const total = data?.total ?? 0;
 
@@ -319,10 +334,13 @@ export default function AdminUsuariosPage() {
     }
   };
 
-  const handlePageChange = (newSkip: number) => setSkip(newSkip);
-  const handleLimitChange = (newLimit: number) => { setLimit(newLimit); setSkip(0); };
-
   const columns: DataTableColumn<Usuario>[] = [
+    {
+      key: "id" as const,
+      label: "Codigo",
+      hideOnMobile: true,
+      render: (u) => <span className="text-gray-500 text-xs">#{u.id}</span>,
+    },
     {
       key: "nombre",
       label: "Nombre",
@@ -367,9 +385,10 @@ export default function AdminUsuariosPage() {
         <button onClick={() => setCreando(true)} className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 cursor-pointer">+ Crear Usuario</button>
       </div>
       {isError && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">{(error as Error)?.message || "Error al cargar"}</div>}
-      <div className="flex gap-2 mb-4 items-center">
-        <label className="text-sm font-medium text-gray-700">Filtrar por rol:</label>
-        <select value={rolFiltro} onChange={(e) => { setRolFiltro(e.target.value); setSkip(0); }} className="border border-gray-300 rounded px-3 py-1.5 text-sm">
+      <div className="flex gap-2 mb-4 items-center flex-wrap">
+        <SearchFilter onSearch={handleSearch} placeholder="Buscar por nombre, apellido o email..." />
+        <label className="text-sm font-medium text-gray-700">Rol:</label>
+        <select value={rolFiltro} onChange={(e) => { setRolFiltro(e.target.value); handlePageChange(0); }} className="border border-gray-300 rounded px-3 py-1.5 text-sm">
           <option value="">Todos los roles</option>
           {todosRoles.map((rol) => (<option key={rol.codigo} value={rol.codigo}>{rol.nombre}</option>))}
         </select>

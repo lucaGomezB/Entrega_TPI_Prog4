@@ -15,6 +15,7 @@ import { unidadesMedidaApi } from "@/features/unidades-medida/api/unidadesMedida
 import UnidadMedidaForm from "@/features/unidades-medida/components/UnidadMedidaForm";
 import { addToast } from "@/shared/components/Toast";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
+import { usePagination } from "@/shared/hooks/usePagination";
 
 const DEFAULT_LIMIT = 10;
 
@@ -34,8 +35,8 @@ export default function UnidadesMedidaAdminPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<UnidadMedidaCreate | undefined>();
   const [submitting, setSubmitting] = useState(false);
-  const [skip, setSkip] = useState(0);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+
+  const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
 
   const fetchUnits = useCallback(async () => {
     setLoading(true);
@@ -114,9 +115,6 @@ export default function UnidadesMedidaAdminPage() {
   const total = units.length;
   const pagedUnits = units.slice(skip, skip + limit);
 
-  const handlePageChange = (newSkip: number) => setSkip(newSkip);
-  const handleLimitChange = (newLimit: number) => { setLimit(newLimit); setSkip(0); };
-
   const columns: DataTableColumn<UnidadMedida>[] = [
     {
       key: "nombre",
@@ -164,7 +162,7 @@ export default function UnidadesMedidaAdminPage() {
         {TIPO_FILTERS.map((f) => (
           <button
             key={f.value}
-            onClick={() => { setTipoFilter(f.value); setSkip(0); }}
+            onClick={() => { setTipoFilter(f.value); handlePageChange(0); }}
             className={`px-3 py-1 rounded text-sm cursor-pointer border ${
               tipoFilter === f.value
                 ? "bg-blue-600 text-white border-blue-600"

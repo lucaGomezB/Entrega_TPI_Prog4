@@ -4,13 +4,14 @@ import type { Usuario, UsuarioCreate, UsuarioUpdate } from '../api/usuarios'
 import { queryKeys } from '@/shared/api/queryKeys'
 import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/client'
 
-/** Fetches all usuarios with pagination and optional role filter. Returns full response with total. */
-export function useUsuarios(skip = 0, limit = 10, rolCodigo?: string) {
+/** Fetches all usuarios with pagination and optional filters. Returns full response with total. */
+export function useUsuarios(skip = 0, limit = 10, rolCodigo?: string, search?: string) {
   return useQuery<PaginatedResponse<Usuario>>({
-    queryKey: [queryKeys.usuarios.all[0], 'list', { skip, limit, rolCodigo }] as const,
+    queryKey: [queryKeys.usuarios.all[0], 'list', { skip, limit, rolCodigo, search }] as const,
     queryFn: () => {
       let url = `/usuarios/?skip=${skip}&limit=${limit}`;
       if (rolCodigo) url += `&rol_codigo=${rolCodigo}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
       return apiFetchPaginatedFull<Usuario>(url);
     },
   })
