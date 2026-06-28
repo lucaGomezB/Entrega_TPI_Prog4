@@ -14,6 +14,9 @@ import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import SearchFilter from "@/shared/components/SearchFilter";
 import Modal from "@/shared/components/Modal";
 import { usePagination } from "@/shared/hooks/usePagination";
+import ErrorBanner from "@/shared/components/ErrorBanner";
+import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
+import FormFooter from "@/shared/components/FormFooter";
 
 const DEFAULT_LIMIT = 10;
 
@@ -97,10 +100,14 @@ function EditarUsuarioModal({
       onClose={onClose}
       title={`Editar Usuario #${usuario.id}`}
       footer={
-        <>
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer">Cancelar</button>
-          <button type="submit" form="edit-user-form" disabled={guardando} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer">{guardando ? "Guardando..." : "Guardar"}</button>
-        </>
+        <FormFooter
+          isSubmitting={guardando}
+          isEditing={true}
+          onCancel={onClose}
+          updateLabel="Guardar"
+          createLabel="Guardar"
+          formId="edit-user-form"
+        />
       }
     >
       <form id="edit-user-form" onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
@@ -215,10 +222,14 @@ function CrearUsuarioModal({
       onClose={onClose}
       title="Crear Usuario"
       footer={
-        <>
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer">Cancelar</button>
-          <button type="submit" form="create-user-form" disabled={guardando} className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 cursor-pointer">{guardando ? "Creando..." : "Crear usuario"}</button>
-        </>
+        <FormFooter
+          isSubmitting={guardando}
+          isEditing={false}
+          onCancel={onClose}
+          createLabel="Crear usuario"
+          submitLabel="Creando..."
+          formId="create-user-form"
+        />
       }
     >
       <form id="create-user-form" onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="space-y-3">
@@ -369,9 +380,9 @@ export default function AdminUsuariosPage() {
       label: "Acciones",
       render: (u) => (
         <div className="flex gap-1">
-          <button onClick={() => setEditando(u)} className="bg-yellow-500 text-white px-3 py-1 rounded text-xs hover:bg-yellow-600 cursor-pointer">Editar</button>
+          <EditButton onClick={() => setEditando(u)} />
           {u.roles.every((r) => r.codigo !== "ADMIN") && (
-            <button onClick={() => handleDelete(u.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 cursor-pointer">Eliminar</button>
+            <DeleteButton onClick={() => handleDelete(u.id)} />
           )}
         </div>
       ),
@@ -384,7 +395,7 @@ export default function AdminUsuariosPage() {
         <h1 className="text-2xl font-bold">Gestion de Usuarios</h1>
         <button onClick={() => setCreando(true)} className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 cursor-pointer">+ Crear Usuario</button>
       </div>
-      {isError && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">{(error as Error)?.message || "Error al cargar"}</div>}
+      <ErrorBanner isError={isError} error={error} message="Error al cargar" />
       <div className="flex gap-2 mb-4 items-center flex-wrap">
         <SearchFilter onSearch={handleSearch} placeholder="Buscar por nombre, apellido o email..." />
         <label className="text-sm font-medium text-gray-700">Rol:</label>

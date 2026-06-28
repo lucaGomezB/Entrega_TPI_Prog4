@@ -14,6 +14,7 @@ import { useCartStore } from "@/shared/store/cartStore";
 import { addToast } from "@/shared/components/Toast";
 import ImageCarousel from "@/shared/components/ImageCarousel";
 import AllergenBadge from "@/features/productos/components/AllergenBadge";
+import ErrorBanner from "@/shared/components/ErrorBanner";
 
 // ── Skeleton loader for the detail page ──
 
@@ -69,16 +70,16 @@ export default function ProductoDetail() {
   // ── Error state ──
   if (productError) {
     return (
-      <div className="max-w-4xl mx-auto p-4 text-center">
-        <p className="text-red-500 text-lg mb-4">
-          {(productErrorObj as Error)?.message || "Error al cargar producto"}
-        </p>
-        <button
-          onClick={() => navigate(-1)}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 cursor-pointer"
-        >
-          Volver
-        </button>
+      <div className="max-w-4xl mx-auto p-4">
+        <ErrorBanner isError={true} error={productErrorObj} message="Error al cargar producto" />
+        <div className="text-center mt-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 cursor-pointer"
+          >
+            Volver
+          </button>
+        </div>
       </div>
     );
   }

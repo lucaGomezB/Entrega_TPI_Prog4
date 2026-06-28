@@ -9,7 +9,8 @@
  * handles 401 (auto-refresh) and network-level errors. Any other HTTP error
  * status is thrown as an AxiosError for the caller to handle.
  */
-import { apiFetch, apiFetchPaginated } from "@/shared/api/client";
+import { apiFetch } from "@/shared/api/client";
+import { createCrudApi } from "@/shared/api/createCrudApi";
 
 // ── Types ──
 
@@ -96,30 +97,7 @@ export interface CategoriaAsignada {
 }
 
 export const productosApi = {
-  /** Fetches a paginated list of all products. */
-  getAll: (skip = 0, limit = 100) =>
-    apiFetchPaginated<Producto>(`/productos/?skip=${skip}&limit=${limit}`),
-
-  /** Fetches a single product by its ID. */
-  getById: (id: number) => apiFetch<Producto>(`/productos/${id}`),
-
-  /** Creates a new product with optional category and ingredient assignments. */
-  create: (data: ProductoCreate) =>
-    apiFetch<Producto>("/productos/", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  /** Partially updates an existing product (PATCH semantics). */
-  update: (id: number, data: ProductoUpdate) =>
-    apiFetch<Producto>(`/productos/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  /** Deletes a product by its ID. */
-  delete: (id: number) =>
-    apiFetch<void>(`/productos/${id}`, { method: "DELETE" }),
+  ...createCrudApi<Producto>("/productos"),
 
   // Relaciones Producto-Ingrediente
 

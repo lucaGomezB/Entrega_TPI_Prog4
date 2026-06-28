@@ -19,6 +19,7 @@ import AdminUsuariosPage from '@/features/auth/pages/AdminUsuariosPage'
 import Dashboard from '@/features/estadisticas/pages/Dashboard'
 import UnidadesMedidaAdminPage from '@/features/unidades-medida/pages/UnidadesMedidaAdminPage'
 import Login from '@/features/auth/pages/LoginConceptual'
+import PostPagoPage from '@/features/pedidos/pages/PostPagoPage'
 
 /* ── Helpers ── */
 
@@ -53,6 +54,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
         <Route path="/productos" element={<ProductosCliente />} />
         {!isGuest && <Route path="/carrito" element={<Carrito />} />}
         <Route path="/pedidos" element={<PedidosPage />} />
+        <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
         <Route path="/pedidos/:id" element={<PedidosPage />} />
         <Route path="/direcciones" element={<DireccionesPage />} />
         <Route path="*" element={<Navigate to="/productos" replace />} />
@@ -73,6 +75,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
       <Routes>
         <Route path="/" element={<Navigate to="/pedidos" replace />} />
         <Route path="/pedidos" element={<PedidosPage />} />
+        <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
         <Route path="/pedidos/:id" element={<PedidosPage />} />
         <Route path="*" element={<Navigate to="/pedidos" replace />} />
       </Routes>
@@ -92,6 +95,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
       } />
       {!isGuest && <Route path="/carrito" element={<Carrito />} />}
       <Route path="/pedidos" element={<PedidosPage />} />
+      <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
       <Route path="/pedidos/:id" element={<PedidosPage />} />
       <Route path="/direcciones" element={<DireccionesPage />} />
       <Route path="*" element={<Navigate to="/productos" replace />} />

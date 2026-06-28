@@ -9,13 +9,13 @@ import pytest
 from decimal import Decimal
 from fastapi import status
 
-from modules.IdentidadYAcceso.Usuario.models import Usuario
-from modules.IdentidadYAcceso.usuario_rol import UsuarioRol
-from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
-from modules.CatalogoDeProductos.Producto.models import Producto
-from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
-from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
+from app.modules.IdentidadYAcceso.Usuario.models import Usuario
+from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+from app.modules.CatalogoDeProductos.Producto.models import Producto
+from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
 from core.security.passwords import get_password_hash
 
 
@@ -24,7 +24,7 @@ from core.security.passwords import get_password_hash
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _ensure_roles(db_session):
-    from modules.IdentidadYAcceso.Rol.models import Rol
+    from app.modules.IdentidadYAcceso.Rol.models import Rol
     from sqlmodel import select
     for codigo, nombre in [
         ("ADMIN", "Admin"), ("CLIENT", "Client"),
@@ -36,7 +36,7 @@ def _ensure_roles(db_session):
 
 
 def _ensure_estados(db_session):
-    from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+    from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
     from sqlmodel import select
     for codigo, desc, orden, terminal in [
         ("PENDIENTE", "Pendiente", 1, False),
@@ -51,7 +51,7 @@ def _ensure_estados(db_session):
 
 
 def _ensure_formas_pago(db_session):
-    from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+    from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
     from sqlmodel import select
     for codigo, desc, hab in [
         ("MERCADOPAGO", "MP", True),

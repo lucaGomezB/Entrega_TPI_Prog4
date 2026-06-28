@@ -6,6 +6,7 @@
  * used as the default for new orders.
  */
 import { apiFetch } from "@/shared/api/client";
+import { createCrudApi } from "@/shared/api/createCrudApi";
 
 // ── Types ──
 
@@ -59,31 +60,13 @@ export function formatDireccion(d: DireccionEntrega): string {
 }
 
 export const direccionesApi = {
-  /** Fetches all addresses for the current user (scoped by the JWT). */
+  ...createCrudApi<DireccionEntrega>("/direcciones"),
+
+  /**
+   * Fetches all addresses for the current user (scoped by the JWT).
+   * Overrides the default paginated getAll with a non-paginated version.
+   */
   getAll: () => apiFetch<DireccionEntrega[]>("/direcciones/"),
-
-  /** Fetches a single address by its ID. */
-  getById: (id: number) => apiFetch<DireccionEntrega>(`/direcciones/${id}`),
-
-  /** Creates a new delivery address for the current user. */
-  create: (data: DireccionEntregaInput) =>
-    apiFetch<DireccionEntrega>("/direcciones/", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  /** Partially updates an existing address. */
-  update: (id: number, data: DireccionEntregaUpdate) =>
-    apiFetch<DireccionEntrega>(`/direcciones/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  /** Deletes an address by its ID. */
-  delete: (id: number) =>
-    apiFetch<void>(`/direcciones/${id}`, {
-      method: "DELETE",
-    }),
 
   /**
    * Marks an address as the primary/default delivery address.

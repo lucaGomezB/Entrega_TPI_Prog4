@@ -11,11 +11,11 @@ import pytest
 from fastapi import status
 from sqlmodel import select
 
-from modules.IdentidadYAcceso.Usuario.models import Usuario
-from modules.IdentidadYAcceso.usuario_rol import UsuarioRol
-from modules.IdentidadYAcceso.Rol.models import Rol
-from modules.IdentidadYAcceso.Usuario.repository import UsuarioRepository
-from modules.IdentidadYAcceso.Usuario.service import obtener_usuario
+from app.modules.IdentidadYAcceso.Usuario.models import Usuario
+from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+from app.modules.IdentidadYAcceso.Rol.models import Rol
+from app.modules.IdentidadYAcceso.Usuario.repository import UsuarioRepository
+from app.modules.IdentidadYAcceso.Usuario.service import obtener_usuario
 from core.security.passwords import get_password_hash
 
 
@@ -213,7 +213,7 @@ class TestAuthLogout:
 
     def test_logout_revokes_token_in_db(self, client, db_session):
         """Logout sets revoked_at on the refresh token in the database."""
-        from modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
+        from app.modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
         reg = client.post("/api/v1/auth/register", json={
             "nombre": "LogoutDB", "apellido": "Test",
             "email": "logoutdb@test.com", "password": "pass123",
@@ -612,7 +612,7 @@ class TestUsuarioCreateAsignadoPorId:
         """When admin creates a user with roles, UsuarioRol.asignado_por_id
         must be set to the admin's user ID."""
         # Seed roles first (Rol table needed for FK constraints)
-        from modules.IdentidadYAcceso.Rol.models import Rol
+        from app.modules.IdentidadYAcceso.Rol.models import Rol
         from sqlmodel import select as _select
         for codigo, nombre in [
             ("ADMIN", "Admin"), ("CLIENT", "Client"),
@@ -652,7 +652,7 @@ class TestUsuarioCreateAsignadoPorId:
     def test_create_user_no_roles_still_works(self, client, admin_headers, db_session):
         """Creating a user without roles should succeed without errors."""
         # Seed roles
-        from modules.IdentidadYAcceso.Rol.models import Rol
+        from app.modules.IdentidadYAcceso.Rol.models import Rol
         from sqlmodel import select as _select
         for codigo, nombre in [("ADMIN", "Admin"), ("CLIENT", "Client")]:
             if not db_session.exec(_select(Rol).where(Rol.codigo == codigo)).first():
@@ -676,7 +676,7 @@ class TestUsuarioUpdateAsignadoPorId:
     def test_update_user_roles_populates_asignado_por_id(self, client, admin_headers, db_session):
         """When admin reassigns roles via PATCH, UsuarioRol.asignado_por_id
         must be set to the admin's user ID."""
-        from modules.IdentidadYAcceso.Rol.models import Rol
+        from app.modules.IdentidadYAcceso.Rol.models import Rol
         from sqlmodel import select as _select
         for codigo, nombre in [("ADMIN", "Admin"), ("CLIENT", "Client"), ("PEDIDOS", "Pedidos")]:
             if not db_session.exec(_select(Rol).where(Rol.codigo == codigo)).first():

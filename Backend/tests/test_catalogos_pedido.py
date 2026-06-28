@@ -8,8 +8,8 @@ import pytest
 from fastapi import status
 from sqlmodel import select
 
-from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
-from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
 
 
 def _seed_catalogos(db_session):
@@ -160,7 +160,7 @@ class TestFormaPago:
 
 def _seed_roles(db_session):
     """Ensure system roles exist."""
-    from modules.IdentidadYAcceso.Rol.models import Rol
+    from app.modules.IdentidadYAcceso.Rol.models import Rol
     for codigo, nombre, desc in [
         ("ADMIN", "Administrador", ""),
         ("CLIENT", "Cliente", ""),

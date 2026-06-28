@@ -17,6 +17,9 @@ import { unidadesMedidaApi } from "@/features/unidades-medida/api/unidadesMedida
 import SearchFilter from "@/shared/components/SearchFilter";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { getUserRoles } from "@/shared/api/client";
+import ErrorBanner from "@/shared/components/ErrorBanner";
+import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
+import FormFooter from "@/shared/components/FormFooter";
 
 const DEFAULT_LIMIT = 10;
 
@@ -243,14 +246,12 @@ export default function IngredientesCRUD() {
       label: "Acciones",
       render: (ing) => (
         <div className="flex gap-1 flex-wrap">
-          <button onClick={() => handleStartEdit(ing)}
-            className="bg-yellow-500 text-white px-2 py-1 rounded text-sm cursor-pointer">Editar</button>
+          <EditButton onClick={() => handleStartEdit(ing)} />
           <button onClick={() => setInlineStockEdit({ id: ing.id, value: String(ing.stock_actual) })}
             className="bg-teal-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Stock</button>
           <button onClick={() => setInlinePrecioEdit({ id: ing.id, value: String(ing.precio_actual) })}
             className="bg-purple-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Precio</button>
-          <button onClick={() => handleDelete(ing.id)}
-            className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer">Eliminar</button>
+          <DeleteButton onClick={() => handleDelete(ing.id)} />
         </div>
       ),
     },
@@ -259,7 +260,7 @@ export default function IngredientesCRUD() {
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Insumos</h1>
-      {isError && <div className="bg-red-100 text-red-700 p-2 mb-4 rounded">{(error as Error)?.message || "Error al cargar"}</div>}
+      <ErrorBanner isError={isError} error={error} message="Error al cargar" />
       <div className="flex gap-2 mb-4 flex-wrap">
         <SearchFilter onSearch={handleSearch} placeholder="Filtrar por nombre..." />
         <button onClick={handleStartCreate}
@@ -362,10 +363,11 @@ export default function IngredientesCRUD() {
               )}
             </form.Field>
           </div>
-          <button type="submit" className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer">
-            {editingId ? "Actualizar" : "Crear"}</button>
-          <button type="button" onClick={handleCloseForm}
-            className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
+          <FormFooter
+            isSubmitting={false}
+            isEditing={!!editingId}
+            onCancel={handleCloseForm}
+          />
         </form>
       )}
       <DataTable

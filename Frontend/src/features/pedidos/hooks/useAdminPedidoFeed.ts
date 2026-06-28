@@ -37,6 +37,11 @@ export function useAdminPedidoFeed(
   const mountedRef = useRef(true);
   const connectingRef = useRef(false);
 
+  // useRef bridge: always points to the latest onEvent callback without
+  // triggering reconnects when the inline reference changes on re-render.
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
+
   const accessToken = useAuthStore((s) => s.accessToken);
   const setStatus = useWsStore((s) => s.setStatus);
   const setLastEvent = useWsStore((s) => s.setLastEvent);
@@ -86,7 +91,7 @@ export function useAdminPedidoFeed(
         const event: WsEvent = JSON.parse(msg.data as string);
         setLastEvent(event);
         useNotificationStore.getState().incrementUnseen();
-        onEvent?.(event);
+        onEventRef.current?.(event);
       } catch {
         // Ignore malformed messages
       }
@@ -112,7 +117,7 @@ export function useAdminPedidoFeed(
     socket.onerror = () => {
       // onclose will fire after onerror — handle reconnection there
     };
-  }, [enabled, accessToken, disconnect, setStatus, setLastEvent, resetReconnect, incrementReconnect, onEvent]);
+  }, [enabled, accessToken, disconnect, setStatus, setLastEvent, resetReconnect, incrementReconnect]);
 
   useEffect(() => {
     mountedRef.current = true;

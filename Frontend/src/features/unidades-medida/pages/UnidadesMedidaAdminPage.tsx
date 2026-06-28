@@ -16,6 +16,7 @@ import UnidadMedidaForm from "@/features/unidades-medida/components/UnidadMedida
 import { addToast } from "@/shared/components/Toast";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import { usePagination } from "@/shared/hooks/usePagination";
+import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
 
 const DEFAULT_LIMIT = 10;
 
@@ -136,18 +137,8 @@ export default function UnidadesMedidaAdminPage() {
       label: "Acciones",
       render: (unit) => (
         <div className="flex gap-1">
-          <button
-            onClick={() => handleEdit(unit)}
-            className="bg-yellow-500 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-yellow-600"
-          >
-            Editar
-          </button>
-          <button
-            onClick={() => handleDelete(unit)}
-            className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700"
-          >
-            Eliminar
-          </button>
+          <EditButton onClick={() => handleEdit(unit)} />
+          <DeleteButton onClick={() => handleDelete(unit)} />
         </div>
       ),
     },

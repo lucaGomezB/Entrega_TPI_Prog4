@@ -21,7 +21,6 @@ import { categoriasApi } from "@/features/categorias/api/categorias";
 import { unidadesMedidaApi } from "@/features/unidades-medida/api/unidadesMedidaApi";
 import type { UnidadMedida } from "@/features/unidades-medida/types";
 import { useProductos, useCreateProducto, useUpdateProducto, useDeleteProducto } from "@/features/productos/hooks/useProductos";
-import { uploadsApi } from "@/shared/api/uploads";
 import ImageCarousel from "@/shared/components/ImageCarousel";
 import { addToast } from "@/shared/components/Toast";
 import Modal from "@/shared/components/Modal";
@@ -33,6 +32,10 @@ import { AxiosError } from "axios";
 import { getAccessToken } from "@/shared/api/client";
 import SearchFilter from "@/shared/components/SearchFilter";
 import { usePagination } from "@/shared/hooks/usePagination";
+import ErrorBanner from "@/shared/components/ErrorBanner";
+import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
+import FormFooter from "@/shared/components/FormFooter";
+import { useCloudinaryUpload } from "@/shared/hooks/useCloudinaryUpload";
 
 const DEFAULT_LIMIT = 10;
 
@@ -630,10 +633,8 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const [recentlyAdded, setRecentlyAdded] = useState<Set<number>>(new Set());
   const addTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Cloudinary Upload Widget state
-  const cloudinaryWidgetRef = useRef<unknown>(null);
+  // Cloudinary Upload Widget state (managed by shared hook)
   const [imagenPublicIds, setImagenPublicIds] = useState<string[]>([]);
-  const [uploadingImages, setUploadingImages] = useState(false);
 
   // ── TanStack Query: products (paginated) ──
   const { data, isLoading, isError, error } = useProductos(skip, limit, search || undefined);
@@ -692,71 +693,18 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     addTimerRef.current.set(productoId, timer);
   };
 
-  // Load Cloudinary Upload Widget CDN script
-  useEffect(() => {
-    if (readOnly) return;
-    const scriptId = "cloudinary-upload-widget";
-    if (document.getElementById(scriptId)) return;
-    const script = document.createElement("script");
-    script.id = scriptId;
-    script.src = "https://upload-widget.cloudinary.com/global/all.js";
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      const el = document.getElementById(scriptId);
-      if (el) el.remove();
-    };
-  }, [readOnly]);
-
-  const abrirWidgetCloudinary = () => {
-    const cloudinary = (window as unknown as Record<string, unknown>).cloudinary as Record<string, unknown> | undefined;
-    if (!cloudinary || typeof cloudinary.createUploadWidget !== "function") {
-      addToast("error", "El widget de Cloudinary no se ha cargado. Recargue la pagina.");
-      return;
-    }
-    const widget = (cloudinary.createUploadWidget as Function)(
-      {
-        cloudName: "dqp5n999t",
-        uploadPreset: "fs_default",
-        multiple: true,
-        maxFiles: 10,
-      },
-      (error: unknown, result: { event: string; info?: { secure_url: string; public_id: string } }) => {
-        if (error) {
-          addToast("error", "Error al subir imagen a Cloudinary");
-          return;
-        }
-        if (result?.event === "success" && result.info) {
-          const newUrl = result.info.secure_url;
-          const newPublicId = result.info.public_id;
-          const currentUrls = form.getFieldValue("imagenes_url") ?? [];
-          form.setFieldValue("imagenes_url", [...currentUrls, newUrl]);
-          setImagenPublicIds((prev) => [...prev, newPublicId]);
-        }
-      }
-    );
-    cloudinaryWidgetRef.current = widget;
-    (widget as { open: () => void }).open();
-  };
+  // Cloudinary Upload Widget (shared hook, multiple mode)
+  const { abrirWidget, eliminarImagen, uploadingImages } = useCloudinaryUpload("multiple");
 
   const handleDeleteImagen = async (publicId: string) => {
-    if (!confirm("Eliminar esta imagen?")) return;
-    setUploadingImages(true);
-    try {
-      await uploadsApi.deleteImage(publicId);
-      const idx = imagenPublicIds.indexOf(publicId);
-      if (idx >= 0) {
-        const currentUrls = form.getFieldValue("imagenes_url") ?? [];
-        const newUrls = [...currentUrls];
-        newUrls.splice(idx, 1);
-        form.setFieldValue("imagenes_url", newUrls);
-        setImagenPublicIds((prev) => prev.filter((id) => id !== publicId));
-      }
-      addToast("exito", "Imagen eliminada correctamente");
-    } catch {
-      addToast("error", "Error al eliminar la imagen");
-    } finally {
-      setUploadingImages(false);
+    await eliminarImagen(publicId);
+    const idx = imagenPublicIds.indexOf(publicId);
+    if (idx >= 0) {
+      const currentUrls = form.getFieldValue("imagenes_url") ?? [];
+      const newUrls = [...currentUrls];
+      newUrls.splice(idx, 1);
+      form.setFieldValue("imagenes_url", newUrls);
+      setImagenPublicIds((prev) => prev.filter((id) => id !== publicId));
     }
   };
 
@@ -1048,16 +996,14 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       render: (p: Producto) => (
         <div className="flex gap-1 flex-wrap">
           {!isStockMode && (
-            <button onClick={() => handleStartEdit(p)}
-              className="bg-yellow-500 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-yellow-600 transition-colors">Editar</button>
+            <EditButton onClick={() => handleStartEdit(p)} />
           )}
           {isStockMode && (
             <button onClick={() => handleStartStockEdit(p)}
               className="bg-amber-700 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-amber-800 transition-colors">Stock</button>
           )}
           {!isStockMode && !hideDelete && (
-            <button onClick={() => handleDelete(p.id)}
-              className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700 transition-colors">Eliminar</button>
+            <DeleteButton onClick={() => handleDelete(p.id)} />
           )}
         </div>
       ),
@@ -1094,7 +1040,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">{role === 'client' ? 'Menu' : 'Gestion de Productos'}</h1>
-      {isError && <pre className="text-red-500 mb-4 whitespace-pre-wrap font-sans">{(error as Error)?.message || "Error al cargar"}</pre>}
+      <ErrorBanner isError={isError} error={error} message="Error al cargar" />
 
       {/* Toolbar */}
       <div className="flex gap-2 mb-4 items-center">
@@ -1349,8 +1295,16 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 onDelete={handleDeleteImagen}
                 readOnly={false}
               />
-              <button type="button" onClick={abrirWidgetCloudinary} disabled={uploadingImages}
-                className="mt-3 bg-blue-600 text-white px-4 py-1 rounded cursor-pointer disabled:opacity-50 hover:bg-blue-700">
+              <button
+                type="button"
+                onClick={() => abrirWidget((secureUrl, publicId) => {
+                  const currentUrls = form.getFieldValue("imagenes_url") ?? [];
+                  form.setFieldValue("imagenes_url", [...currentUrls, secureUrl]);
+                  setImagenPublicIds((prev) => [...prev, publicId]);
+                })}
+                disabled={uploadingImages}
+                className="mt-3 bg-blue-600 text-white px-4 py-1 rounded cursor-pointer disabled:opacity-50 hover:bg-blue-700"
+              >
                 {uploadingImages ? "Subiendo..." : "Subir imagenes"}
               </button>
             </div>
@@ -1418,12 +1372,13 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
             </>
           )}
 
-          <div className="flex gap-2 mt-4">
-            <button type="submit" disabled={form.state.isSubmitting}
-              className="bg-blue-600 text-white px-4 py-1 rounded cursor-pointer disabled:opacity-50">
-              {form.state.isSubmitting ? "Guardando..." : (stockEditOnly ? "Actualizar Stock" : (editingId ? "Actualizar" : "Crear"))}</button>
-            <button type="button" onClick={handleCloseForm}
-              className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer">Cancelar</button>
+          <div className="mt-4">
+            <FormFooter
+              isSubmitting={form.state.isSubmitting}
+              isEditing={!!editingId}
+              onCancel={handleCloseForm}
+              updateLabel={stockEditOnly ? "Actualizar Stock" : undefined}
+            />
           </div>
         </form>
       )}

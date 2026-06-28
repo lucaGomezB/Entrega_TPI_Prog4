@@ -8,7 +8,8 @@
  * Note: Regular user registration (self-service signup) is handled by a
  * different endpoint (/auth/register) not defined in this module.
  */
-import { apiFetch, apiFetchPaginated } from "@/shared/api/client";
+import { apiFetchPaginated } from "@/shared/api/client";
+import { createCrudApi } from "@/shared/api/createCrudApi";
 
 // ── Types ──
 
@@ -43,13 +44,11 @@ export interface UsuarioUpdate {
   roles_codigos?: string[];
 }
 
+const baseCrud = createCrudApi<Usuario>("/usuarios");
+
 export const usuariosApi = {
   /** Creates a new user with the given profile data and optional role assignments. */
-  create: (data: UsuarioCreate) =>
-    apiFetch<Usuario>("/usuarios/", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
+  create: baseCrud.create,
 
   /**
    * Fetches a paginated list of users.
@@ -63,19 +62,11 @@ export const usuariosApi = {
   },
 
   /** Fetches a single user by ID. */
-  getById: (id: number) =>
-    apiFetch<Usuario>(`/usuarios/${id}`),
+  getById: baseCrud.getById,
 
   /** Partially updates a user's profile and/or role assignments. */
-  update: (id: number, data: UsuarioUpdate) =>
-    apiFetch<Usuario>(`/usuarios/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
+  update: baseCrud.update,
 
   /** Deletes a user account by ID. */
-  delete: (id: number) =>
-    apiFetch<void>(`/usuarios/${id}`, {
-      method: "DELETE",
-    }),
+  delete: baseCrud.delete,
 };

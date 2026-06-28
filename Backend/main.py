@@ -28,39 +28,39 @@ from alembic.config import Config
 from alembic import command
 from core.database import engine
 from core.rate_limit import limiter
-from modules.CatalogoDeProductos.Categoria.router import router as categoria_router
-from modules.CatalogoDeProductos.Producto.router import router as producto_router
-from modules.CatalogoDeProductos.Ingrediente.router import router as ingrediente_router
-from modules.CatalogoDeProductos.UnidadMedida.router import router as unidad_medida_router
-from modules.IdentidadYAcceso.Auth.router import router as auth_router
-from modules.IdentidadYAcceso.Usuario.router import router as usuario_router
-from modules.IdentidadYAcceso.Rol.router import router as rol_router
-from modules.IdentidadYAcceso.DireccionEntrega.router import router as direccion_router
-from modules.VentasPagosTrazabilidad.FormaPago.router import router as forma_pago_router
-from modules.VentasPagosTrazabilidad.Pedido.router import router as pedido_router
-from modules.VentasPagosTrazabilidad.EstadoPedido.router import router as estado_pedido_router
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.router import router as historial_estado_router
-from modules.VentasPagosTrazabilidad.Pago.router import router as pago_router
-from modules.Uploads.router import router as uploads_router
-from modules.Estadisticas.router import router as estadisticas_router
-from modules.CatalogoDeProductos.Categoria.models import Categoria
-from modules.CatalogoDeProductos.Producto.models import Producto
-from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
-from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
-from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
-from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
-from modules.IdentidadYAcceso.Rol.models import Rol
-from modules.IdentidadYAcceso.usuario_rol import UsuarioRol
-from modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
-from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
-from modules.IdentidadYAcceso.Auth.service import cleanup_expired_tokens
-from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
-from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
-from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
-from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
-from modules.VentasPagosTrazabilidad.Pago.models import Pago
-from modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
+from app.modules.CatalogoDeProductos.Categoria.router import router as categoria_router
+from app.modules.CatalogoDeProductos.Producto.router import router as producto_router
+from app.modules.CatalogoDeProductos.Ingrediente.router import router as ingrediente_router
+from app.modules.CatalogoDeProductos.UnidadMedida.router import router as unidad_medida_router
+from app.modules.IdentidadYAcceso.Auth.router import router as auth_router
+from app.modules.IdentidadYAcceso.Usuario.router import router as usuario_router
+from app.modules.IdentidadYAcceso.Rol.router import router as rol_router
+from app.modules.IdentidadYAcceso.DireccionEntrega.router import router as direccion_router
+from app.modules.VentasPagosTrazabilidad.FormaPago.router import router as forma_pago_router
+from app.modules.VentasPagosTrazabilidad.Pedido.router import router as pedido_router
+from app.modules.VentasPagosTrazabilidad.EstadoPedido.router import router as estado_pedido_router
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.router import router as historial_estado_router
+from app.modules.VentasPagosTrazabilidad.Pago.router import router as pago_router
+from app.modules.Uploads.router import router as uploads_router
+from app.modules.Estadisticas.router import router as estadisticas_router
+from app.modules.CatalogoDeProductos.Categoria.models import Categoria
+from app.modules.CatalogoDeProductos.Producto.models import Producto
+from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+from app.modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
+from app.modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
+from app.modules.IdentidadYAcceso.Rol.models import Rol
+from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+from app.modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
+from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+from app.modules.IdentidadYAcceso.Auth.service import cleanup_expired_tokens
+from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
+from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
 
 async def _cleanup_expired_snapshots():
     """Background task: delete expired cart_snapshot rows every 5 minutes."""
@@ -69,7 +69,7 @@ async def _cleanup_expired_snapshots():
         try:
             await asyncio.sleep(300)  # 5 minutes
             with Session(engine) as session:
-                from modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import (
+                from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import (
                     CarritoSnapshotRepository,
                 )
                 repo = CarritoSnapshotRepository(session)
@@ -209,7 +209,7 @@ app.include_router(estadisticas_router, prefix="/api/v1")
 
 # ── MercadoPago IPN webhook: MUST stay at /pagos/webhook with NO API prefix ──
 # MP calls this path directly; adding /api/v1 would break the integration.
-from modules.VentasPagosTrazabilidad.Pago.router import webhook_receiver
+from app.modules.VentasPagosTrazabilidad.Pago.router import webhook_receiver
 app.add_api_route("/pagos/webhook", webhook_receiver, methods=["POST"])
 
 

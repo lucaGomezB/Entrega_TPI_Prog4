@@ -53,24 +53,24 @@ def _compile_jsonb_sqlite(element, compiler, **kw):
 # "expression 'Usuario' failed to locate a name" when create_all
 # triggers mapper configuration for Pedido (which references Usuario).
 # ═══════════════════════════════════════════════════════════════════════════
-from modules.IdentidadYAcceso.Rol.models import Rol  # noqa: E402, F401
-from modules.IdentidadYAcceso.Usuario.models import Usuario  # noqa: E402, F401
-from modules.IdentidadYAcceso.usuario_rol import UsuarioRol  # noqa: E402, F401
-from modules.IdentidadYAcceso.RefreshToken.models import RefreshToken  # noqa: E402, F401
-from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega  # noqa: E402, F401
-from modules.CatalogoDeProductos.Categoria.models import Categoria  # noqa: E402, F401
-from modules.CatalogoDeProductos.Producto.models import Producto  # noqa: E402, F401
-from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente  # noqa: E402, F401
-from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida  # noqa: E402, F401
-from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria  # noqa: E402, F401
-from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente  # noqa: E402, F401
-from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido  # noqa: E402, F401
-from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago  # noqa: E402, F401
-from modules.VentasPagosTrazabilidad.Pedido.models import Pedido  # noqa: E402, F401
-from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido  # noqa: E402, F401
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido  # noqa: E402, F401
-from modules.VentasPagosTrazabilidad.Pago.models import Pago  # noqa: E402, F401
-from modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot  # noqa: E402, F401
+from app.modules.IdentidadYAcceso.Rol.models import Rol  # noqa: E402, F401
+from app.modules.IdentidadYAcceso.Usuario.models import Usuario  # noqa: E402, F401
+from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol  # noqa: E402, F401
+from app.modules.IdentidadYAcceso.RefreshToken.models import RefreshToken  # noqa: E402, F401
+from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega  # noqa: E402, F401
+from app.modules.CatalogoDeProductos.Categoria.models import Categoria  # noqa: E402, F401
+from app.modules.CatalogoDeProductos.Producto.models import Producto  # noqa: E402, F401
+from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente  # noqa: E402, F401
+from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida  # noqa: E402, F401
+from app.modules.CatalogoDeProductos.producto_categoria import ProductoCategoria  # noqa: E402, F401
+from app.modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente  # noqa: E402, F401
+from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido  # noqa: E402, F401
+from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago  # noqa: E402, F401
+from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido  # noqa: E402, F401
+from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido  # noqa: E402, F401
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido  # noqa: E402, F401
+from app.modules.VentasPagosTrazabilidad.Pago.models import Pago  # noqa: E402, F401
+from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot  # noqa: E402, F401
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -215,8 +215,8 @@ def create_user_with_role(
     Creates a real Usuario record with hashed password and optional role
     assignments via UsuarioRol. Returns both the ORM object and auth headers.
     """
-    from modules.IdentidadYAcceso.Usuario.models import Usuario
-    from modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+    from app.modules.IdentidadYAcceso.Usuario.models import Usuario
+    from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
 
     if roles_codigos is None:
         roles_codigos = ["CLIENT"]
@@ -244,7 +244,7 @@ def create_user_with_role(
 
 def _seed_roles(session: Session):
     """Ensure system roles exist in the test database."""
-    from modules.IdentidadYAcceso.Rol.models import Rol
+    from app.modules.IdentidadYAcceso.Rol.models import Rol
 
     ROLES = [
         ("ADMIN", "Administrador", "Acceso total sin restricciones"),
@@ -261,7 +261,7 @@ def _seed_roles(session: Session):
 
 def _seed_estados_pedido(session: Session):
     """Ensure order states exist in the test database."""
-    from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+    from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
 
     ESTADOS = [
         ("PENDIENTE", "Pedido creado, pago pendiente", 1, False),
@@ -286,7 +286,7 @@ def _seed_estados_pedido(session: Session):
 
 def _seed_formas_pago(session: Session):
     """Ensure payment methods exist in the test database."""
-    from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+    from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
 
     FORMAS = [
         ("MERCADOPAGO", "MercadoPago", True),
@@ -371,7 +371,7 @@ def categoria_factory(db_session: Session, **kwargs):
 
     Default values can be overridden via kwargs.
     """
-    from modules.CatalogoDeProductos.Categoria.models import Categoria
+    from app.modules.CatalogoDeProductos.Categoria.models import Categoria
 
     defaults = {
         "nombre": "Test Category",
@@ -387,7 +387,7 @@ def categoria_factory(db_session: Session, **kwargs):
 
 def ingrediente_factory(db_session: Session, **kwargs):
     """Create an Ingrediente for testing. Returns the ORM object."""
-    from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+    from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
 
     defaults = {
         "nombre": "Test Ingredient",
@@ -405,7 +405,7 @@ def ingrediente_factory(db_session: Session, **kwargs):
 
 def producto_factory(db_session: Session, **kwargs):
     """Create a Producto for testing. Returns the ORM object."""
-    from modules.CatalogoDeProductos.Producto.models import Producto
+    from app.modules.CatalogoDeProductos.Producto.models import Producto
 
     defaults = {
         "nombre": "Test Product",
@@ -426,7 +426,7 @@ def producto_factory(db_session: Session, **kwargs):
 
 def direccion_factory(db_session: Session, usuario_id: int, **kwargs):
     """Create a DireccionEntrega for testing. Returns the ORM object."""
-    from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+    from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
 
     defaults = {
         "usuario_id": usuario_id,
@@ -449,7 +449,7 @@ def pedido_factory(db_session: Session, usuario_id: int, **kwargs):
 
     Does NOT create details or history — those are separate concerns.
     """
-    from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+    from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
 
     defaults = {
         "usuario_id": usuario_id,

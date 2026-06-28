@@ -173,6 +173,7 @@ export default function Carrito() {
   const [stockWarnings, setStockWarnings] = useState<ValidarStockDetalle[] | null>(null);
   const [mensaje, setMensaje] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
   const [formaPago, setFormaPago] = useState<string>("PAGO_LOCAL");
+  const [notas, setNotas] = useState("");
   const [ingredientesPorProducto, setIngredientesPorProducto] = useState<Record<number, ProductoIngredienteRead[]>>({});
 
   // ── TanStack Query: direcciones ──
@@ -254,6 +255,7 @@ export default function Carrito() {
           descuento: 0,
           costo_envio: costoEnvio,
           direccion_id: direccionId ?? null,
+          notas: notas.trim() || null,
           items: currentItems.map((i) => ({
             producto_id: i.productoId,
             nombre: i.nombre,
@@ -536,6 +538,18 @@ export default function Carrito() {
             <span className="text-sm">MercadoPago (tarjeta/debito)</span>
           </label>
         </div>
+      </div>
+
+      <div className="border-t pt-4 mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Notas del pedido</h2>
+        <textarea
+          value={notas}
+          onChange={(e) => setNotas(e.target.value)}
+          placeholder="Ej: Sin cebolla, sin picante..."
+          rows={2}
+          maxLength={500}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y"
+        />
       </div>
 
       <div className="border-t pt-4 flex justify-between items-center">

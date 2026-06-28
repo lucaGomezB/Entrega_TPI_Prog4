@@ -14,11 +14,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlmodel import Session, select
 
-from modules.VentasPagosTrazabilidad.Pago.service import PagoService
-from modules.VentasPagosTrazabilidad.Pago.schemas import InitFromCartRequest, CartItemInput
-from modules.VentasPagosTrazabilidad.Pedido.service import PedidoService
-from modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
-from modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import CarritoSnapshotRepository
+from app.modules.VentasPagosTrazabilidad.Pago.service import PagoService
+from app.modules.VentasPagosTrazabilidad.Pago.schemas import InitFromCartRequest, CartItemInput
+from app.modules.VentasPagosTrazabilidad.Pedido.service import PedidoService
+from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
+from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import CarritoSnapshotRepository
 
 
 # ── Helpers ──
@@ -55,9 +55,246 @@ def _make_mock_usuario():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# TASK 1.1: auto_return in MercadoPago preference
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestAutoReturn:
+    """Verify auto_return: 'approved' is included in preference_data."""
+
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    def test_init_from_cart_includes_auto_return(self, mock_sdk, db_session):
+        """init_from_cart sends auto_return='approved' in preference_data."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
+        )
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        producto_factory(db_session, id=1, nombre="AutoReturn", precio_base=Decimal("100.00"), stock_cantidad=10)
+
+        mock_sdk_instance = MagicMock()
+        mock_pref = MagicMock()
+        mock_pref.create.return_value = {
+            "status": 201, "response": {"id": "pref-auto", "init_point": "https://mp.com/checkout"},
+        }
+        mock_sdk_instance.preference.return_value = mock_pref
+        mock_sdk.return_value = mock_sdk_instance
+
+        PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
+
+        # Capture the preference_data passed to create()
+        create_call_args = mock_pref.create.call_args[0][0]
+        assert create_call_args.get("auto_return") == "approved", (
+            f"auto_return missing or wrong in init_from_cart preference_data: {create_call_args}"
+        )
+
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    def test_init_mp_payment_includes_auto_return(self, mock_sdk, db_session):
+        """init_mp_payment sends auto_return='approved' in preference_data."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory, pedido_factory,
+        )
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        producto_factory(db_session, id=1, nombre="Test", precio_base=Decimal("100.00"), stock_cantidad=10)
+        pedido_factory(db_session, usuario_id=1, id=123, total=Decimal("200.00"))
+
+        mock_sdk_instance = MagicMock()
+        mock_pref = MagicMock()
+        mock_pref.create.return_value = {
+            "status": 201, "response": {"id": "pref-legacy", "init_point": "https://mp.com/checkout"},
+        }
+        mock_sdk_instance.preference.return_value = mock_pref
+        mock_sdk.return_value = mock_sdk_instance
+
+        PagoService.init_mp_payment(db_session, pedido_id=123)
+
+        create_call_args = mock_pref.create.call_args[0][0]
+        assert create_call_args.get("auto_return") == "approved", (
+            f"auto_return missing or wrong in init_mp_payment preference_data: {create_call_args}"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TASK 1.2: Dev-mode webhook toggle
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestWebhookDevMode:
+
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_webhook_base_url")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    @patch.dict("os.environ", {"MP_ALLOW_HTTP_WEBHOOK": "true"}, clear=False)
+    def test_notification_url_included_with_http_when_env_true(self, mock_sdk, mock_webhook_base, db_session):
+        """With MP_ALLOW_HTTP_WEBHOOK=true, notification_url is added even for http://"""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
+        )
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        producto_factory(db_session, id=1, nombre="Test", precio_base=Decimal("100.00"), stock_cantidad=10)
+        # Force webhook base to HTTP to test the toggle
+        mock_webhook_base.return_value = "http://localhost:8000"
+
+        mock_sdk_instance = MagicMock()
+        mock_pref = MagicMock()
+        mock_pref.create.return_value = {
+            "status": 201, "response": {"id": "pref-http", "init_point": "https://mp.com/checkout"},
+        }
+        mock_sdk_instance.preference.return_value = mock_pref
+        mock_sdk.return_value = mock_sdk_instance
+
+        PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
+
+        create_call_args = mock_pref.create.call_args[0][0]
+        assert "notification_url" in create_call_args, (
+            f"notification_url should be present when MP_ALLOW_HTTP_WEBHOOK=true, got: {create_call_args}"
+        )
+
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_webhook_base_url")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    @patch.dict("os.environ", {"MP_ALLOW_HTTP_WEBHOOK": ""}, clear=False)
+    def test_notification_url_absent_with_http_when_env_not_set(self, mock_sdk, mock_webhook_base, db_session):
+        """Without MP_ALLOW_HTTP_WEBHOOK, notification_url is omitted for http://"""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
+        )
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        producto_factory(db_session, id=1, nombre="Test", precio_base=Decimal("100.00"), stock_cantidad=10)
+        # Force webhook base to HTTP
+        mock_webhook_base.return_value = "http://localhost:8000"
+
+        mock_sdk_instance = MagicMock()
+        mock_pref = MagicMock()
+        mock_pref.create.return_value = {
+            "status": 201, "response": {"id": "pref-nosig", "init_point": "https://mp.com/checkout"},
+        }
+        mock_sdk_instance.preference.return_value = mock_pref
+        mock_sdk.return_value = mock_sdk_instance
+
+        PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
+
+        create_call_args = mock_pref.create.call_args[0][0]
+        assert "notification_url" not in create_call_args, (
+            f"notification_url should be absent when MP_ALLOW_HTTP_WEBHOOK is not set, got: {create_call_args}"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TASK 1.3: GET /pagos/status polling endpoint tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestPagoStatusEndpoint:
+    """Tests for GET /pagos/status polling endpoint."""
+
+    def test_status_found_when_pago_has_pedido(self, db_session, client, client_headers):
+        """Pago with pedido_id -> status found with pedido_id."""
+        from tests.conftest import _seed_roles, _seed_estados_pedido, _seed_formas_pago
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        import uuid
+
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        ext_ref = str(uuid.uuid4())
+
+        pago = Pago(
+            pedido_id=42, mp_status="approved", external_reference=ext_ref,
+            idempotency_key=str(uuid.uuid4()), transaction_amount=100.00,
+        )
+        db_session.add(pago)
+        db_session.commit()
+
+        response = client.get(
+            f"/api/v1/pagos/status?external_reference={ext_ref}",
+            headers=client_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "found"
+        assert data["pedido_id"] == 42
+        assert data["mp_status"] == "approved"
+
+    def test_status_pending_when_pago_no_pedido(self, db_session, client, client_headers):
+        """Pago without pedido_id, mp_status approved -> status pending."""
+        from tests.conftest import _seed_roles, _seed_estados_pedido, _seed_formas_pago
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        import uuid
+
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        ext_ref = str(uuid.uuid4())
+
+        pago = Pago(
+            pedido_id=None, mp_status="approved", external_reference=ext_ref,
+            idempotency_key=str(uuid.uuid4()), transaction_amount=100.00,
+        )
+        db_session.add(pago)
+        db_session.commit()
+
+        response = client.get(
+            f"/api/v1/pagos/status?external_reference={ext_ref}",
+            headers=client_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "pending"
+        assert data["pedido_id"] is None
+        assert data["mp_status"] == "approved"
+
+    def test_status_not_found_for_unknown_reference(self, client, client_headers, db_session):
+        """Unknown external_reference -> 404 not_found."""
+        from tests.conftest import _seed_roles, _seed_estados_pedido, _seed_formas_pago
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+
+        response = client.get(
+            "/api/v1/pagos/status?external_reference=nonexistent-123",
+            headers=client_headers,
+        )
+        assert response.status_code == 404
+        data = response.json()
+        assert data["status"] == "not_found"
+
+    def test_status_cross_user_returns_not_found(self, db_session, client, client_headers):
+        """User B querying User A's pago -> 404 (not 403, per spec)."""
+        from tests.conftest import _seed_roles, create_user_with_role
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
+        import uuid
+
+        _seed_roles(db_session)
+        # User A owns the pago (create user with a different email)
+        user_a, user_a_headers = create_user_with_role(
+            db_session, nombre="UserA", email="user_a@test.com",
+        )
+        ext_ref = str(uuid.uuid4())
+
+        # Create snapshot owned by User A (required for ownership check)
+        snapshot = CarritoSnapshot(
+            usuario_id=user_a.id,
+            items=[{"producto_id": 1, "nombre": "Test", "precio": 100.0, "cantidad": 1}],
+            forma_pago_codigo="MERCADOPAGO", costo_envio=0,
+            subtotal=100.00, total=100.00, external_reference=ext_ref,
+        )
+        db_session.add(snapshot)
+
+        pago = Pago(
+            pedido_id=42, mp_status="approved", external_reference=ext_ref,
+            idempotency_key=str(uuid.uuid4()), transaction_amount=100.00,
+        )
+        db_session.add(pago)
+        db_session.commit()
+
+        # User B (client_headers = client_test@test.com) queries it
+        response = client.get(
+            f"/api/v1/pagos/status?external_reference={ext_ref}",
+            headers=client_headers,
+        )
+        # Per spec: cross-user access returns 404 (information leaking prevention)
+        assert response.status_code == 404
+        data = response.json()
+        assert data["status"] == "not_found"
+
+
 class TestInitFromCartHappyPath:
 
-    @patch("modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
     def test_creates_pago_and_snapshot(self, mock_sdk, db_session):
         from tests.conftest import (
             _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
@@ -83,7 +320,7 @@ class TestInitFromCartHappyPath:
         assert snapshot is not None
         assert snapshot.items[0]["producto_id"] == 1
 
-    @patch("modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
     def test_returns_init_point(self, mock_sdk, db_session):
         from tests.conftest import (
             _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
@@ -134,8 +371,8 @@ class TestInitFromCartStockValidation:
 
 class TestWebhookFlow:
 
-    @patch("modules.VentasPagosTrazabilidad.Pago.service.get_ws_manager")
-    @patch("modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service.get_ws_manager")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp")
     @patch("sqlmodel.Session")
     def test_approved_creates_pedido_and_deletes_snapshot(self, mock_session_cls, mock_get_payment, mock_ws, db_session):
         """process_webhook on approved creates Pedido, deletes snapshot, backfills pago."""
@@ -145,8 +382,8 @@ class TestWebhookFlow:
         _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
         producto_factory(db_session, id=1, nombre="Test", precio_base=Decimal("100.00"), stock_cantidad=10)
 
-        from modules.VentasPagosTrazabilidad.Pago.models import Pago
-        from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
         import uuid
 
         ext_ref = str(uuid.uuid4())
@@ -185,8 +422,8 @@ class TestWebhookFlow:
         ).all()
         assert len(snapshots_left) == 0
 
-    @patch("modules.VentasPagosTrazabilidad.Pago.service.get_ws_manager")
-    @patch("modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service.get_ws_manager")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp")
     @patch("sqlmodel.Session")
     def test_duplicate_webhook_no_duplicate_pedido(self, mock_session_cls, mock_get_payment, mock_ws, db_session):
         from tests.conftest import (
@@ -195,8 +432,8 @@ class TestWebhookFlow:
         _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
         producto_factory(db_session, id=1, nombre="Test", precio_base=Decimal("100.00"), stock_cantidad=10)
 
-        from modules.VentasPagosTrazabilidad.Pago.models import Pago
-        from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
         import uuid
 
         ext_ref = str(uuid.uuid4())
@@ -228,14 +465,14 @@ class TestWebhookFlow:
 
         assert len(db_session.exec(select(Pedido)).all()) == 1
 
-    @patch("modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp")
     @patch("sqlmodel.Session")
     def test_rejected_preserves_snapshot(self, mock_session_cls, mock_get_payment, db_session):
         from tests.conftest import _seed_roles, _seed_estados_pedido, _seed_formas_pago
         _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
 
-        from modules.VentasPagosTrazabilidad.Pago.models import Pago
-        from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
         import uuid
 
         ext_ref = str(uuid.uuid4())
@@ -310,7 +547,7 @@ class TestStockRollback:
         from tests.conftest import (
             _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
         )
-        from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+        from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
 
         _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
         producto_factory(db_session, id=1, nombre="Limited", precio_base=Decimal("100.00"), stock_cantidad=0)

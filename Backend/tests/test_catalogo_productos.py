@@ -7,9 +7,9 @@ Uses real SQLite DB via conftest fixtures.
 import pytest
 from fastapi import status
 
-from modules.CatalogoDeProductos.Categoria.models import Categoria
-from modules.CatalogoDeProductos.Producto.models import Producto
-from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from app.modules.CatalogoDeProductos.Categoria.models import Categoria
+from app.modules.CatalogoDeProductos.Producto.models import Producto
+from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -5,7 +5,7 @@
  */
 import { useEffect, useState, useRef } from "react";
 import { type Pedido, type DetallePedido, type StockInsuficienteDetalle } from "@/features/pedidos/api/pedidos";
-import { pagosApi, type PagoRead } from "@/features/pedidos/api/pagos";
+import { type PagoRead } from "@/features/pedidos/api/pagos";
 import { getUserRoles } from "@/shared/api/client";
 import { AxiosError } from "axios";
 import { useAdminPedidoFeed } from "@/features/pedidos/hooks/useAdminPedidoFeed";
@@ -27,6 +27,7 @@ import {
   useHistorialPedido,
 } from "@/features/pedidos/hooks/usePedidos";
 import { usePagosByPedido } from "@/features/pedidos/hooks/usePagos";
+import ErrorBanner from "@/shared/components/ErrorBanner";
 
 const DEFAULT_LIMIT = 10;
 
@@ -371,8 +372,6 @@ export default function PedidosPage() {
   const [stockIssue, setStockIssue] = useState<{ pedido: Pedido; detalles: StockInsuficienteDetalle[] } | null>(null);
   const [cancelPopup, setCancelPopup] = useState<number | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
-  const [retryingPaymentId, setRetryingPaymentId] = useState<number | null>(null);
-
   const autoOpenedRef = useRef(false);
   const { id: autoOpenId } = useParams<{ id: string }>();
 
@@ -547,9 +546,7 @@ export default function PedidosPage() {
           {!esHistorial && (esGestor || ped.estado_codigo !== "EN_PREP") && (
             <button onClick={() => handleCancelarClick(ped.id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700">Cancelar</button>
           )}
-          {ped.estado_codigo === "PENDIENTE" && ped.forma_pago_codigo === "MERCADOPAGO" && (
-            <button onClick={async () => { setRetryingPaymentId(ped.id); try { const res = await pagosApi.initPayment(ped.id); if (res.init_point && res.init_point.startsWith("https://")) { window.location.href = res.init_point; } else { addToast('error', 'El servicio de pago no esta disponible'); setRetryingPaymentId(null); } } catch { addToast('error', 'El servicio de pago no esta disponible'); setRetryingPaymentId(null); } }} disabled={retryingPaymentId === ped.id} className="bg-green-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">{retryingPaymentId === ped.id ? "Redirigiendo..." : "Pagar con MercadoPago"}</button>
-          )}
+
         </div>
       ),
     },
@@ -574,11 +571,7 @@ export default function PedidosPage() {
         )}
       </div>
 
-      {isError && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">
-          {(error as Error)?.message || "Error al cargar"}
-        </div>
-      )}
+      <ErrorBanner isError={isError} error={error} message="Error al cargar" />
 
       <DataTable
         columns={columns}

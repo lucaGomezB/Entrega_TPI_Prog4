@@ -1,8 +1,7 @@
 /**
  * Payment (Pago) API functions.
  *
- * MercadoPago payments are now initiated from cart (post-pago flow).
- * The initPayment function is DEPRECATED and replaced by initFromCart.
+ * MercadoPago payments are initiated from cart (post-pago flow).
  *
  * Flow:
  *   1. User selects MERCADOPAGO in cart
@@ -58,6 +57,13 @@ export interface InitPaymentResponse {
   error?: string | null;
 }
 
+/** Response from the payment status polling endpoint. */
+export interface PaymentStatusResponse {
+  status: "found" | "pending" | "not_found";
+  pedido_id: number | null;
+  mp_status: string | null;
+}
+
 export const pagosApi = {
   /**
    * Initiates a MercadoPago payment from cart items (POST /pagos/init-from-cart).
@@ -72,23 +78,16 @@ export const pagosApi = {
     }),
 
   /**
-   * DEPRECATED: Initiates a MercadoPago payment from an existing pedido_id.
-   *
-   * This endpoint now returns 501 Not Implemented since the flow was replaced
-   * by init-from-cart. Kept for reference.
-   *
-   * @deprecated Use initFromCart() instead.
-   */
-  initPayment: (pedidoId: number) =>
-    apiFetch<InitPaymentResponse>("/pagos/", {
-      method: "POST",
-      body: JSON.stringify({ pedido_id: pedidoId }),
-    }),
-
-  /**
    * Lists all payments for a given order.
    * Visible only to ADMIN/PEDIDOS roles.
    */
   getPagosByPedido: (pedidoId: number) =>
     apiFetch<PagoRead[]>(`/pagos/${pedidoId}`),
+
+  /**
+   * Polls for Pedido creation after MercadoPago payment.
+   * Returns found, pending, or not_found with pedido_id when available.
+   */
+  getPaymentStatus: (externalReference: string) =>
+    apiFetch<PaymentStatusResponse>(`/pagos/status?external_reference=${externalReference}`),
 };

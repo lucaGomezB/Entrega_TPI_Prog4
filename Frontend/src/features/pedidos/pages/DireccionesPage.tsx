@@ -8,7 +8,6 @@ import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import {
-  formatDireccion,
   type DireccionEntrega,
   type DireccionEntregaInput,
   type DireccionEntregaUpdate,
@@ -20,6 +19,9 @@ import {
   useDeleteDireccion,
   useSetPrincipalDireccion,
 } from "@/features/pedidos/hooks/useDirecciones";
+import ErrorBanner from "@/shared/components/ErrorBanner";
+import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
+import FormFooter from "@/shared/components/FormFooter";
 
 const DEFAULT_LIMIT = 10;
 
@@ -148,9 +150,12 @@ function DireccionModal({
               </label>
             )}
           </form.Field>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 cursor-pointer">Cancelar</button>
-            <button type="submit" disabled={form.state.isSubmitting || !form.state.values.linea1.trim() || !form.state.values.ciudad.trim()} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 cursor-pointer">{form.state.isSubmitting ? "Guardando..." : esEditar ? "Actualizar" : "Crear"}</button>
+          <div className="flex justify-end pt-2">
+            <FormFooter
+              isSubmitting={form.state.isSubmitting}
+              isEditing={esEditar}
+              onCancel={onClose}
+            />
           </div>
         </form>
       </div>
@@ -268,11 +273,11 @@ export default function DireccionesPage() {
       label: "Acciones",
       render: (d) => (
         <div className="flex gap-1">
-          <button onClick={() => abrirEditar(d)} className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 cursor-pointer">Editar</button>
+          <EditButton onClick={() => abrirEditar(d)} />
           {!d.es_principal && (
             <button onClick={() => handleSetPrincipal(d.id)} className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 cursor-pointer">Principal</button>
           )}
-          <button onClick={() => handleDelete(d.id)} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 cursor-pointer">Eliminar</button>
+          <DeleteButton onClick={() => handleDelete(d.id)} />
         </div>
       ),
     },
@@ -284,7 +289,7 @@ export default function DireccionesPage() {
         <h1 className="text-2xl font-bold">Mis Direcciones</h1>
         <button onClick={() => { setEditando(undefined); setShowModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 cursor-pointer">+ Nueva Direccion</button>
       </div>
-      {isError && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">{(error as Error)?.message || "Error al cargar"}</div>}
+      <ErrorBanner isError={isError} error={error} message="Error al cargar" />
       <DataTable
         columns={columns}
         data={pagedDirecciones}

@@ -5,7 +5,8 @@
  * organize products. The `getTree()` endpoint returns the full hierarchy
  * in a single request.
  */
-import { apiFetch, apiFetchPaginated } from "@/shared/api/client";
+import { apiFetch } from "@/shared/api/client";
+import { createCrudApi } from "@/shared/api/createCrudApi";
 
 // ── Types ──
 
@@ -49,34 +50,11 @@ export interface CategoriaTree {
 }
 
 export const categoriasApi = {
-  /** Fetches a flat, paginated list of all categories. */
-  getAll: (skip = 0, limit = 100) =>
-    apiFetchPaginated<Categoria>(`/categorias/?skip=${skip}&limit=${limit}`),
-
-  /** Fetches a single category by ID. */
-  getById: (id: number) => apiFetch<Categoria>(`/categorias/${id}`),
+  ...createCrudApi<Categoria>("/categorias"),
 
   /**
    * Fetches the full category tree (hierarchical, with parent/child nesting).
    * This is the primary endpoint for building navigation menus.
    */
   getTree: () => apiFetch<CategoriaTree[]>("/categorias/tree"),
-
-  /** Creates a new category. */
-  create: (data: CategoriaCreate) =>
-    apiFetch<Categoria>("/categorias/", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  /** Partially updates an existing category. */
-  update: (id: number, data: CategoriaUpdate) =>
-    apiFetch<Categoria>(`/categorias/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  /** Deletes a category by ID. */
-  delete: (id: number) =>
-    apiFetch<void>(`/categorias/${id}`, { method: "DELETE" }),
 };

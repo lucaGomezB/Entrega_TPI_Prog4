@@ -15,79 +15,16 @@
  *   roles = []    → guest (no token, browsing publicly)
  *   roles = [...] → authenticated with roles, e.g. ["ADMIN", "CLIENTE"]
  *
- * Persistence: Uses sessionStorage so each browser window/tab gets its own
- * isolated session. This enables testing with multiple roles simultaneously
- * (ADMIN in one window, CLIENT in another) without cross-contamination.
- * The httpOnly refresh cookie handles seamless session restoration across
- * browser restarts — the access token does not need to survive restarts.
+ * Persistence: Uses Zustand `persist` middleware with sessionStorage so each
+ * browser window/tab gets its own isolated session. This enables testing with
+ * multiple roles simultaneously (ADMIN in one window, CLIENT in another)
+ * without cross-contamination. The httpOnly refresh cookie handles seamless
+ * session restoration across browser restarts — the access token does not
+ * need to survive restarts.
  */
 import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { UserInfo } from '@/shared/api/client'
-
-// ── sessionStorage keys (window-isolated — each tab/window has its own) ──
-const LS_ACCESS_TOKEN = 'auth_accessToken'
-const LS_EXPIRES_AT = 'auth_expiresAt'
-const LS_USER = 'auth_user'
-
-const storage = typeof window !== 'undefined' ? window.sessionStorage : null
-
-/** Reads a value from sessionStorage, returning null on error/missing. */
-function lsRead<T>(key: string): T | null {
-  if (!storage) return null
-  try {
-    const raw = storage.getItem(key)
-    if (raw === null) return null
-    return JSON.parse(raw) as T
-  } catch {
-    return null
-  }
-}
-
-/** Writes a value to sessionStorage (null = remove). */
-function lsWrite<T>(key: string, value: T | null): void {
-  if (!storage) return
-  try {
-    if (value === null) {
-      storage.removeItem(key)
-    } else {
-      storage.setItem(key, JSON.stringify(value))
-    }
-  } catch {
-    // sessionStorage might be full or blocked — silently ignore
-  }
-}
-
-/** Hydrate initial state from sessionStorage. */
-function hydrateFromLS() {
-  const accessToken = lsRead<string>(LS_ACCESS_TOKEN)
-  const expiresAt = lsRead<number>(LS_EXPIRES_AT)
-  const user = lsRead<UserInfo>(LS_USER)
-  const isAuthenticated = !!(accessToken && user)
-
-  // If token expired, clear everything
-  if (isAuthenticated && expiresAt && Date.now() > expiresAt) {
-    lsWrite(LS_ACCESS_TOKEN, null)
-    lsWrite(LS_EXPIRES_AT, null)
-    lsWrite(LS_USER, null)
-    return {
-      user: null,
-      roles: null,
-      accessToken: null,
-      expiresAt: null,
-      isAuthenticated: false,
-      isLoading: false,
-    }
-  }
-
-  return {
-    user,
-    roles: user?.roles ?? null,
-    accessToken,
-    expiresAt,
-    isAuthenticated,
-    isLoading: false,
-  }
-}
 
 // ── Types ──
 
@@ -127,75 +64,103 @@ type AuthStore = AuthState & AuthActions
 /**
  * Store definition.
  *
- * Hydrates from localStorage on creation so the session survives page reloads.
- * Every state change syncs back to localStorage automatically.
+ * Uses Zustand `persist` middleware with sessionStorage.
+ * On rehydration, checks token expiry and clears stale sessions.
+ * `partialize` excludes transient fields (isLoading, roles — roles is
+ * derived from user.roles) from persistence.
  */
-export const useAuthStore = create<AuthStore>((set) => ({
-  // ── Initial state (hydrated from localStorage) ──
-  ...hydrateFromLS(),
-
-  // ── Actions ──
-
-  login: (accessToken, expiresIn, user) => {
-    const expiresAt = Date.now() + expiresIn * 1000
-    // Persist to localStorage
-    lsWrite(LS_ACCESS_TOKEN, accessToken)
-    lsWrite(LS_EXPIRES_AT, expiresAt)
-    lsWrite(LS_USER, user)
-
-    set({
-      accessToken,
-      expiresAt,
-      user,
-      roles: user.roles,
-      isAuthenticated: true,
-      isLoading: false,
-    })
-  },
-
-  logout: () => {
-    // Clear localStorage
-    lsWrite(LS_ACCESS_TOKEN, null)
-    lsWrite(LS_EXPIRES_AT, null)
-    lsWrite(LS_USER, null)
-
-    set({
+export const useAuthStore = create<AuthStore>()(
+  persist(
+    (set) => ({
+      // ── Initial state ──
       user: null,
       roles: null,
       accessToken: null,
       expiresAt: null,
       isAuthenticated: false,
       isLoading: false,
-    })
-  },
 
-  setRoles: (roles) => set({ roles }),
+      // ── Actions ──
 
-  setLoading: (loading) => set({ isLoading: loading }),
+      login: (accessToken, expiresIn, user) => {
+        const expiresAt = Date.now() + expiresIn * 1000
+        set({
+          accessToken,
+          expiresAt,
+          user,
+          roles: user.roles,
+          isAuthenticated: true,
+          isLoading: false,
+        })
+      },
 
-  setSession: (accessToken, expiresIn) => {
-    const expiresAt = Date.now() + expiresIn * 1000
-    // Persist to localStorage
-    lsWrite(LS_ACCESS_TOKEN, accessToken)
-    lsWrite(LS_EXPIRES_AT, expiresAt)
+      logout: () => {
+        // Clear persisted storage explicitly so sessionStorage is wiped
+        useAuthStore.persist.clearStorage()
+        set({
+          user: null,
+          roles: null,
+          accessToken: null,
+          expiresAt: null,
+          isAuthenticated: false,
+          isLoading: false,
+        })
+      },
 
-    set({
-      accessToken,
-      expiresAt,
-    })
-  },
+      setRoles: (roles) => set({ roles }),
 
-  setUser: (user) => {
-    // Persist to localStorage
-    lsWrite(LS_USER, user)
+      setLoading: (loading) => set({ isLoading: loading }),
 
-    set({
-      user,
-      roles: user.roles,
-      isAuthenticated: true,
-    })
-  },
-}))
+      setSession: (accessToken, expiresIn) => {
+        const expiresAt = Date.now() + expiresIn * 1000
+        set({
+          accessToken,
+          expiresAt,
+        })
+      },
+
+      setUser: (user) => {
+        set({
+          user,
+          roles: user.roles,
+          isAuthenticated: true,
+        })
+      },
+    }),
+    {
+      name: 'auth-storage',
+      storage: createJSONStorage(() => sessionStorage),
+      // Only persist authentication-related fields; exclude transient UI state
+      partialize: (state) => ({
+        accessToken: state.accessToken,
+        expiresAt: state.expiresAt,
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (error) {
+            console.error('[authStore] rehydration error:', error)
+            return
+          }
+          if (!state) return
+          // If token is expired, clear everything
+          if (state.isAuthenticated && state.expiresAt && Date.now() > state.expiresAt) {
+            useAuthStore.persist.clearStorage()
+            useAuthStore.setState({
+              user: null,
+              roles: null,
+              accessToken: null,
+              expiresAt: null,
+              isAuthenticated: false,
+              isLoading: false,
+            })
+          }
+        }
+      },
+    }
+  )
+)
 
 // ── Selectors ──
 

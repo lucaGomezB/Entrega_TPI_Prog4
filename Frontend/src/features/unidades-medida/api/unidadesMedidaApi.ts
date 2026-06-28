@@ -7,7 +7,10 @@
  * Endpoint: /api/v1/unidades-medida/
  */
 import { apiFetch } from "@/shared/api/client";
+import { createCrudApi } from "@/shared/api/createCrudApi";
 import type { UnidadMedida, UnidadMedidaCreate, UnidadMedidaUpdate } from "@/features/unidades-medida/types";
+
+const baseCrud = createCrudApi<UnidadMedida>("/unidades-medida");
 
 export const unidadesMedidaApi = {
   /** Fetches all measurement units, optionally filtered by tipo. */
@@ -17,8 +20,7 @@ export const unidadesMedidaApi = {
     ),
 
   /** Fetches a single measurement unit by ID. */
-  getById: (id: number) =>
-    apiFetch<UnidadMedida>(`/unidades-medida/${id}`),
+  getById: baseCrud.getById,
 
   /** Creates a new measurement unit. ADMIN only. */
   create: (data: UnidadMedidaCreate) =>

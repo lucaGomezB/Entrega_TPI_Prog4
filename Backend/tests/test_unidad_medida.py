@@ -17,7 +17,7 @@ class TestUnidadMedidaModel:
 
     def test_create_unidad_medida_sets_created_at(self, db_session):
         """CREATED a UnidadMedida sets created_at to a UTC datetime."""
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 
         unit = UnidadMedida(nombre="kilogramo", simbolo="kg", tipo="masa")
         db_session.add(unit)
@@ -29,7 +29,7 @@ class TestUnidadMedidaModel:
 
     def test_unique_nombre_constraint(self, db_session):
         """Duplicate nombre raises IntegrityError."""
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         from sqlalchemy.exc import IntegrityError
 
         db_session.add(UnidadMedida(nombre="kilogramo", simbolo="kg", tipo="masa"))
@@ -41,7 +41,7 @@ class TestUnidadMedidaModel:
 
     def test_unique_simbolo_constraint(self, db_session):
         """Duplicate simbolo raises IntegrityError."""
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         from sqlalchemy.exc import IntegrityError
 
         db_session.add(UnidadMedida(nombre="kilogramo", simbolo="kg", tipo="masa"))
@@ -53,7 +53,7 @@ class TestUnidadMedidaModel:
 
     def test_no_updated_at_column(self, db_session):
         """UnidadMedida does NOT have updated_at or deleted_at columns."""
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 
         unit = UnidadMedida(nombre="litro", simbolo="L", tipo="volumen")
         db_session.add(unit)
@@ -65,7 +65,7 @@ class TestUnidadMedidaModel:
 
     def test_surrogate_id_is_bigint(self, db_session):
         """UnidadMedida uses a BIGSERIAL surrogate PK (integer type)."""
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 
         unit = UnidadMedida(nombre="gramo", simbolo="g", tipo="masa")
         db_session.add(unit)
@@ -82,7 +82,7 @@ class TestUnidadMedidaModel:
 class TestUnidadMedidaRepository:
 
     def _seed_units(self, db_session):
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 
         units = [
             UnidadMedida(nombre="kilogramo", simbolo="kg", tipo="masa"),
@@ -97,7 +97,7 @@ class TestUnidadMedidaRepository:
     def test_get_all_ordered_by_tipo_then_nombre(self, db_session):
         """get_all() returns units ordered by tipo then nombre."""
         self._seed_units(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
+        from app.modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
 
         repo = UnidadMedidaRepository(db_session)
         result = repo.get_all()
@@ -113,7 +113,7 @@ class TestUnidadMedidaRepository:
     def test_get_all_filtered_by_tipo(self, db_session):
         """get_all(tipo_filter='masa') returns only masa units."""
         self._seed_units(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
+        from app.modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
 
         repo = UnidadMedidaRepository(db_session)
         result = repo.get_all(tipo_filter="masa")
@@ -124,14 +124,14 @@ class TestUnidadMedidaRepository:
     def test_get_by_id_returns_correct_unit(self, db_session):
         """get_by_id returns the correct unit."""
         self._seed_units(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
+        from app.modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
 
         repo = UnidadMedidaRepository(db_session)
         kg = db_session.exec(
             select(
-                __import__('modules.CatalogoDeProductos.UnidadMedida.models', fromlist=['UnidadMedida']).UnidadMedida
+                __import__('app.modules.CatalogoDeProductos.UnidadMedida.models', fromlist=['UnidadMedida']).UnidadMedida
             ).where(
-                __import__('modules.CatalogoDeProductos.UnidadMedida.models', fromlist=['UnidadMedida']).UnidadMedida.nombre == "kilogramo"
+                __import__('app.modules.CatalogoDeProductos.UnidadMedida.models', fromlist=['UnidadMedida']).UnidadMedida.nombre == "kilogramo"
             )
         ).first()
 
@@ -142,7 +142,7 @@ class TestUnidadMedidaRepository:
 
     def test_get_by_id_nonexistent_returns_none(self, db_session):
         """get_by_id with nonexistent id returns None."""
-        from modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
+        from app.modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
 
         repo = UnidadMedidaRepository(db_session)
         result = repo.get_by_id(99999)
@@ -150,8 +150,8 @@ class TestUnidadMedidaRepository:
 
     def test_has_references_returns_false_when_none(self, db_session):
         """has_references returns False when no FK references exist."""
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
-        from modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
 
         unit = UnidadMedida(nombre="docena", simbolo="doc", tipo="unidad")
         db_session.add(unit)
@@ -162,9 +162,9 @@ class TestUnidadMedidaRepository:
 
     def test_has_references_returns_true_when_producto_references(self, db_session):
         """has_references returns True when a Producto references the unit."""
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
-        from modules.CatalogoDeProductos.Producto.models import Producto
-        from modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.Producto.models import Producto
+        from app.modules.CatalogoDeProductos.UnidadMedida.repository import UnidadMedidaRepository
 
         unit = UnidadMedida(nombre="mililitro", simbolo="mL", tipo="volumen")
         db_session.add(unit)
@@ -191,7 +191,7 @@ class TestUnidadMedidaRepository:
 class TestUnidadMedidaService:
 
     def _seed_roles(self, db_session):
-        from modules.IdentidadYAcceso.Rol.models import Rol
+        from app.modules.IdentidadYAcceso.Rol.models import Rol
         for codigo, nombre, desc in [
             ("ADMIN", "Admin", ""),
             ("STOCK", "Stock", ""),
@@ -203,7 +203,7 @@ class TestUnidadMedidaService:
         db_session.flush()
 
     def _seed_kg_unit(self, db_session):
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         existing = db_session.exec(
             select(UnidadMedida).where(UnidadMedida.nombre == "kilogramo")
         ).first()
@@ -217,7 +217,7 @@ class TestUnidadMedidaService:
     def test_get_all_returns_all_units(self, db_session):
         """Service get_all returns all units."""
         self._seed_kg_unit(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         result = UnidadMedidaService.get_all(db_session)
         assert len(result) >= 1
@@ -226,8 +226,8 @@ class TestUnidadMedidaService:
     def test_get_all_with_tipo_filter(self, db_session):
         """Service get_all with tipo_filter returns filtered results."""
         self._seed_kg_unit(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         # Add a volume unit
         db_session.add(UnidadMedida(nombre="litro", simbolo="L", tipo="volumen"))
@@ -240,7 +240,7 @@ class TestUnidadMedidaService:
     def test_get_by_id_returns_unit(self, db_session):
         """Service get_by_id returns the correct unit."""
         unit = self._seed_kg_unit(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         result = UnidadMedidaService.get_by_id(db_session, unit.id)
         assert result is not None
@@ -248,15 +248,15 @@ class TestUnidadMedidaService:
 
     def test_get_by_id_nonexistent_returns_none(self, db_session):
         """Service get_by_id with bad id returns None."""
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         result = UnidadMedidaService.get_by_id(db_session, 99999)
         assert result is None
 
     def test_create_returns_unit_with_id(self, db_session):
         """Service create creates a unit and returns it with an id."""
-        from modules.CatalogoDeProductos.UnidadMedida.schemas import UnidadMedidaCreate
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.schemas import UnidadMedidaCreate
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         data = UnidadMedidaCreate(nombre="gramo", simbolo="g", tipo="masa")
         result = UnidadMedidaService.create(db_session, data)
@@ -269,8 +269,8 @@ class TestUnidadMedidaService:
     def test_update_changes_fields(self, db_session):
         """Service update changes specified fields."""
         unit = self._seed_kg_unit(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.schemas import UnidadMedidaUpdate
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.schemas import UnidadMedidaUpdate
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         data = UnidadMedidaUpdate(simbolo="KG")
         result = UnidadMedidaService.update(db_session, unit.id, data)
@@ -281,8 +281,8 @@ class TestUnidadMedidaService:
 
     def test_update_nonexistent_returns_none(self, db_session):
         """Service update on nonexistent id returns None."""
-        from modules.CatalogoDeProductos.UnidadMedida.schemas import UnidadMedidaUpdate
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.schemas import UnidadMedidaUpdate
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         data = UnidadMedidaUpdate(simbolo="KG")
         result = UnidadMedidaService.update(db_session, 99999, data)
@@ -291,13 +291,13 @@ class TestUnidadMedidaService:
     def test_delete_removes_unit(self, db_session):
         """Service delete removes the unit."""
         unit = self._seed_kg_unit(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         result = UnidadMedidaService.delete(db_session, unit.id)
         assert result is True
 
         # Verify it's gone
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         exists = db_session.exec(
             select(UnidadMedida).where(UnidadMedida.id == unit.id)
         ).first()
@@ -306,8 +306,8 @@ class TestUnidadMedidaService:
     def test_delete_referenced_unit_raises_value_error(self, db_session):
         """Service delete raises ValueError when unit has FK references."""
         unit = self._seed_kg_unit(db_session)
-        from modules.CatalogoDeProductos.Producto.models import Producto
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.Producto.models import Producto
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         # Create a product referencing this unit
         prod = Producto(
@@ -326,7 +326,7 @@ class TestUnidadMedidaService:
 
     def test_delete_nonexistent_returns_false(self, db_session):
         """Service delete on nonexistent id returns False."""
-        from modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
+        from app.modules.CatalogoDeProductos.UnidadMedida.service import UnidadMedidaService
 
         result = UnidadMedidaService.delete(db_session, 99999)
         assert result is False
@@ -339,7 +339,7 @@ class TestUnidadMedidaService:
 class TestUnidadMedidaAPI:
 
     def _seed_roles(self, db_session):
-        from modules.IdentidadYAcceso.Rol.models import Rol
+        from app.modules.IdentidadYAcceso.Rol.models import Rol
         for codigo, nombre, desc in [
             ("ADMIN", "Admin", ""),
             ("STOCK", "Stock", ""),
@@ -351,7 +351,7 @@ class TestUnidadMedidaAPI:
         db_session.flush()
 
     def _seed_unit(self, db_session, nombre="kilogramo", simbolo="kg", tipo="masa"):
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         existing = db_session.exec(
             select(UnidadMedida).where(UnidadMedida.nombre == nombre)
         ).first()
@@ -388,7 +388,7 @@ class TestUnidadMedidaAPI:
         """GET /api/v1/unidades-medida/{id} returns the unit."""
         self._seed_roles(db_session)
         unit = self._seed_unit(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 
         found = db_session.exec(
             select(UnidadMedida).where(UnidadMedida.nombre == "kilogramo")
@@ -433,7 +433,7 @@ class TestUnidadMedidaAPI:
         """PUT as ADMIN updates a unit."""
         self._seed_roles(db_session)
         unit = self._seed_unit(db_session)
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         found = db_session.exec(
             select(UnidadMedida).where(UnidadMedida.nombre == "kilogramo")
         ).first()
@@ -450,7 +450,7 @@ class TestUnidadMedidaAPI:
         """DELETE as ADMIN removes an unreferenced unit."""
         self._seed_roles(db_session)
         unit = self._seed_unit(db_session, "pieza", "p", "unidad")
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         found = db_session.exec(
             select(UnidadMedida).where(UnidadMedida.nombre == "pieza")
         ).first()
@@ -465,8 +465,8 @@ class TestUnidadMedidaAPI:
         """DELETE a referenced unit returns 400."""
         self._seed_roles(db_session)
         unit = self._seed_unit(db_session)
-        from modules.CatalogoDeProductos.Producto.models import Producto
-        from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        from app.modules.CatalogoDeProductos.Producto.models import Producto
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         found = db_session.exec(
             select(UnidadMedida).where(UnidadMedida.nombre == "kilogramo")
         ).first()

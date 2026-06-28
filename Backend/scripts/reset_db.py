@@ -32,22 +32,22 @@ from sqlmodel import SQLModel, create_engine, Session
 
 # Import all models to populate SQLModel.metadata with every known table.
 # If any model is missing here, its table will NOT be recreated.
-from modules.CatalogoDeProductos.Categoria.models import Categoria
-from modules.CatalogoDeProductos.Producto.models import Producto
-from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
-from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
-from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
-from modules.IdentidadYAcceso.Rol.models import Rol
-from modules.IdentidadYAcceso.Usuario.models import Usuario
-from modules.IdentidadYAcceso.usuario_rol import UsuarioRol
-from modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
-from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
-from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
-from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
-from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
-from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
-from modules.VentasPagosTrazabilidad.Pago.models import Pago
+from app.modules.CatalogoDeProductos.Categoria.models import Categoria
+from app.modules.CatalogoDeProductos.Producto.models import Producto
+from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from app.modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
+from app.modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
+from app.modules.IdentidadYAcceso.Rol.models import Rol
+from app.modules.IdentidadYAcceso.Usuario.models import Usuario
+from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+from app.modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
+from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
+from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
 
 
 def reset_database():

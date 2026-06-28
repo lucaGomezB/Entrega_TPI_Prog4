@@ -35,24 +35,24 @@ if config.config_file_name is not None:
 # Import all models so SQLModel.metadata is fully populated.
 # Without these imports, Alembic auto-detection would only see a subset of tables.
 from sqlmodel import SQLModel
-from modules.CatalogoDeProductos.Categoria.models import Categoria
-from modules.CatalogoDeProductos.Producto.models import Producto
-from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
-from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
-from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
-from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
-from modules.IdentidadYAcceso.Rol.models import Rol
-from modules.IdentidadYAcceso.Usuario.models import Usuario
-from modules.IdentidadYAcceso.usuario_rol import UsuarioRol
-from modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
-from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
-from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
-from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
-from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
-from modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
-from modules.VentasPagosTrazabilidad.Pago.models import Pago
-from modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
+from app.modules.CatalogoDeProductos.Categoria.models import Categoria
+from app.modules.CatalogoDeProductos.Producto.models import Producto
+from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+from app.modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
+from app.modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
+from app.modules.IdentidadYAcceso.Rol.models import Rol
+from app.modules.IdentidadYAcceso.Usuario.models import Usuario
+from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+from app.modules.IdentidadYAcceso.RefreshToken.models import RefreshToken
+from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.models import HistorialEstadoPedido
+from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.models import CarritoSnapshot
 
 # The combined metadata from all SQLModel models.
 # Alembic uses this as the source of truth to detect differences with the DB.

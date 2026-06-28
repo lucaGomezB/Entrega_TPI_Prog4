@@ -13,9 +13,9 @@ import uuid
 import pytest
 from sqlmodel import Session
 
-from modules.VentasPagosTrazabilidad.Pago.service import PagoService
-from modules.VentasPagosTrazabilidad.Pago.repository import PagoRepository
-from modules.VentasPagosTrazabilidad.Pago.schemas import PagoRead
+from app.modules.VentasPagosTrazabilidad.Pago.service import PagoService
+from app.modules.VentasPagosTrazabilidad.Pago.repository import PagoRepository
+from app.modules.VentasPagosTrazabilidad.Pago.schemas import PagoRead
 
 
 def _make_uow_mock():
@@ -42,7 +42,7 @@ class TestInitMpPayment:
 
         # Patch PagoRepository to return empty (no existing payment for idempotency check)
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
         ) as mock_repo_class:
             mock_repo_instance = MagicMock(spec=PagoRepository)
             mock_repo_instance.get_by_pedido.return_value = []
@@ -50,7 +50,7 @@ class TestInitMpPayment:
 
             # Patch Pago to avoid SQLAlchemy mapper configuration
             with patch(
-                "modules.VentasPagosTrazabilidad.Pago.service.Pago",
+                "app.modules.VentasPagosTrazabilidad.Pago.service.Pago",
             ) as mock_pago_class:
                 mock_pago_instance = MagicMock()
                 mock_pago_instance.id = 1
@@ -69,11 +69,11 @@ class TestInitMpPayment:
                 mock_uow.refresh.return_value = mock_pago_instance
 
                 with patch(
-                    "modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
                     return_value=mock_uow,
                 ):
                     with patch(
-                        "modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
+                        "app.modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
                         return_value=MagicMock(
                             total=Decimal("150.00"),
                             forma_pago_codigo="MERCADOPAGO",
@@ -92,7 +92,7 @@ class TestInitMpPayment:
         mock_session = MagicMock(spec=Session)
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
             return_value=None,
         ):
             with pytest.raises(ValueError, match="Pedido 99 no encontrado"):
@@ -106,14 +106,14 @@ class TestInitMpPayment:
         mock_uow.pagos = mock_repo
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
         ) as mock_repo_class:
             mock_repo_instance = MagicMock(spec=PagoRepository)
             mock_repo_instance.get_by_pedido.return_value = []
             mock_repo_class.return_value = mock_repo_instance
 
             with patch(
-                "modules.VentasPagosTrazabilidad.Pago.service.Pago",
+                "app.modules.VentasPagosTrazabilidad.Pago.service.Pago",
             ) as mock_pago_class:
                 mock_pago_instance = MagicMock()
                 mock_pago_instance.id = 10
@@ -131,7 +131,7 @@ class TestInitMpPayment:
                 mock_uow.refresh.return_value = mock_pago_instance
 
                 with patch(
-                    "modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
                     return_value=MagicMock(total=Decimal("200.00")),
                 ):
                     result = PagoService.init_mp_payment(
@@ -155,7 +155,7 @@ class TestInitMpPayment:
         mock_uow = _make_uow_mock()
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
         ) as mock_repo_class:
             mock_repo_instance = MagicMock(spec=PagoRepository)
             mock_repo_instance.get_by_pedido.return_value = []
@@ -164,7 +164,7 @@ class TestInitMpPayment:
             mock_repo_class.return_value = mock_repo_instance
 
             with patch(
-                "modules.VentasPagosTrazabilidad.Pago.service.Pago",
+                "app.modules.VentasPagosTrazabilidad.Pago.service.Pago",
             ) as mock_pago_class:
                 mock_pago_instance = MagicMock()
                 mock_pago_instance.mp_status = "pending"
@@ -181,11 +181,11 @@ class TestInitMpPayment:
                 mock_uow.refresh.return_value = mock_pago_instance
 
                 with patch(
-                    "modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
                     return_value=mock_uow,
                 ):
                     with patch(
-                        "modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
+                        "app.modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
                         return_value=MagicMock(
                             total=Decimal("100.00"),
                             forma_pago_codigo="MERCADOPAGO",
@@ -230,7 +230,7 @@ class TestUpdatePagoStatus:
         mock_repo.get_by_mp_payment_id.return_value = existing_pago
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
             return_value=mock_uow,
         ):
             result = PagoService.update_pago_status(
@@ -255,7 +255,7 @@ class TestUpdatePagoStatus:
         mock_repo.get_by_mp_payment_id.return_value = None
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
             return_value=mock_uow,
         ):
             with pytest.raises(ValueError, match="Pago con MP ID 99999 no encontrado"):
@@ -288,7 +288,7 @@ class TestUpdatePagoStatus:
         mock_repo.get_by_mp_payment_id.return_value = existing_pago
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
             return_value=mock_uow,
         ):
             result = PagoService.update_pago_status(
@@ -327,7 +327,7 @@ class TestGetPagosByPedido:
         mock_repo.get_by_pedido.return_value = [mock_pago]
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
             return_value=mock_repo,
         ):
             results = PagoService.get_pagos_by_pedido(mock_session, pedido_id=42)
@@ -345,7 +345,7 @@ class TestGetPagosByPedido:
         mock_repo.get_by_pedido.return_value = []
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
             return_value=mock_repo,
         ):
             results = PagoService.get_pagos_by_pedido(mock_session, pedido_id=999)
@@ -360,7 +360,7 @@ class TestGetPagosByPedido:
         mock_repo.get_by_pedido.return_value = []
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
             return_value=mock_repo,
         ):
             PagoService.get_pagos_by_pedido(mock_session, pedido_id=1)
@@ -387,7 +387,7 @@ class TestInitMpPaymentIdempotencyKey:
         controlled_uuid = "11111111-1111-1111-1111-111111111111"
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
         ) as mock_repo_class:
             mock_repo_instance = MagicMock(spec=PagoRepository)
             mock_repo_instance.get_by_pedido.return_value = []
@@ -395,7 +395,7 @@ class TestInitMpPaymentIdempotencyKey:
             mock_repo_class.return_value = mock_repo_instance
 
             with patch(
-                "modules.VentasPagosTrazabilidad.Pago.service.Pago",
+                "app.modules.VentasPagosTrazabilidad.Pago.service.Pago",
             ) as mock_pago_class:
                 mock_pago_instance = MagicMock()
                 mock_pago_instance.id = 1
@@ -414,11 +414,11 @@ class TestInitMpPaymentIdempotencyKey:
                 mock_uow.refresh.return_value = mock_pago_instance
 
                 with patch(
-                    "modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
                     return_value=mock_uow,
                 ):
                     with patch(
-                        "modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
+                        "app.modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
                         return_value=MagicMock(
                             total=Decimal("150.00"),
                             usuario=MagicMock(nombre="Test", email="test@test.com"),
@@ -437,12 +437,12 @@ class TestInitMpPaymentIdempotencyKey:
                         mock_sdk.preference.return_value = mock_preference_api
 
                         with patch(
-                            "modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk",
+                            "app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk",
                             return_value=mock_sdk,
                         ):
                             # Patch uuid.uuid4() so idempotency_key is deterministic
                             with patch(
-                                "modules.VentasPagosTrazabilidad.Pago.service.uuid"
+                                "app.modules.VentasPagosTrazabilidad.Pago.service.uuid"
                             ) as mock_uuid:
                                 mock_uuid.uuid4.return_value = controlled_uuid
                                 PagoService.init_mp_payment(
@@ -454,20 +454,20 @@ class TestInitMpPaymentIdempotencyKey:
         call_args, call_kwargs = mock_preference_api.create.call_args
 
         # The create() call: sdk.preference().create(preference_data, request_options)
-        # args[0] = preference_data, args[1] = request_options
+        # args[0] = preference_data, args[1] = RequestOptions
         assert len(call_args) >= 2, (
             "Expected create() to be called with at least 2 positional args "
             f"(preference_data, request_options), got {len(call_args)}"
         )
         request_options = call_args[1]
-        assert "headers" in request_options, (
-            "request_options must contain 'headers' key"
+        assert hasattr(request_options, "custom_headers"), (
+            "request_options must be a RequestOptions object with custom_headers"
         )
         assert (
-            request_options["headers"]["X-Idempotency-Key"] == controlled_uuid
+            request_options.custom_headers["X-Idempotency-Key"] == controlled_uuid
         ), (
             f"Expected X-Idempotency-Key='{controlled_uuid}', "
-            f"got '{request_options['headers']['X-Idempotency-Key']}'"
+            f"got '{request_options.custom_headers['X-Idempotency-Key']}'"
         )
 
     def test_different_keys_produce_different_headers(self):
@@ -492,7 +492,7 @@ class TestInitMpPaymentIdempotencyKey:
         ]
 
         with patch(
-            "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
+            "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository",
         ) as mock_repo_class:
             mock_repo_instance = MagicMock(spec=PagoRepository)
             mock_repo_instance.get_by_pedido.return_value = []
@@ -500,7 +500,7 @@ class TestInitMpPaymentIdempotencyKey:
             mock_repo_class.return_value = mock_repo_instance
 
             with patch(
-                "modules.VentasPagosTrazabilidad.Pago.service.Pago",
+                "app.modules.VentasPagosTrazabilidad.Pago.service.Pago",
             ) as mock_pago_class:
                 mock_pago_instance = MagicMock()
                 mock_pago_instance.id = 1
@@ -519,11 +519,11 @@ class TestInitMpPaymentIdempotencyKey:
                 mock_uow.refresh.return_value = mock_pago_instance
 
                 with patch(
-                    "modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
                     return_value=mock_uow,
                 ):
                     with patch(
-                        "modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
+                        "app.modules.VentasPagosTrazabilidad.Pago.service.PedidoService.get_by_id",
                         return_value=MagicMock(
                             total=Decimal("200.00"),
                             usuario=MagicMock(nombre="T1", email="t1@t.com"),
@@ -538,12 +538,12 @@ class TestInitMpPaymentIdempotencyKey:
                         mock_sdk.preference.return_value = mock_pref
 
                         with patch(
-                            "modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk",
+                            "app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk",
                             return_value=mock_sdk,
                         ):
                             # Patch uuid.uuid4() — 4 UUIDs for 2 calls
                             with patch(
-                                "modules.VentasPagosTrazabilidad.Pago.service.uuid"
+                                "app.modules.VentasPagosTrazabilidad.Pago.service.uuid"
                             ) as mock_uuid_mod:
                                 mock_uuid_mod.uuid4.side_effect = uuid_sequence
 
@@ -554,7 +554,7 @@ class TestInitMpPaymentIdempotencyKey:
 
                                 first_call_args = mock_pref.create.call_args[0]
                                 assert (
-                                    first_call_args[1]["headers"][
+                                    first_call_args[1].custom_headers[
                                         "X-Idempotency-Key"
                                     ]
                                     == "idem-key-first"
@@ -569,16 +569,16 @@ class TestInitMpPaymentIdempotencyKey:
                                 assert len(all_calls) == 2
                                 second_call_args = all_calls[1][0]
                                 assert (
-                                    second_call_args[1]["headers"][
+                                    second_call_args[1].custom_headers[
                                         "X-Idempotency-Key"
                                     ]
                                     == "idem-key-second"
                                 )
                                 assert (
-                                    first_call_args[1]["headers"][
+                                    first_call_args[1].custom_headers[
                                         "X-Idempotency-Key"
                                     ]
-                                    != second_call_args[1]["headers"][
+                                    != second_call_args[1].custom_headers[
                                         "X-Idempotency-Key"
                                     ]
                                 ), (
@@ -617,10 +617,10 @@ class TestProcessWebhook:
         assert result["detail"] == "not a payment notification"
 
     @patch(
-        "modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp"
+        "app.modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp"
     )
     @patch(
-        "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository"
+        "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository"
     )
     def test_deduplicates_by_idempotency_key(
         self,
@@ -676,10 +676,10 @@ class TestProcessWebhook:
         mock_repo.get_by_external_reference.assert_not_called()
 
     @patch(
-        "modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp"
+        "app.modules.VentasPagosTrazabilidad.Pago.service.PagoService.get_payment_from_mp"
     )
     @patch(
-        "modules.VentasPagosTrazabilidad.Pago.service.PagoRepository"
+        "app.modules.VentasPagosTrazabilidad.Pago.service.PagoRepository"
     )
     def test_dedup_detection_logs_message(
         self,
@@ -711,7 +711,7 @@ class TestProcessWebhook:
                 )
 
                 with patch(
-                    "modules.VentasPagosTrazabilidad.Pago.service.logger"
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.logger"
                 ) as mock_logger:
                     PagoService.process_webhook({
                         "id": "666666",
@@ -723,3 +723,294 @@ class TestProcessWebhook:
                         "MP webhook: duplicate ignored for idempotency_key=%s, status=%s",
                         "dup-key-log-test", "rejected",
                     )
+
+
+class TestInitFromCartRetry:
+    """init_from_cart: retry path when existing Pago has mp_payment_id=None.
+
+    When a user retries init_from_cart after a first attempt created a Pago
+    (mp_payment_id=None, preference-only, not yet paid), the service must
+    NOT return init_point=None. Instead it must create a fresh MP preference
+    with a new retry idempotency key and return a valid init_point.
+    """
+
+    def test_retry_creates_fresh_pago_and_returns_init_point(self):
+        """Second init_from_cart with same fingerprint returns valid init_point.
+
+        Scenario:
+        1. First call: no existing Pago → creates Pago + snapshot + MP preference
+        2. Second call: existing Pago found with mp_payment_id=None
+           → creates NEW Pago with retry idempotency key
+           → creates NEW MP preference
+           → returns init_point (NOT None)
+        """
+        mock_session = MagicMock(spec=Session)
+        mock_uow = _make_uow_mock()
+        mock_repo = MagicMock(spec=PagoRepository)
+        mock_uow.pagos = mock_repo
+
+        # ── Mock: ProductoRepository for stock validation ──
+        with patch(
+            "app.modules.CatalogoDeProductos.Producto.repository.ProductoRepository",
+        ) as mock_prod_repo_class:
+            mock_prod_repo = MagicMock()
+            mock_producto = MagicMock()
+            mock_producto.id = 1
+            mock_producto.nombre = "Test Product"
+            mock_producto.stock_cantidad = 10
+            mock_prod_repo.get_by_id.return_value = mock_producto
+            mock_prod_repo_class.return_value = mock_prod_repo
+
+            # ── Mock: VentasPagosTrazabilidadUnitOfWork ──
+            with patch(
+                "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+                return_value=mock_uow,
+            ):
+                # ── Mock: Pago model ──
+                with patch(
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.Pago",
+                ) as mock_pago_class:
+                    mock_pago_instance = MagicMock()
+                    mock_pago_instance.id = 1
+                    mock_pago_instance.pedido_id = None
+                    mock_pago_instance.mp_status = "pending"
+                    mock_pago_instance.mp_payment_id = None
+                    mock_pago_instance.mp_status_detail = None
+                    mock_pago_instance.external_reference = "ext-ref-original"
+                    mock_pago_instance.idempotency_key = "fingerprint-original"
+                    mock_pago_instance.transaction_amount = Decimal("100.00")
+                    mock_pago_instance.payment_method_id = None
+                    mock_pago_instance.created_at = MagicMock()
+                    mock_pago_instance.updated_at = MagicMock()
+                    mock_pago_class.return_value = mock_pago_instance
+                    mock_uow.refresh.return_value = mock_pago_instance
+
+                    # ── Mock: CarritoSnapshot ──
+                    with patch(
+                        "app.modules.VentasPagosTrazabilidad.Pago.service.CarritoSnapshot",
+                    ) as mock_snapshot_class:
+                        mock_snapshot = MagicMock()
+                        mock_snapshot_class.return_value = mock_snapshot
+
+                        # ── Mock: MP SDK ──
+                        mock_sdk = MagicMock()
+                        mock_pref = MagicMock()
+                        # First and second calls both succeed with different init_points
+                        mock_pref.create.side_effect = [
+                            {"status": 201, "response": {"id": "pref-1", "init_point": "https://mp.com/checkout-1"}},
+                            {"status": 201, "response": {"id": "pref-2", "init_point": "https://mp.com/checkout-2"}},
+                        ]
+                        mock_sdk.preference.return_value = mock_pref
+
+                        with patch(
+                            "app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk",
+                            return_value=mock_sdk,
+                        ):
+                            # ── Prepare InitFromCartRequest ──
+                            from app.modules.VentasPagosTrazabilidad.Pago.schemas import (
+                                InitFromCartRequest,
+                                CartItemInput,
+                            )
+                            data = InitFromCartRequest(
+                                forma_pago_codigo="MERCADOPAGO",
+                                subtotal=Decimal("100.00"),
+                                descuento=Decimal("0.00"),
+                                costo_envio=Decimal("0.00"),
+                                direccion_id=None,
+                                items=[
+                                    CartItemInput(
+                                        producto_id=1,
+                                        nombre="Test Product",
+                                        precio=Decimal("100.00"),
+                                        cantidad=1,
+                                        ingredientes_excluidos=[],
+                                    )
+                                ],
+                            )
+                            usuario = MagicMock()
+                            usuario.id = 1
+                            usuario.nombre = "Test"
+                            usuario.email = "test@test.com"
+
+                            # ── FIRST call: no existing Pago → creates everything ──
+                            mock_repo.get_by_idempotency_key.return_value = None
+
+                            pago1, init_point1, err1 = PagoService.init_from_cart(
+                                mock_session, data, usuario
+                            )
+
+                            assert init_point1 == "https://mp.com/checkout-1", (
+                                f"First call must return valid init_point, got {init_point1}"
+                            )
+                            assert err1 is None
+
+                            # ── SECOND call: existing Pago found with mp_payment_id=None ──
+                            existing_pago = MagicMock()
+                            existing_pago.mp_payment_id = None
+                            existing_pago.mp_status = "pending"
+                            existing_pago.external_reference = "ext-ref-original"
+                            existing_pago.id = 1
+                            existing_pago.idempotency_key = "fingerprint-original"
+                            existing_pago.transaction_amount = Decimal("100.00")
+                            existing_pago.pedido_id = None
+                            existing_pago.mp_status_detail = None
+                            existing_pago.payment_method_id = None
+                            existing_pago.created_at = MagicMock()
+                            existing_pago.updated_at = MagicMock()
+
+                            mock_repo.get_by_idempotency_key.return_value = existing_pago
+
+                            # Create a fresh mock for the second Pago instance
+                            mock_pago_instance2 = MagicMock()
+                            mock_pago_instance2.id = 2
+                            mock_pago_instance2.pedido_id = None
+                            mock_pago_instance2.mp_status = "pending"
+                            mock_pago_instance2.mp_payment_id = None
+                            mock_pago_instance2.mp_status_detail = None
+                            mock_pago_instance2.external_reference = "ext-ref-original"
+                            mock_pago_instance2.idempotency_key = "fingerprint-original-retry-uuid6"
+                            mock_pago_instance2.transaction_amount = Decimal("100.00")
+                            mock_pago_instance2.payment_method_id = None
+                            mock_pago_instance2.created_at = MagicMock()
+                            mock_pago_instance2.updated_at = MagicMock()
+                            mock_pago_class.return_value = mock_pago_instance2
+
+                            pago2, init_point2, err2 = PagoService.init_from_cart(
+                                mock_session, data, usuario
+                            )
+
+                            # ── ASSERTIONS ──
+                            assert init_point2 == "https://mp.com/checkout-2", (
+                                f"Second call (retry) must return valid init_point, got {init_point2}. "
+                                "Bug: init_from_cart returns None for retry when mp_payment_id is None."
+                            )
+                            assert err2 is None, (
+                                f"Second call (retry) must not return error, got {err2}"
+                            )
+                            assert pago2 is not None
+                            # Retry idempotency_key should contain "-retry-"
+                            assert "-retry-" in pago2.idempotency_key, (
+                                f"Retry Pago must have idempotency_key with '-retry-' suffix, "
+                                f"got {pago2.idempotency_key}"
+                            )
+                            # Both Pagos share the same external_reference (same snapshot)
+                            assert pago2.external_reference == "ext-ref-original", (
+                                "Retry Pago must reuse the original external_reference "
+                                "(both Pagos share the same snapshot)"
+                            )
+
+    def test_retry_still_returns_none_on_mp_failure(self):
+        """When retry creates fresh preference but MP SDK fails, returns init_point=None.
+
+        Triangulation: the retry path handles MP SDK failures gracefully
+        just like the first-call path.
+        """
+        mock_session = MagicMock(spec=Session)
+        mock_uow = _make_uow_mock()
+        mock_repo = MagicMock(spec=PagoRepository)
+        mock_uow.pagos = mock_repo
+
+        with patch(
+            "app.modules.CatalogoDeProductos.Producto.repository.ProductoRepository",
+        ) as mock_prod_repo_class:
+            mock_prod_repo = MagicMock()
+            mock_producto = MagicMock()
+            mock_producto.id = 1
+            mock_producto.nombre = "Test Product"
+            mock_producto.stock_cantidad = 10
+            mock_prod_repo.get_by_id.return_value = mock_producto
+            mock_prod_repo_class.return_value = mock_prod_repo
+
+            with patch(
+                "app.modules.VentasPagosTrazabilidad.Pago.service.VentasPagosTrazabilidadUnitOfWork",
+                return_value=mock_uow,
+            ):
+                with patch(
+                    "app.modules.VentasPagosTrazabilidad.Pago.service.Pago",
+                ) as mock_pago_class:
+                    mock_pago_instance = MagicMock()
+                    mock_pago_instance.mp_status = "pending"
+                    mock_pago_instance.mp_payment_id = None
+                    mock_pago_instance.external_reference = "ext-ref"
+                    mock_pago_instance.idempotency_key = "key-retry"
+                    mock_pago_instance.transaction_amount = Decimal("100.00")
+                    mock_pago_instance.pedido_id = None
+                    mock_pago_instance.mp_status_detail = None
+                    mock_pago_instance.payment_method_id = None
+                    mock_pago_instance.created_at = MagicMock()
+                    mock_pago_instance.updated_at = MagicMock()
+                    mock_pago_class.return_value = mock_pago_instance
+                    mock_uow.refresh.return_value = mock_pago_instance
+
+                    with patch(
+                        "app.modules.VentasPagosTrazabilidad.Pago.service.CarritoSnapshot",
+                    ) as mock_snapshot_class:
+                        mock_snapshot = MagicMock()
+                        mock_snapshot_class.return_value = mock_snapshot
+
+                        mock_sdk = MagicMock()
+                        mock_pref = MagicMock()
+                        # MP SDK fails with a 400 error
+                        mock_pref.create.return_value = {
+                            "status": 400,
+                            "response": {"message": "invalid preference data"},
+                        }
+                        mock_sdk.preference.return_value = mock_pref
+
+                        with patch(
+                            "app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk",
+                            return_value=mock_sdk,
+                        ):
+                            from app.modules.VentasPagosTrazabilidad.Pago.schemas import (
+                                InitFromCartRequest,
+                                CartItemInput,
+                            )
+                            data = InitFromCartRequest(
+                                forma_pago_codigo="MERCADOPAGO",
+                                subtotal=Decimal("100.00"),
+                                descuento=Decimal("0.00"),
+                                costo_envio=Decimal("0.00"),
+                                direccion_id=None,
+                                items=[
+                                    CartItemInput(
+                                        producto_id=1,
+                                        nombre="Test Product",
+                                        precio=Decimal("100.00"),
+                                        cantidad=1,
+                                        ingredientes_excluidos=[],
+                                    )
+                                ],
+                            )
+                            usuario = MagicMock()
+                            usuario.id = 1
+                            usuario.nombre = "Test"
+                            usuario.email = "test@test.com"
+
+                            # SECOND call: existing Pago with mp_payment_id=None
+                            existing_pago = MagicMock()
+                            existing_pago.mp_payment_id = None
+                            existing_pago.mp_status = "pending"
+                            existing_pago.external_reference = "ext-ref-original"
+                            existing_pago.id = 1
+                            existing_pago.idempotency_key = "fingerprint-original"
+                            existing_pago.transaction_amount = Decimal("100.00")
+                            existing_pago.pedido_id = None
+                            existing_pago.mp_status_detail = None
+                            existing_pago.payment_method_id = None
+                            existing_pago.created_at = MagicMock()
+                            existing_pago.updated_at = MagicMock()
+
+                            mock_repo.get_by_idempotency_key.return_value = existing_pago
+
+                            pago, init_point, err = PagoService.init_from_cart(
+                                mock_session, data, usuario
+                            )
+
+                            # MP preference creation failed → init_point should be None
+                            assert init_point is None, (
+                                "Retry should return None init_point when MP SDK fails"
+                            )
+                            # Error string should be present
+                            assert err is not None, (
+                                "Retry should return error string when MP SDK fails"
+                            )

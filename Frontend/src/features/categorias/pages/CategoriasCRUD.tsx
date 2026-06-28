@@ -8,16 +8,19 @@
  *   - Text filter (client-side, preserves ancestor nodes so context is not lost).
  *   - Excel export of the flattened (depth-annotated) tree.
  */
-import { useEffect, useState, useRef, type ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { AxiosError } from "axios";
 import type { CategoriaCreate, CategoriaTree } from "@/features/categorias/api/categorias";
 import { useCategoriasTree, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from "@/features/categorias/hooks/useCategorias";
-import { uploadsApi } from "@/shared/api/uploads";
 import ImageCarousel from "@/shared/components/ImageCarousel";
 import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
 import Modal from "@/shared/components/Modal";
+import ErrorBanner from "@/shared/components/ErrorBanner";
+import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
+import FormFooter from "@/shared/components/FormFooter";
+import { useCloudinaryUpload } from "@/shared/hooks/useCloudinaryUpload";
 
 /* ── Helpers ── */
 
@@ -189,18 +192,10 @@ function CategoryTreeRow({ categoria, depth, expanded, onToggle, onEdit, onDelet
       {/* Actions column */}
       <td className="px-3 py-2.5">
         <div className="flex gap-1">
-          <button
+          <EditButton
             onClick={() => onEdit({ id: categoria.id, nombre: categoria.nombre, descripcion: categoria.descripcion, parent_id: categoria.parent_id, orden_display: categoria.orden_display })}
-            className="bg-yellow-500 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-yellow-600"
-          >
-            Editar
-          </button>
-          <button
-            onClick={() => onDelete(categoria.id)}
-            className="bg-red-600 text-white px-2 py-1 rounded text-xs cursor-pointer hover:bg-red-700"
-          >
-            Eliminar
-          </button>
+          />
+          <DeleteButton onClick={() => onDelete(categoria.id)} />
         </div>
       </td>
     </tr>
@@ -236,10 +231,8 @@ export default function CategoriasCRUD() {
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  // Cloudinary Upload Widget state
-  const cloudinaryWidgetRef = useRef<unknown>(null);
+  // Cloudinary Upload Widget state (managed by shared hook)
   const [imagenPublicIds, setImagenPublicIds] = useState<string[]>([]);
-  const [uploadingImages, setUploadingImages] = useState(false);
 
   // ── TanStack Query ──
   const { data: treeData = [], isLoading, isError, error } = useCategoriasTree();
@@ -264,7 +257,7 @@ export default function CategoriasCRUD() {
   const filteredTree = filterTree(treeData, filter);
 
   const form = useAppForm<CategoriaCreate>({
-    defaultValues: { nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagen_url: [] },
+    defaultValues: { nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] },
     onSubmit: async ({ value }) => {
       setSubmitting(true);
       try {
@@ -287,70 +280,18 @@ export default function CategoriasCRUD() {
 
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Load Cloudinary Upload Widget CDN script
-  useEffect(() => {
-    const scriptId = "cloudinary-upload-widget";
-    if (document.getElementById(scriptId)) return;
-    const script = document.createElement("script");
-    script.id = scriptId;
-    script.src = "https://upload-widget.cloudinary.com/global/all.js";
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      const el = document.getElementById(scriptId);
-      if (el) el.remove();
-    };
-  }, []);
-
-  const abrirWidgetCloudinary = () => {
-    const cloudinary = (window as unknown as Record<string, unknown>).cloudinary as Record<string, unknown> | undefined;
-    if (!cloudinary || typeof cloudinary.createUploadWidget !== "function") {
-      addToast("error", "El widget de Cloudinary no se ha cargado. Recargue la pagina.");
-      return;
-    }
-    const widget = (cloudinary.createUploadWidget as Function)(
-      {
-        cloudName: "dqp5n999t",
-        uploadPreset: "fs_default",
-        multiple: true,
-        maxFiles: 10,
-      },
-      (error: unknown, result: { event: string; info?: { secure_url: string; public_id: string } }) => {
-        if (error) {
-          addToast("error", "Error al subir imagen a Cloudinary");
-          return;
-        }
-        if (result?.event === "success" && result.info) {
-          const newUrl = result.info.secure_url;
-          const newPublicId = result.info.public_id;
-          const currentUrls = form.getFieldValue("imagen_url") ?? [];
-          form.setFieldValue("imagen_url", [...currentUrls, newUrl]);
-          setImagenPublicIds((prev) => [...prev, newPublicId]);
-        }
-      }
-    );
-    cloudinaryWidgetRef.current = widget;
-    (widget as { open: () => void }).open();
-  };
+  // Cloudinary Upload Widget (shared hook, single mode)
+  const { abrirWidget, eliminarImagen, uploadingImages } = useCloudinaryUpload("single");
 
   const handleDeleteImagen = async (publicId: string) => {
-    if (!confirm("Eliminar esta imagen?")) return;
-    setUploadingImages(true);
-    try {
-      await uploadsApi.deleteImage(publicId);
-      const idx = imagenPublicIds.indexOf(publicId);
-      if (idx >= 0) {
-        const currentUrls = form.getFieldValue("imagen_url") ?? [];
-        const newUrls = [...currentUrls];
-        newUrls.splice(idx, 1);
-        form.setFieldValue("imagen_url", newUrls);
-        setImagenPublicIds((prev) => prev.filter((id) => id !== publicId));
-      }
-      addToast("exito", "Imagen eliminada correctamente");
-    } catch {
-      addToast("error", "Error al eliminar la imagen");
-    } finally {
-      setUploadingImages(false);
+    await eliminarImagen(publicId);
+    const idx = imagenPublicIds.indexOf(publicId);
+    if (idx >= 0) {
+      const currentUrls = form.getFieldValue("imagenes_url") ?? [];
+      const newUrls = [...currentUrls];
+      newUrls.splice(idx, 1);
+      form.setFieldValue("imagenes_url", newUrls);
+      setImagenPublicIds((prev) => prev.filter((id) => id !== publicId));
     }
   };
 
@@ -378,7 +319,7 @@ export default function CategoriasCRUD() {
   const handleCreate = () => {
     setEditingId(null);
     setShowForm(true);
-    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagen_url: [] });
+    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] });
     setSelectedParentName("");
     setShowParentSelector(false);
     setImagenPublicIds([]);
@@ -387,7 +328,7 @@ export default function CategoriasCRUD() {
   const handleCloseForm = () => {
     setShowForm(false);
     setEditingId(null);
-    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagen_url: [] });
+    form.reset({ nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] });
     setSelectedParentName("");
     setImagenPublicIds([]);
   };
@@ -415,7 +356,7 @@ export default function CategoriasCRUD() {
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Categorias</h1>
-      {isError && <div className="bg-red-100 text-red-700 p-2 mb-4 rounded">{(error as Error)?.message || "Error al cargar"}</div>}
+      <ErrorBanner isError={isError} error={error} message="Error al cargar" />
 
       <div className="flex gap-2 mb-4 flex-wrap items-center">
         <input type="text" placeholder="Filtrar por nombre..." value={filter}
@@ -468,14 +409,18 @@ export default function CategoriasCRUD() {
           <div className="col-span-2 border p-3 rounded bg-white">
             <h3 className="text-sm font-medium mb-2">Imagenes</h3>
             <ImageCarousel
-              images={form.getFieldValue("imagen_url") ?? []}
+              images={form.getFieldValue("imagenes_url") ?? []}
               publicIds={imagenPublicIds}
               onDelete={handleDeleteImagen}
               readOnly={false}
             />
             <button
               type="button"
-              onClick={abrirWidgetCloudinary}
+              onClick={() => abrirWidget((secureUrl, publicId) => {
+                const currentUrls = form.getFieldValue("imagenes_url") ?? [];
+                form.setFieldValue("imagenes_url", [...currentUrls, secureUrl]);
+                setImagenPublicIds((prev) => [...prev, publicId]);
+              })}
               disabled={uploadingImages}
               className="mt-2 bg-blue-600 text-white px-3 py-1 rounded text-sm cursor-pointer disabled:opacity-50 hover:bg-blue-700"
             >
@@ -483,11 +428,12 @@ export default function CategoriasCRUD() {
             </button>
           </div>
 
-          <div className="col-span-2 flex gap-2 mt-2">
-            <button type="submit" disabled={submitting} className={`px-4 py-1 rounded cursor-pointer ${submitting ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
-              {submitting ? "Guardando..." : editingId ? "Actualizar" : "Crear"}</button>
-            <button type="button" onClick={handleCloseForm}
-              className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer hover:bg-gray-500">Cancelar</button>
+          <div className="col-span-2 mt-2">
+            <FormFooter
+              isSubmitting={submitting}
+              isEditing={!!editingId}
+              onCancel={handleCloseForm}
+            />
           </div>
         </form>
       )}

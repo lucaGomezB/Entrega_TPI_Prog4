@@ -19,27 +19,27 @@ from dotenv import load_dotenv
 from sqlmodel import SQLModel, create_engine, Session, select
 
 # ── Roles & Auth ──
-from modules.IdentidadYAcceso.Rol.models import Rol
-from modules.IdentidadYAcceso.Usuario.models import Usuario
-from modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+from app.modules.IdentidadYAcceso.Rol.models import Rol
+from app.modules.IdentidadYAcceso.Usuario.models import Usuario
+from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
 from core.security import get_password_hash
 
 # ── Addresses ──
-from modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
 
 # ── Catalog ──
-from modules.CatalogoDeProductos.Categoria.models import Categoria
-from modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
-from modules.CatalogoDeProductos.Producto.models import Producto
-from modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
-from modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
-from modules.CatalogoDeProductos.Producto.service import ProductoService
-from modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+from app.modules.CatalogoDeProductos.Categoria.models import Categoria
+from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from app.modules.CatalogoDeProductos.Producto.models import Producto
+from app.modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
+from app.modules.CatalogoDeProductos.producto_ingrediente import ProductoIngrediente
+from app.modules.CatalogoDeProductos.Producto.service import ProductoService
+from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
 
 # ── Sales ──
-from modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
-from modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
-from modules.VentasPagosTrazabilidad.Pedido.models import Pedido
+from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+from app.modules.VentasPagosTrazabilidad.Pedido.models import Pedido
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")

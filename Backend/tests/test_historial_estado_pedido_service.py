@@ -11,10 +11,10 @@ orchestration layer with no complex business logic, so tests focus on:
 from unittest.mock import MagicMock, patch, sentinel
 import pytest
 from sqlmodel import Session
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service import (
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service import (
     HistorialEstadoPedidoService,
 )
-from modules.VentasPagosTrazabilidad.HistorialEstadoPedido.repository import (
+from app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.repository import (
     HistorialEstadoPedidoRepository,
 )
 
@@ -30,7 +30,7 @@ class TestGetByPedido:
         mock_repo.get_by_pedido.return_value = expected_result
 
         with patch(
-            "modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service.HistorialEstadoPedidoRepository",
+            "app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service.HistorialEstadoPedidoRepository",
             return_value=mock_repo,
         ):
             result = HistorialEstadoPedidoService.get_by_pedido(
@@ -52,7 +52,7 @@ class TestGetById:
         mock_repo.get_by_id.return_value = expected
 
         with patch(
-            "modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service.HistorialEstadoPedidoRepository",
+            "app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service.HistorialEstadoPedidoRepository",
             return_value=mock_repo,
         ):
             result = HistorialEstadoPedidoService.get_by_id(
@@ -69,7 +69,7 @@ class TestGetById:
         mock_repo.get_by_id.return_value = None
 
         with patch(
-            "modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service.HistorialEstadoPedidoRepository",
+            "app.modules.VentasPagosTrazabilidad.HistorialEstadoPedido.service.HistorialEstadoPedidoRepository",
             return_value=mock_repo,
         ):
             result = HistorialEstadoPedidoService.get_by_id(

@@ -90,7 +90,7 @@ class TestUploadSchemas:
 
     def test_image_upload_response_has_required_fields(self):
         """ImageUploadResponse accepts secure_url and public_id strings."""
-        from modules.Uploads.schemas import ImageUploadResponse
+        from app.modules.Uploads.schemas import ImageUploadResponse
 
         resp = ImageUploadResponse(
             secure_url="https://res.cloudinary.com/demo/image/upload/v1/img.jpg",
@@ -101,7 +101,7 @@ class TestUploadSchemas:
 
     def test_image_delete_response_has_required_fields(self):
         """ImageDeleteResponse accepts detail and public_id strings."""
-        from modules.Uploads.schemas import ImageDeleteResponse
+        from app.modules.Uploads.schemas import ImageDeleteResponse
 
         resp = ImageDeleteResponse(
             detail="Imagen eliminada",
@@ -128,11 +128,11 @@ class TestUploadImage:
 
     def test_uploads_valid_jpeg_and_returns_url_and_public_id(self):
         """Valid JPEG upload calls cloudinary.uploader.upload and returns result dict."""
-        from modules.Uploads.service import CloudinaryService
+        from app.modules.Uploads.service import CloudinaryService
 
         mock_file = _make_upload_file("photo.jpg", "image/jpeg", b"jpg-data")
 
-        with patch("modules.Uploads.service.cloudinary") as mock_cloudinary:
+        with patch("app.modules.Uploads.service.cloudinary") as mock_cloudinary:
             mock_cloudinary.uploader.upload.return_value = {
                 "secure_url": "https://res.cloudinary.com/demo/image/upload/v1/abc123.jpg",
                 "public_id": "abc123",
@@ -148,7 +148,7 @@ class TestUploadImage:
 
     def test_raises_400_for_invalid_content_type(self):
         """Non-image content types raise HTTPException 400."""
-        from modules.Uploads.service import CloudinaryService
+        from app.modules.Uploads.service import CloudinaryService
 
         mock_file = _make_upload_file("doc.pdf", "application/pdf", b"pdf-data")
 
@@ -160,7 +160,7 @@ class TestUploadImage:
 
     def test_raises_400_for_file_too_large(self):
         """Files larger than 10 MB raise HTTPException 400."""
-        from modules.Uploads.service import CloudinaryService
+        from app.modules.Uploads.service import CloudinaryService
 
         large_content = b"x" * (11 * 1024 * 1024)  # 11 MB
         mock_file = _make_upload_file("big.jpg", "image/jpeg", large_content)
@@ -173,12 +173,12 @@ class TestUploadImage:
 
     def test_accepts_png_gif_and_webp_formats(self):
         """PNG, GIF, and WebP content types are treated as valid images."""
-        from modules.Uploads.service import CloudinaryService
+        from app.modules.Uploads.service import CloudinaryService
 
         for ct, ext in [("image/png", "png"), ("image/gif", "gif"), ("image/webp", "webp")]:
             mock_file = _make_upload_file(f"img.{ext}", ct, b"small-data")
 
-            with patch("modules.Uploads.service.cloudinary") as mock_cloudinary:
+            with patch("app.modules.Uploads.service.cloudinary") as mock_cloudinary:
                 mock_cloudinary.uploader.upload.return_value = {
                     "secure_url": f"https://res.cloudinary.com/demo/{ext}/abc.jpg",
                     "public_id": f"abc{ext}",
@@ -194,9 +194,9 @@ class TestDeleteImage:
 
     def test_deletes_image_and_returns_detail(self):
         """Valid public_id deletion returns detail and public_id."""
-        from modules.Uploads.service import CloudinaryService
+        from app.modules.Uploads.service import CloudinaryService
 
-        with patch("modules.Uploads.service.cloudinary") as mock_cloudinary:
+        with patch("app.modules.Uploads.service.cloudinary") as mock_cloudinary:
             mock_cloudinary.uploader.destroy.return_value = {"result": "ok"}
 
             result = CloudinaryService.delete_image("img-to-delete")
@@ -206,9 +206,9 @@ class TestDeleteImage:
 
     def test_raises_400_when_cloudinary_deletion_fails(self):
         """Non-ok result from Cloudinary destroy raises HTTPException 400."""
-        from modules.Uploads.service import CloudinaryService
+        from app.modules.Uploads.service import CloudinaryService
 
-        with patch("modules.Uploads.service.cloudinary") as mock_cloudinary:
+        with patch("app.modules.Uploads.service.cloudinary") as mock_cloudinary:
             mock_cloudinary.uploader.destroy.return_value = {"result": "not found"}
 
             with pytest.raises(HTTPException) as exc:

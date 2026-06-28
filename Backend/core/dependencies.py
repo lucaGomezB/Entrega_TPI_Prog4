@@ -1,14 +1,25 @@
 """
 Core dependency injection module.
 
-Provides singleton-style dependencies for the FastAPI application.
+Provides singleton-style dependencies for the FastAPI application
+and reusable role-authorization constants plus pagination dependency.
 """
 
 import asyncio
 import logging
+from fastapi import Query
 from core.websocket_manager import WSManager
 
 logger = logging.getLogger(__name__)
+
+# ── Role constant aliases ──────────────────────────────────────────────
+# Reusable role-list constants for require_roles() dependency calls.
+# Usage: dependencies=[Depends(require_roles(AdminOnly))]
+
+AdminOnly = ["ADMIN"]
+AdminOrStock = ["ADMIN", "STOCK"]
+AdminOrPedidos = ["ADMIN", "PEDIDOS"]
+AdminOrStockOrPedidos = ["ADMIN", "STOCK", "PEDIDOS"]
 
 # ── Singleton WSManager instance ──
 _ws_manager: WSManager | None = None
@@ -60,3 +71,17 @@ def fire_broadcast_admin(ws_manager: WSManager | None, payload: dict) -> None:
         asyncio.run(ws_manager.broadcast_admin(payload))
     except Exception as exc:
         logger.warning("WS admin broadcast failed: %s", exc)
+
+
+async def PaginationDep(
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=100, description="Max records to return (1-100)"),
+) -> dict:
+    """FastAPI dependency that provides validated skip/limit pagination.
+
+    Usage in endpoint signatures:
+        pagination: dict = Depends(PaginationDep)
+        skip = pagination["skip"]
+        limit = pagination["limit"]
+    """
+    return {"skip": skip, "limit": limit}

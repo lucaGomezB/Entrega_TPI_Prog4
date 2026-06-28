@@ -20,6 +20,8 @@
  *   useEstadoPedidoWS(pedidoId, true, () => loadPedidos());
  */
 import { useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/shared/store/authStore";
 import { useCartStore } from "@/shared/store/cartStore";
 import { useWsStore } from "@/features/pedidos/store/wsStore";
@@ -45,6 +47,17 @@ export function useEstadoPedidoWS(
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const connectingRef = useRef(false);
+
+  // ── Router and query cache for pago_confirmado navigation ──
+  const navigate = useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const queryClient = useQueryClient();
+
+  // useRef bridge: always points to the latest onEvent callback without
+  // triggering reconnects when the inline reference changes on re-render.
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
 
   const accessToken = useAuthStore((s) => s.accessToken);
   const setStatus = useWsStore((s) => s.setStatus);
@@ -95,7 +108,7 @@ export function useEstadoPedidoWS(
         const event: WsEvent = JSON.parse(msg.data as string);
         setLastEvent(event);
         useNotificationStore.getState().incrementUnseen();
-        onEvent?.(event);
+        onEventRef.current?.(event);
 
         // ── Handle pago_confirmado: clear cart and navigate ──
         if (event.event === "pago_confirmado" && event.pedido_id) {
@@ -103,6 +116,15 @@ export function useEstadoPedidoWS(
           if (!pagosConfirmadosVistos.has(pid)) {
             pagosConfirmadosVistos.add(pid);
             useCartStore.getState().clearCarrito();
+            // Navigate to the new Pedido detail page
+            try {
+              navigateRef.current(`/pedidos/${pid}`, { replace: true });
+            } catch {
+              // Fallback: window.location if navigate fails (hook called outside Router)
+              window.location.href = `/pedidos/${pid}`;
+            }
+            // Invalidate mis-pedidos query cache
+            queryClient.invalidateQueries({ queryKey: ['mis-pedidos'] });
           }
         }
       } catch {
@@ -130,7 +152,7 @@ export function useEstadoPedidoWS(
     socket.onerror = () => {
       // onclose will fire after onerror — handle reconnection there
     };
-  }, [enabled, accessToken, pedidoId, disconnect, setStatus, setLastEvent, resetReconnect, incrementReconnect, onEvent]);
+  }, [enabled, accessToken, pedidoId, disconnect, setStatus, setLastEvent, resetReconnect, incrementReconnect, queryClient]);
 
   useEffect(() => {
     mountedRef.current = true;

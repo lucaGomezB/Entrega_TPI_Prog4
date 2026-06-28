@@ -6,7 +6,8 @@
  * of products. The `updatePrecio` and `updateStock` endpoints allow partial
  * updates specific to pricing and inventory operations.
  */
-import { apiFetch, apiFetchPaginated } from "@/shared/api/client";
+import { apiFetch } from "@/shared/api/client";
+import { createCrudApi } from "@/shared/api/createCrudApi";
 
 // ── Types ──
 
@@ -40,30 +41,7 @@ export interface IngredienteUpdate {
 }
 
 export const ingredientesApi = {
-  /** Fetches a paginated list of all ingredients. */
-  getAll: (skip = 0, limit = 100) =>
-    apiFetchPaginated<Ingrediente>(`/ingredientes/?skip=${skip}&limit=${limit}`),
-
-  /** Fetches a single ingredient by ID. */
-  getById: (id: number) => apiFetch<Ingrediente>(`/ingredientes/${id}`),
-
-  /** Creates a new ingredient. */
-  create: (data: IngredienteCreate) =>
-    apiFetch<Ingrediente>("/ingredientes/", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  /** Partially updates an existing ingredient. */
-  update: (id: number, data: IngredienteUpdate) =>
-    apiFetch<Ingrediente>(`/ingredientes/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  /** Deletes an ingredient by ID. */
-  delete: (id: number) =>
-    apiFetch<void>(`/ingredientes/${id}`, { method: "DELETE" }),
+  ...createCrudApi<Ingrediente>("/ingredientes"),
 
   /**
    * Updates only the price of an ingredient.

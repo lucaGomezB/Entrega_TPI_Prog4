@@ -17,9 +17,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from modules.IdentidadYAcceso.Auth.dependencies import get_current_user
-from modules.Estadisticas.service import EstadisticasService
-from modules.Estadisticas.schemas import (
+from app.modules.IdentidadYAcceso.Auth.dependencies import get_current_user
+from app.modules.Estadisticas.service import EstadisticasService
+from app.modules.Estadisticas.schemas import (
     ResumenResponse,
     VentasPeriodoItem,
     ProductoTopItem,
@@ -135,7 +135,7 @@ class TestDecimalPrecision:
             wraps=EstadisticasService.get_resumen,
         ) as wrapped:
             with patch(
-                "modules.Estadisticas.service.EstadisticasRepository"
+                "app.modules.Estadisticas.service.EstadisticasRepository"
             ) as mock_repo_class:
                 mock_repo_class.return_value.get_resumen_kpis.return_value = kpis
                 result = wrapped(mock_session)
@@ -153,7 +153,7 @@ class TestDecimalPrecision:
             {"fecha": "2026-06-02", "total": Decimal("350.00")},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ventas_periodo.return_value = rows
             result = EstadisticasService.get_ventas_periodo(
@@ -175,7 +175,7 @@ class TestDecimalPrecision:
             },
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_productos_top.return_value = rows
             result = EstadisticasService.get_productos_top(mock_session, 10)
@@ -193,7 +193,7 @@ class TestDecimalPrecision:
             {"estado_codigo": "CONFIRMADO", "cantidad": 3},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_pedidos_por_estado.return_value = rows
             result = EstadisticasService.get_pedidos_estado(mock_session)
@@ -210,7 +210,7 @@ class TestDecimalPrecision:
             {"forma_pago_codigo": "MERCADOPAGO", "total": Decimal("300.00")},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ingresos_por_forma_pago.return_value = rows
             result = EstadisticasService.get_ingresos_forma_pago(
@@ -237,7 +237,7 @@ class TestDecimalPrecision:
             "mes_actual": Decimal("0.00"),
         }
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_resumen_kpis.return_value = kpis
             result = EstadisticasService.get_resumen(mock_session)
@@ -263,7 +263,7 @@ class TestZeroDataEdgeCases:
             "mes_actual": Decimal("0.00"),
         }
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_resumen_kpis.return_value = kpis
             result = EstadisticasService.get_resumen(mock_session)
@@ -278,7 +278,7 @@ class TestZeroDataEdgeCases:
         """Scenario: no orders in date range returns empty list."""
         mock_session = _mock_session()
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ventas_periodo.return_value = []
             result = EstadisticasService.get_ventas_periodo(
@@ -291,7 +291,7 @@ class TestZeroDataEdgeCases:
         """Scenario: no productos returns empty list."""
         mock_session = _mock_session()
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_productos_top.return_value = []
             result = EstadisticasService.get_productos_top(mock_session, 10)
@@ -302,7 +302,7 @@ class TestZeroDataEdgeCases:
         """Scenario: no orders (all deleted) returns empty list."""
         mock_session = _mock_session()
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_pedidos_por_estado.return_value = []
             result = EstadisticasService.get_pedidos_estado(mock_session)
@@ -313,7 +313,7 @@ class TestZeroDataEdgeCases:
         """Scenario: no approved payments returns empty list."""
         mock_session = _mock_session()
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ingresos_por_forma_pago.return_value = []
             result = EstadisticasService.get_ingresos_forma_pago(
@@ -335,7 +335,7 @@ class TestCanceladoExclusion:
         mock_session = _mock_session()
         # Repo returns empty because SQL filters out CANCELADO
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ventas_periodo.return_value = []
             result = EstadisticasService.get_ventas_periodo(
@@ -348,7 +348,7 @@ class TestCanceladoExclusion:
         mock_session = _mock_session()
         # Product that exists only in CANCELADO orders → repo returns empty
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_productos_top.return_value = []
             result = EstadisticasService.get_productos_top(mock_session, 10)
@@ -359,7 +359,7 @@ class TestCanceladoExclusion:
         mock_session = _mock_session()
         # Repo returns empty because SQL filters estado_codigo != 'CANCELADO'
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ingresos_por_forma_pago.return_value = []
             result = EstadisticasService.get_ingresos_forma_pago(
@@ -383,7 +383,7 @@ class TestSubtotalSnap:
             },
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_productos_top.return_value = rows
             result = EstadisticasService.get_productos_top(mock_session, 10)
@@ -400,7 +400,7 @@ class TestApprovedPaymentFilter:
         mock_session = _mock_session()
         # All payments are pending → repo returns empty
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ingresos_por_forma_pago.return_value = []
             result = EstadisticasService.get_ingresos_forma_pago(
@@ -415,7 +415,7 @@ class TestApprovedPaymentFilter:
             {"forma_pago_codigo": "MERCADOPAGO", "total": Decimal("100.00")},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ingresos_por_forma_pago.return_value = rows
             result = EstadisticasService.get_ingresos_forma_pago(
@@ -443,7 +443,7 @@ class TestResumenKpiCalculation:
             "mes_actual": Decimal("4500.00"),
         }
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_resumen_kpis.return_value = kpis
             result = EstadisticasService.get_resumen(mock_session)
@@ -463,7 +463,7 @@ class TestResumenKpiCalculation:
             "mes_actual": Decimal("200.00"),
         }
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_resumen_kpis.return_value = kpis
             result = EstadisticasService.get_resumen(mock_session)
@@ -482,7 +482,7 @@ class TestResumenKpiCalculation:
             "mes_actual": Decimal("0.00"),
         }
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_resumen_kpis.return_value = kpis
             result = EstadisticasService.get_resumen(mock_session)
@@ -501,7 +501,7 @@ class TestVentasPeriodo:
             {"fecha": "2026-06-02", "total": Decimal("350.00")},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ventas_periodo.return_value = rows
             result = EstadisticasService.get_ventas_periodo(
@@ -521,7 +521,7 @@ class TestVentasPeriodo:
             {"fecha": "2026-06-01", "total": Decimal("100.00")},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ventas_periodo.return_value = rows
             result = EstadisticasService.get_ventas_periodo(
@@ -543,7 +543,7 @@ class TestProductosTop:
             {"producto_id": 3, "nombre": "C", "cantidad_vendida": 4, "ingresos": Decimal("200.00")},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_productos_top.return_value = rows
             result = EstadisticasService.get_productos_top(mock_session, 3)
@@ -567,7 +567,7 @@ class TestPedidosEstado:
             {"estado_codigo": "CANCELADO", "cantidad": 1},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_pedidos_por_estado.return_value = rows
             result = EstadisticasService.get_pedidos_estado(mock_session)
@@ -582,7 +582,7 @@ class TestPedidosEstado:
             {"estado_codigo": "PENDIENTE", "cantidad": 3},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_pedidos_por_estado.return_value = rows
             result = EstadisticasService.get_pedidos_estado(mock_session)
@@ -602,7 +602,7 @@ class TestIngresosFormaPago:
             {"forma_pago_codigo": "EFECTIVO", "total": Decimal("50.00")},
         ]
         with patch(
-            "modules.Estadisticas.service.EstadisticasRepository"
+            "app.modules.Estadisticas.service.EstadisticasRepository"
         ) as mock_repo_class:
             mock_repo_class.return_value.get_ingresos_por_forma_pago.return_value = rows
             result = EstadisticasService.get_ingresos_forma_pago(

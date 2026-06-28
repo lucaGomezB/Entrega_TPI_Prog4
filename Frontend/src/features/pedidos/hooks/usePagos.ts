@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { pagosApi } from '../api/pagos'
+import { useQuery } from '@tanstack/react-query'
+import { useRef } from 'react'
+import { pagosApi, type PaymentStatusResponse } from '../api/pagos'
 import { queryKeys } from '@/shared/api/queryKeys'
 
 /** Fetches all pagos for a given pedido ID. Query is disabled when pedidoId is falsy. */
@@ -11,11 +12,37 @@ export function usePagosByPedido(pedidoId: number) {
   })
 }
 
-/** Initiates a MercadoPago payment for a pedido via mutation. Invalidates the pedidos cache on success. */
-export function useInitPayment() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (pedidoId: number) => pagosApi.initPayment(pedidoId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pedidos.all }),
+const MAX_POLL_ATTEMPTS = 15
+
+/**
+ * Polls GET /pagos/status every 2 seconds for up to 30 seconds.
+ *
+ * Used by PostPagoPage after MercadoPago redirect.
+ * Returns the latest status response plus polling metadata.
+ */
+export function usePagoStatus(externalReference: string) {
+  const attemptRef = useRef(0)
+
+  const query = useQuery<PaymentStatusResponse>({
+    queryKey: ['pagos', 'status', externalReference],
+    queryFn: () => {
+      attemptRef.current += 1
+      return pagosApi.getPaymentStatus(externalReference)
+    },
+    refetchInterval: 2000,
+    enabled: !!externalReference,
+    retry: false,
   })
+
+  const isPolling = query.isFetching && !query.isError
+  const isTimeout = attemptRef.current >= MAX_POLL_ATTEMPTS && query.data?.status !== 'found'
+
+  return {
+    status: query.data?.status ?? null,
+    pedidoId: query.data?.pedido_id ?? null,
+    mpStatus: query.data?.mp_status ?? null,
+    isPolling,
+    isTimeout,
+    error: query.error,
+  }
 }

@@ -8,6 +8,7 @@
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import type { UnidadMedidaCreate } from "@/features/unidades-medida/types";
 import type { UnidadMedidaTipo } from "@/features/unidades-medida/types";
+import FormFooter from "@/shared/components/FormFooter";
 
 const TIPO_OPTIONS: { value: UnidadMedidaTipo; label: string }[] = [
   { value: "masa", label: "Masa" },
@@ -96,25 +97,12 @@ export default function UnidadMedidaForm({
         </form.Field>
       </div>
 
-      <div className="col-span-2 flex gap-2 mt-2">
-        <button
-          type="submit"
-          disabled={submitting}
-          className={`px-4 py-1 rounded cursor-pointer text-white ${
-            submitting
-              ? "bg-blue-400 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
-          {submitting ? "Guardando..." : editingId ? "Actualizar" : "Crear"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="bg-gray-400 text-white px-4 py-1 rounded cursor-pointer hover:bg-gray-500"
-        >
-          Cancelar
-        </button>
+      <div className="col-span-2 mt-2">
+        <FormFooter
+          isSubmitting={submitting}
+          isEditing={!!editingId}
+          onCancel={onCancel}
+        />
       </div>
     </form>
   );
