@@ -83,12 +83,12 @@ El backend esta construido con **Python FastAPI** siguiendo una arquitectura mod
 >
 > Se encuentran en una carpeta compartida de Google Drive. Copia los siguientes archivos ANTES de ejecutar cualquier opcion de setup:
 >
-> - `Backend/.env` — credenciales de base de datos, MercadoPago, Cloudinary, JWT
-> - `Frontend/.env` — URL del WebSocket
+> - `App/Backend/.env` — credenciales de base de datos, MercadoPago, Cloudinary, JWT
+> - `App/Frontend/.env` — URL del WebSocket
 >
 > **Link a Google Drive:** `[Link a Google Drive — solicitar acceso]`
 >
-> Sin estos archivos la aplicacion no funcionara. Las variables requeridas estan documentadas en `Backend/.env.example` y `Frontend/.env.example`.
+> Sin estos archivos la aplicacion no funcionara. Las variables requeridas estan documentadas en `App/Backend/.env.example` y `App/Frontend/.env.example`.
 
 ---
 
@@ -128,7 +128,7 @@ docker-compose up --build
 
 ```bash
 # 1. Ubicarse en el directorio del backend
-cd Backend
+cd App/Backend
 
 # 2. Crear y activar entorno virtual
 python -m venv .venv
@@ -142,7 +142,7 @@ source .venv/bin/activate
 # 3. Instalar dependencias
 pip install -r requirements.txt
 
-# 4. Copiar el archivo .env desde Google Drive a Backend/.env
+# 4. Copiar el archivo .env desde Google Drive a App/Backend/.env
 #    (ver seccion IMPORTANTE arriba)
 
 # 5. Crear la base de datos PostgreSQL
@@ -165,12 +165,12 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ```bash
 # 1. Ubicarse en el directorio del frontend
-cd Frontend
+cd App/Frontend
 
 # 2. Instalar dependencias
 npm install
 
-# 3. Copiar el archivo .env desde Google Drive a Frontend/.env
+# 3. Copiar el archivo .env desde Google Drive a App/Frontend/.env
 #    (ver seccion IMPORTANTE arriba)
 
 # 4. Iniciar el servidor de desarrollo
@@ -187,10 +187,10 @@ El backend cuenta con **155 tests** unitarios y de integracion que cubren todos 
 
 ```bash
 # Ejecutar todos los tests
-pytest Backend/tests/ -v
+pytest App/Backend/tests/ -v
 
 # Ejecutar tests con reporte de cobertura
-pytest Backend/tests/ --cov=Backend -v
+pytest App/Backend/tests/ --cov=App/Backend -v
 ```
 
 ### Cobertura de tests por modulo
@@ -236,53 +236,54 @@ Entrega_TPI_Prog4/
 ├── docker-compose.yml
 ├── README.md
 │
-├── Backend/
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── alembic.ini
-│   ├── main.py                      # FastAPI app factory + lifespan
-│   ├── core/                        # Infraestructura compartida
-│   │   ├── database.py              # Engine SQLModel + get_session
-│   │   ├── dependencies.py          # Dependencias FastAPI (roles, auth)
-│   │   ├── security/                # JWT, hash passwords
-│   │   ├── websocket_manager.py     # WebSocket para tracking de pedidos
-│   │   ├── cloudinary_config.py     # Cliente Cloudinary
-│   │   ├── problem_response.py      # RFC 7807 error responses
-│   │   ├── paginated_response.py    # Paginacion estandar
-│   │   └── rate_limit.py            # SlowAPI rate limiter
-│   ├── modules/                     # Modulos de dominio (Clean Architecture)
-│   │   ├── IdentidadYAcceso/        # Auth, Usuario, Rol, DireccionEntrega
-│   │   ├── CatalogoDeProductos/     # Categoria, Producto, Ingrediente
-│   │   ├── VentasPagosTrazabilidad/ # Pedido, EstadoPedido, FormaPago, Pago, Historial
-│   │   ├── Estadisticas/            # Dashboard analytics
-│   │   └── Uploads/                 # Cloudinary image management
-│   ├── app/db/seed.py               # Seed de datos iniciales
-│   ├── migrations/                  # Migraciones Alembic
-│   └── tests/                       # Suite de tests (155 tests)
+├── App/
+│   ├── Backend/
+│   │   ├── Dockerfile
+│   │   ├── .dockerignore
+│   │   ├── requirements.txt
+│   │   ├── .env.example
+│   │   ├── alembic.ini
+│   │   ├── main.py                      # FastAPI app factory + lifespan
+│   │   ├── core/                        # Infraestructura compartida
+│   │   │   ├── database.py              # Engine SQLModel + get_session
+│   │   │   ├── dependencies.py          # Dependencias FastAPI (roles, auth)
+│   │   │   ├── security/                # JWT, hash passwords
+│   │   │   ├── websocket_manager.py     # WebSocket para tracking de pedidos
+│   │   │   ├── cloudinary_config.py     # Cliente Cloudinary
+│   │   │   ├── problem_response.py      # RFC 7807 error responses
+│   │   │   ├── paginated_response.py    # Paginacion estandar
+│   │   │   └── rate_limit.py            # SlowAPI rate limiter
+│   │   ├── modules/                     # Modulos de dominio (Clean Architecture)
+│   │   │   ├── IdentidadYAcceso/        # Auth, Usuario, Rol, DireccionEntrega
+│   │   │   ├── CatalogoDeProductos/     # Categoria, Producto, Ingrediente
+│   │   │   ├── VentasPagosTrazabilidad/ # Pedido, EstadoPedido, FormaPago, Pago, Historial
+│   │   │   ├── Estadisticas/            # Dashboard analytics
+│   │   │   └── Uploads/                 # Cloudinary image management
+│   │   ├── app/db/seed.py               # Seed de datos iniciales
+│   │   ├── migrations/                  # Migraciones Alembic
+│   │   └── tests/                       # Suite de tests (155 tests)
+│   │
+│   └── Frontend/
+│       ├── Dockerfile
+│       ├── .dockerignore
+│       ├── .env.example
+│       ├── package.json
+│       ├── vite.config.ts
+│       └── src/
+│           ├── app/                     # App shell (App.tsx, router.tsx, main.tsx)
+│           ├── assets/                  # Imagenes y recursos estaticos
+│           ├── features/                # Feature-Sliced Design
+│           │   ├── auth/                # Autenticacion y usuarios
+│           │   ├── productos/           # Catalogo de productos e ingredientes
+│           │   ├── pedidos/             # Pedidos, pagos y direcciones
+│           │   ├── categorias/          # Categorias de productos
+│           │   └── estadisticas/        # Dashboard KPIs y graficos
+│           └── shared/                  # Codigo compartido entre features
+│               ├── api/                 # Cliente HTTP (Axios) + query keys
+│               ├── components/          # Componentes reusables (ImageCarousel)
+│               ├── hooks/               # Hook de formulario base (useAppForm)
+│               ├── store/               # Stores globales (authStore, cartStore)
+│               └── utils/               # Utilidades (exportExcel)
 │
-├── Frontend/
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   ├── .env.example
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── src/
-│       ├── app/                     # App shell (App.tsx, router.tsx, main.tsx)
-│       ├── assets/                  # Imagenes y recursos estaticos
-│       ├── features/                # Feature-Sliced Design
-│       │   ├── auth/                # Autenticacion y usuarios
-│       │   ├── productos/           # Catalogo de productos e ingredientes
-│       │   ├── pedidos/             # Pedidos, pagos y direcciones
-│       │   ├── categorias/          # Categorias de productos
-│       │   └── estadisticas/        # Dashboard KPIs y graficos
-│       └── shared/                  # Codigo compartido entre features
-│           ├── api/                 # Cliente HTTP (Axios) + query keys
-│           ├── components/          # Componentes reusables (ImageCarousel)
-│           ├── hooks/               # Hook de formulario base (useAppForm)
-│           ├── store/               # Stores globales (authStore, cartStore)
-│           └── utils/               # Utilidades (exportExcel)
-│
-└── openspec/                        # Especificaciones SDD (solo desarrollo)
+└── openspec/                            # Especificaciones SDD (solo desarrollo)
 ```

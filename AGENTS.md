@@ -19,7 +19,7 @@ codigo en este proyecto. Este es el contrato unico de arquitectura para frontend
 
 ### Arquitectura: Feature-Sliced Design (OBLIGATORIO)
 
-Toda feature de negocio reside en `Frontend/src/features/<nombre>/` con esta estructura
+Toda feature de negocio reside en `App/Frontend/src/features/<nombre>/` con esta estructura
 interna (solo los subdirectorios necesarios, no todos):
 
 ```
@@ -209,7 +209,7 @@ Router → Service → Unit of Work → Repository → SQLModel
 
 ### Backend
 
-- **Runner**: `pytest Backend/tests/` (con `pytest-cov` para cobertura)
+- **Runner**: `pytest App/Backend/tests/` (con `pytest-cov` para cobertura)
 - **Base de datos**: SQLite en memoria (`:memory:`) con `StaticPool`. Cada test corre
   dentro de una transaccion que se revierte al finalizar -- tests 100% aislados.
 - **Fixtures compartidos**: `conftest.py` (467 lineas) provee:

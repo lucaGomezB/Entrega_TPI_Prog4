@@ -1,5 +1,5 @@
-Backend/.env
-Frontend/.env
+App/Backend/.env
+App/Frontend/.env
 node_modules/
 dist/
 build/
