@@ -15,7 +15,8 @@ import { useRef, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Producto } from "@/features/productos/api/productos";
 import { useProductos } from "@/features/productos/hooks/useProductos";
-import { useCategorias } from "@/features/categorias/hooks/useCategorias";
+import { useQuery } from "@tanstack/react-query";
+import { categoriasApi } from "@/features/categorias/api/categorias";
 import { useCartStore } from "@/shared/store/cartStore";
 import { getAccessToken, getUserRoles } from "@/shared/api/client";
 import ProductCard from "@/features/productos/components/ProductCard";
@@ -55,8 +56,11 @@ export default function ProductosCliente() {
   const products = productsData?.items ?? [];
 
   // TanStack Query: categories (for filter chips + image fallback)
-  const { data: categoriasData } = useCategorias(0, 1000);
-  const categorias = categoriasData?.items ?? [];
+  const { data: categoriasData } = useQuery({
+    queryKey: ["categorias", "tree"],
+    queryFn: () => categoriasApi.getTree(),
+  });
+  const categorias = categoriasData ?? [];
 
   // UI-only state
   const [page, setPage] = useState(0);

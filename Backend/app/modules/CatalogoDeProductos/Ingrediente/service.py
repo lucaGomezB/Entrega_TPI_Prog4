@@ -15,7 +15,6 @@ from fastapi import HTTPException, status
 from core.routing import get_or_404
 from sqlalchemy.exc import IntegrityError
 from .models import Ingrediente
-from .repository import IngredienteRepository
 from .schemas import IngredienteCreate, IngredienteRead, IngredienteUpdate
 from core.paginated_response import PaginatedResponse
 from core.base import get_utc_now
@@ -49,9 +48,8 @@ class IngredienteService:
         Read-only: wrapped in UoW for consistent DB access.
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
-            repo = IngredienteRepository(session)
-            rows = repo.get_all_paginated(skip=skip, limit=limit, search=search)
-            total = repo.count_all(search=search)
+            rows = uow.ingredientes.get_all_paginated(skip=skip, limit=limit, search=search)
+            total = uow.ingredientes.count_all(search=search)
             return PaginatedResponse(
                 items=[IngredienteRead.model_validate(r) for r in rows],
                 total=total,

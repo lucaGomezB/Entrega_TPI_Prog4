@@ -11,7 +11,6 @@ from fastapi import HTTPException, status
 from core.routing import get_or_404
 from sqlmodel import Session
 from .models import Categoria
-from .repository import CategoriaRepository
 from .schemas import CategoriaCreate, CategoriaRead, CategoriaUpdate
 from core.paginated_response import PaginatedResponse
 from core.base import get_utc_now
@@ -35,9 +34,8 @@ class CategoriaService:
         Read-only: wrapped in UoW for consistent DB access.
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
-            repo = CategoriaRepository(session)
-            rows = repo.get_all(skip=skip, limit=limit, parent_id=parent_id)
-            total = repo.count_all()
+            rows = uow.categorias.get_all(skip=skip, limit=limit, parent_id=parent_id)
+            total = uow.categorias.count_all()
             return PaginatedResponse(
                 items=[CategoriaRead.model_validate(r) for r in rows],
                 total=total,
@@ -73,25 +71,19 @@ class CategoriaService:
         - Name uniqueness (no duplicate category names)
         - Parent category exists (FK integrity check)
         """
-        repo = CategoriaRepository(session)
-
-        # Validate name uniqueness before attempting DB insert
-        if repo.exists_by_nombre(data.nombre):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Ya existe una categoría con el nombre '{data.nombre}'"
-            )
-
-        # Validate parent exists when specified
-        if data.parent_id is not None:
-            parent = repo.get_parent(data.parent_id)
-            get_or_404(parent, "La categoría padre indicada no existe")
-
-        # Prevent self-reference (safety check — only applies in theory for create)
-        # Not needed here because the category doesn't have an ID yet at creation time.
-        # But validate parent exists (already done above).
-
         with CatalogoDeProductosUnitOfWork(session) as uow:
+            # Validate name uniqueness before attempting DB insert
+            if uow.categorias.exists_by_nombre(data.nombre):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Ya existe una categoría con el nombre '{data.nombre}'"
+                )
+
+            # Validate parent exists when specified
+            if data.parent_id is not None:
+                parent = uow.categorias.get_parent(data.parent_id)
+                get_or_404(parent, "La categoría padre indicada no existe")
+
             db_categoria = Categoria(**data.model_dump())
             uow.categorias.add(db_categoria)
             uow.flush()
@@ -106,8 +98,6 @@ class CategoriaService:
         - No self-reference (parent_id != self.id)
         - No cycles in hierarchy (walk up parent chain to detect loops)
         """
-        repo = CategoriaRepository(session)
-        
         with CatalogoDeProductosUnitOfWork(session) as uow:
             db_categoria = uow.categorias.get_by_id(categoria_id)
             if not db_categoria:
@@ -128,14 +118,14 @@ class CategoriaService:
                 
                 # Cycle detection: walk up the new parent's chain
                 # If we encounter categoria_id, setting this parent would create a cycle
-                current = repo.get_by_id(new_parent_id)
+                current = uow.categorias.get_by_id(new_parent_id)
                 while current is not None and current.parent_id is not None:
                     if current.parent_id == categoria_id:
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail="La categoría padre seleccionada crearía un ciclo en la jerarquía"
                         )
-                    current = repo.get_by_id(current.parent_id)
+                    current = uow.categorias.get_by_id(current.parent_id)
 
             for key, value in values.items():
                 setattr(db_categoria, key, value)

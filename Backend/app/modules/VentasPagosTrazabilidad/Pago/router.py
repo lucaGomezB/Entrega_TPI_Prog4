@@ -13,7 +13,6 @@ from starlette.responses import RedirectResponse
 from sqlmodel import Session
 
 from core.database import get_session
-from core.routing import get_or_404
 from app.modules.IdentidadYAcceso.Auth.dependencies import get_current_user, get_current_user_optional
 from app.modules.IdentidadYAcceso.Usuario.models import Usuario
 
@@ -279,12 +278,4 @@ async def get_pagos_by_pedido(
     Returns an empty list if the pedido doesn't exist or has no payments.
     Results are ordered by most recent first (descending creation date).
     """
-    from ..Pedido.service import PedidoService as _PedidoService
-    pedido = _PedidoService.get_by_id(session, pedido_id)
-    get_or_404(pedido, "Pedido no encontrado")
-
-    if not any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles):
-        if pedido.usuario_id != current_user.id:
-            raise HTTPException(status_code=403, detail="No tienes permiso para ver este pedido")
-
-    return PagoService.get_pagos_by_pedido(session, pedido_id)
+    return PagoService.get_pagos_by_pedido_autorizado(session, pedido_id, current_user)

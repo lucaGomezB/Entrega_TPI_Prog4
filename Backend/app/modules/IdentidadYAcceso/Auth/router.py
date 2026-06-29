@@ -25,51 +25,13 @@ from core.rate_limit import limiter
 from core.security import settings, create_access_token, TokenData
 from .schemas import LoginRequest, TokenResponse
 from . import service
+from .service import AuthService, _set_refresh_cookie, _clear_refresh_cookie
 from .dependencies import get_current_user
 from app.modules.IdentidadYAcceso.Usuario.models import Usuario
 from app.modules.IdentidadYAcceso.Usuario.schemas import UsuarioCreate
 from app.modules.IdentidadYAcceso.Usuario.service import crear_usuario, obtener_usuario
-from app.modules.IdentidadYAcceso.Usuario.repository import UsuarioRepository
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
-
-COOKIE_MAX_AGE = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400  # Convert days to seconds
-
-
-def _set_refresh_cookie(request: Request, response: Response, token: str):
-    """
-    Helper to set the refresh_token as an httpOnly cookie.
-
-    Configuration:
-    - httponly=True: prevents JavaScript access (XSS protection).
-    - samesite="lax": CSRF protection (cookie sent only for same-site requests).
-    - secure=True: only sent over HTTPS (prevents man-in-the-middle).
-    - path="/": cookie sent on all requests (including Vite proxy path /api/...).
-    - max_age: cookie lifetime in seconds (matches token lifetime).
-    """
-    secure = request.url.scheme == "https"
-    response.set_cookie(
-        key="refresh_token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=secure,
-        max_age=COOKIE_MAX_AGE,
-        path="/",
-    )
-
-
-def _clear_refresh_cookie(response: Response):
-    """
-    Helper to remove the refresh_token cookie from the client.
-
-    Must use the same path as _set_refresh_cookie for the deletion
-    to take effect. Used during logout and failed refresh validation.
-    """
-    response.delete_cookie(
-        key="refresh_token",
-        path="/",
-    )
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -138,7 +100,12 @@ def login(
         )
 
     # Fetch user with roles for JWT payload
-    user_with_roles = UsuarioRepository(session).get_with_roles(user.id)
+    user_with_roles = obtener_usuario(session, user.id)
+    if not user_with_roles:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario no encontrado",
+        )
     token_data = TokenData(
         user_id=user.id,
         email=user.email,
@@ -207,71 +174,7 @@ def refresh(
             detail="No se encontró refresh token",
         )
 
-    import hashlib
-    from .repository import RefreshTokenRepository
-    from core.base import get_utc_now
-
-    repo = RefreshTokenRepository(session)
-    token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
-
-    # Atomically find AND lock the token row.
-    # SELECT ... FOR UPDATE prevents concurrent refresh calls from both
-    # passing validation before either has a chance to revoke (TOCTOU race).
-    stored_token = repo.get_by_hash_for_update(token_hash)
-
-    if not stored_token:
-        # Token is not valid (expired, revoked, or never existed).
-        # Check if this is a replay attack (hash exists but was already revoked).
-        was_revoked = repo.get_by_hash_including_revoked(token_hash)
-
-        if was_revoked and was_revoked.revoked_at is not None:
-            # Replay attack detected — revoke ALL active tokens for this user
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                "REPLAY ATTACK DETECTED: revoked token reused for usuario_id=%s. "
-                "Revoking ALL active tokens.",
-                was_revoked.usuario_id,
-            )
-            repo.revoke_all_for_user(was_revoked.usuario_id)
-
-        _clear_refresh_cookie(response)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token inválido o expirado",
-        )
-
-    # Token is valid and we hold the row lock — revoke it NOW (token rotation).
-    # Because we used FOR UPDATE, no concurrent transaction could have
-    # validated this same token between our lookup and this revocation.
-    stored_token.revoked_at = get_utc_now()
-    session.add(stored_token)
-
-    # Retrieve the token owner
-    user = obtener_usuario(session, stored_token.usuario_id)
-    if not user:
-        _clear_refresh_cookie(response)
-        raise HTTPException(status_code=401, detail="Usuario no encontrado")
-
-    # Issue new token pair
-    token_data = TokenData(
-        user_id=user.id,
-        email=user.email,
-        roles=[rol.codigo for rol in user.roles]
-    )
-    access_token = create_access_token(
-        token_data,
-        timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    new_refresh_token = service.create_refresh_token(session, user.id)
-
-    _set_refresh_cookie(request, response, new_refresh_token)
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
+    return AuthService.refresh_token(session, raw_token, request, response)
 
 
 @router.post("/logout")

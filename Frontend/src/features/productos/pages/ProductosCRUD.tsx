@@ -19,7 +19,7 @@ import { ingredientesApi } from "@/features/productos/api/ingredientes";
 import type { Categoria } from "@/features/categorias/api/categorias";
 import { categoriasApi } from "@/features/categorias/api/categorias";
 import { unidadesMedidaApi } from "@/features/unidades-medida/api/unidadesMedidaApi";
-import type { UnidadMedida } from "@/features/unidades-medida/types";
+import type { UnidadMedida } from "@/features/unidades-medida/api/unidadesMedidaApi";
 import { useProductos, useCreateProducto, useUpdateProducto, useDeleteProducto } from "@/features/productos/hooks/useProductos";
 import ImageCarousel from "@/shared/components/ImageCarousel";
 import { addToast } from "@/shared/components/Toast";

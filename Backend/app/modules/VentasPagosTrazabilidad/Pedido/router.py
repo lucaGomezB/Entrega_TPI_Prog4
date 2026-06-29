@@ -22,7 +22,6 @@ from core.dependencies import get_ws_manager, AdminOrPedidos, AdminOnly
 from core.routing import get_or_404
 from app.modules.IdentidadYAcceso.Auth.dependencies import require_roles, get_current_user
 from app.modules.IdentidadYAcceso.Usuario.models import Usuario
-from app.modules.IdentidadYAcceso.Usuario.repository import UsuarioRepository
 from .service import PedidoService
 from .repository import SORTABLE_FIELDS
 from .schemas import (
@@ -32,7 +31,6 @@ from .schemas import (
     DetallePedidoUpdate,
     ValidarStockInput, ValidarStockResponse,
 )
-from ..HistorialEstadoPedido.service import HistorialEstadoPedidoService
 from ..HistorialEstadoPedido.schemas import HistorialRead
 import logging
 
@@ -64,31 +62,11 @@ def read_activos(
     """GET /pedidos/activos — List active (non-terminal) orders.
 
     ADMIN/PEDIDOS see all active orders; regular users only see their own.
+    Authorization and filtering are handled by PedidoService.
     """
-    if sort_by not in SORTABLE_FIELDS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"sort_by debe ser uno de: {', '.join(sorted(SORTABLE_FIELDS))}",
-        )
-    if sort_order not in ("asc", "desc"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="sort_order debe ser 'asc' o 'desc'",
-        )
-
-    es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles)
-    if es_gestor:
-        return PedidoService.get_activos(session, skip=skip, limit=limit,
-                                         sort_by=sort_by, sort_order=sort_order)
-    # Regular user: filter to their own active orders
-    todos_activos = PedidoService.get_activos(session, skip=0, limit=10000,
-                                              sort_by=sort_by, sort_order=sort_order)
-    items_filtrados = [p for p in todos_activos.items if p.usuario_id == current_user.id]
-    return PaginatedResponse(
-        items=items_filtrados[skip:skip + limit],
-        total=len(items_filtrados),
-        skip=skip,
-        limit=limit,
+    return PedidoService.get_activos_scoped(
+        session, current_user, skip=skip, limit=limit,
+        sort_by=sort_by, sort_order=sort_order,
     )
 
 
@@ -146,15 +124,9 @@ def read_one(
     """GET /pedidos/{id} — Get a single order by its ID.
 
     ADMIN/PEDIDOS can see any order; regular users can only see their own.
+    Authorization is enforced by PedidoService.
     """
-    obj = PedidoService.get_by_id(session, pedido_id)
-    obj = get_or_404(obj, "Pedido no encontrado")
-
-    # Regular users cannot view other users' orders
-    if not any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles):
-        if obj.usuario_id != current_user.id:
-            raise HTTPException(status_code=403, detail="No tienes permiso para ver este pedido")
-    return obj
+    return PedidoService.get_by_id_scoped(session, pedido_id, current_user)
 
 
 @router.get("/{pedido_id}/historial", response_model=List[HistorialRead])
@@ -167,16 +139,9 @@ def read_historial_pedido(
 
     ADMIN/PEDIDOS can see any order's history; regular users can only see their own.
     Returns the audit trail ordered from oldest to newest, with timestamps.
+    Authorization and cross-service orchestration handled by PedidoService.
     """
-    # First verify the order exists and user has access (same scoping as read_one)
-    obj = PedidoService.get_by_id(session, pedido_id)
-    obj = get_or_404(obj, "Pedido no encontrado")
-
-    if not any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles):
-        if obj.usuario_id != current_user.id:
-            raise HTTPException(status_code=403, detail="No tienes permiso para ver este pedido")
-
-    return HistorialEstadoPedidoService.get_by_pedido(session, pedido_id)
+    return PedidoService.get_historial_scoped(session, pedido_id, current_user)
 
 
 @router.post("/", response_model=PedidoRead, status_code=status.HTTP_201_CREATED)
@@ -349,8 +314,8 @@ async def _get_user_from_ws_token(
         logger.warning("WS auth: invalid or expired token")
         raise WebSocketException(code=4001, reason="Token invalido o expirado")
 
-    repo = UsuarioRepository(session)
-    user = repo.get_with_roles(token_data.user_id)
+    from app.modules.IdentidadYAcceso.uow import IdentidadYAccesoUnitOfWork
+    user = IdentidadYAccesoUnitOfWork(session).usuarios.get_with_roles(token_data.user_id)
     if not user:
         logger.warning("WS auth: user %s not found", token_data.user_id)
         raise WebSocketException(code=4001, reason="Usuario no encontrado")

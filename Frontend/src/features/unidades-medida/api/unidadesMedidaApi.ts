@@ -10,6 +10,8 @@ import { apiFetch } from "@/shared/api/client";
 import { createCrudApi } from "@/shared/api/createCrudApi";
 import type { UnidadMedida, UnidadMedidaCreate, UnidadMedidaUpdate } from "@/features/unidades-medida/types";
 
+export type { UnidadMedida };
+
 const baseCrud = createCrudApi<UnidadMedida>("/unidades-medida");
 
 export const unidadesMedidaApi = {

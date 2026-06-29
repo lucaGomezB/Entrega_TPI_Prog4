@@ -12,7 +12,7 @@ import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { addToast } from "@/shared/components/Toast";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
-import type { UnidadMedida } from "@/features/unidades-medida/types";
+import type { UnidadMedida } from "@/features/unidades-medida/api/unidadesMedidaApi";
 import { unidadesMedidaApi } from "@/features/unidades-medida/api/unidadesMedidaApi";
 import SearchFilter from "@/shared/components/SearchFilter";
 import { usePagination } from "@/shared/hooks/usePagination";

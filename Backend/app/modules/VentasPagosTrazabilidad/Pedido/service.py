@@ -25,10 +25,13 @@ from .models import Pedido
 from .schemas import PedidoRead
 
 logger = logging.getLogger(__name__)
-from .repository import PedidoRepository
+from .repository import SORTABLE_FIELDS
 from .schemas import PedidoCreate, PedidoUpdate, ValidarStockInput, ValidarStockResponse, ValidarStockDetalleResponse
 from core.paginated_response import PaginatedResponse
 from ..uow import VentasPagosTrazabilidadUnitOfWork
+from app.modules.CatalogoDeProductos.uow import CatalogoDeProductosUnitOfWork
+from app.modules.IdentidadYAcceso.uow import IdentidadYAccesoUnitOfWork
+from ..HistorialEstadoPedido.service import HistorialEstadoPedidoService
 from ..DetallePedido.models import DetallePedido
 from ..HistorialEstadoPedido.models import HistorialEstadoPedido
 from core.base import get_utc_now
@@ -110,8 +113,7 @@ class PedidoService:
         if not personalizacion:
             return
 
-        from app.modules.CatalogoDeProductos.Producto.repository import ProductoRepository
-        repo = ProductoRepository(session)
+        repo = CatalogoDeProductosUnitOfWork(session).productos
         ingredientes_asignados = repo.get_ingredientes(producto_id)
 
         # Build a set of valid removable ingredient IDs for this product
@@ -153,6 +155,20 @@ class PedidoService:
             return uow.pedidos.get_by_id_eager(pedido_id)
 
     @staticmethod
+    def get_by_id_scoped(session: Session, pedido_id: int, user) -> Pedido:
+        """Fetch a single order with ownership enforcement.
+
+        ADMIN/PEDIDOS can see any order; regular users can only see their own.
+        Raises HTTPException(404) if not found, HTTPException(403) if unauthorized.
+        """
+        pedido = PedidoService.get_by_id(session, pedido_id)
+        pedido = get_or_404(pedido, "Pedido no encontrado")
+        es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in user.roles)
+        if not es_gestor and pedido.usuario_id != user.id:
+            raise HTTPException(status_code=403, detail="No tienes permiso para ver este pedido")
+        return pedido
+
+    @staticmethod
     def get_by_usuario_id(session: Session, usuario_id: int, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
         """Fetch non-deleted orders for a specific user, newest first."""
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
@@ -181,6 +197,40 @@ class PedidoService:
                 skip=skip,
                 limit=limit,
             )
+
+    @staticmethod
+    def get_activos_scoped(session: Session, user, skip: int = 0, limit: int = 100,
+                           sort_by: str = "id", sort_order: str = "desc") -> PaginatedResponse[PedidoRead]:
+        """Fetch active orders scoped to the user's role.
+
+        ADMIN/PEDIDOS see all active orders; regular users only see their own.
+        Sort validation is done here so the router stays thin.
+        """
+        if sort_by not in SORTABLE_FIELDS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"sort_by debe ser uno de: {', '.join(sorted(SORTABLE_FIELDS))}",
+            )
+        if sort_order not in ("asc", "desc"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="sort_order debe ser 'asc' o 'desc'",
+            )
+
+        es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in user.roles)
+        if es_gestor:
+            return PedidoService.get_activos(session, skip=skip, limit=limit,
+                                             sort_by=sort_by, sort_order=sort_order)
+        # Regular user: filter to their own active orders
+        todos_activos = PedidoService.get_activos(session, skip=0, limit=10000,
+                                                   sort_by=sort_by, sort_order=sort_order)
+        items_filtrados = [p for p in todos_activos.items if p.usuario_id == user.id]
+        return PaginatedResponse(
+            items=items_filtrados[skip:skip + limit],
+            total=len(items_filtrados),
+            skip=skip,
+            limit=limit,
+        )
 
     @staticmethod
     def get_historial(session: Session, skip: int = 0, limit: int = 100,
@@ -213,6 +263,20 @@ class PedidoService:
             )
 
     @staticmethod
+    def get_historial_scoped(session: Session, pedido_id: int, user):
+        """Return full state history for an order with ownership enforcement.
+
+        ADMIN/PEDIDOS can see any order's history; regular users can only see their own.
+        Delegates the actual history retrieval to HistorialEstadoPedidoService internally.
+        """
+        pedido = PedidoService.get_by_id(session, pedido_id)
+        pedido = get_or_404(pedido, "Pedido no encontrado")
+        es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in user.roles)
+        if not es_gestor and pedido.usuario_id != user.id:
+            raise HTTPException(status_code=403, detail="No tienes permiso para ver este pedido")
+        return HistorialEstadoPedidoService.get_by_pedido(session, pedido_id)
+
+    @staticmethod
     def create(session: Session, data: PedidoCreate, ws_manager=None) -> Pedido:
         """Create a new order with full integrity checks.
 
@@ -230,9 +294,6 @@ class PedidoService:
         (stock validation, ingredient validation, DB constraint), the entire
         transaction is rolled back. No partial orders.
         """
-        from app.modules.IdentidadYAcceso.DireccionEntrega.repository import DireccionEntregaRepository
-        from app.modules.CatalogoDeProductos.Producto.repository import ProductoRepository
-
         # ── Pickup-only payment methods: EFECTIVO and PAGO_LOCAL do NOT support delivery ──
         if data.forma_pago_codigo in PICKUP_ONLY_METHODS:
             if data.direccion_id is not None:
@@ -244,7 +305,7 @@ class PedidoService:
         # Auto-select user's primary address if none provided
         # (skip for pickup-only methods: they don't need a delivery address)
         if data.direccion_id is None and data.forma_pago_codigo not in PICKUP_ONLY_METHODS:
-            direccion_repo = DireccionEntregaRepository(session)
+            direccion_repo = IdentidadYAccesoUnitOfWork(session).direcciones
             principal = direccion_repo.get_principal(data.usuario_id)
             if principal:
                 data.direccion_id = principal.id
@@ -252,7 +313,7 @@ class PedidoService:
         # Load address and create snapshot BEFORE the transaction
         direccion_snapshot = None
         if data.direccion_id is not None:
-            direccion_repo = DireccionEntregaRepository(session)
+            direccion_repo = IdentidadYAccesoUnitOfWork(session).direcciones
             direccion = direccion_repo.get_by_id(data.direccion_id)
             if direccion:
                 direccion_snapshot = {
@@ -269,7 +330,7 @@ class PedidoService:
             costo_envio = data.costo_envio if data.direccion_id else Decimal('0.00')
 
             # ── Step 1: Pre-validate stock for ALL products ──
-            producto_repo = ProductoRepository(session)
+            producto_repo = CatalogoDeProductosUnitOfWork(session).productos
             if data.detalles:
                 for det in data.detalles:
                     producto = producto_repo.get_by_id(det.producto_id)
@@ -403,15 +464,13 @@ class PedidoService:
         After modification, subtotal and total are recalculated from the
         remaining details' subtotal_snap values.
         """
-        repo = PedidoRepository(session)
-
-        db_pedido = repo.get_by_id_eager(pedido_id)
-        get_or_404(db_pedido, "Pedido no encontrado")
-        if db_pedido.estado_codigo != "PENDIENTE":
-            raise HTTPException(status_code=400, detail="Solo se pueden modificar detalles en pedidos PENDIENTE")
-
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
-            detalle = repo.get_detalle_by_producto(pedido_id, producto_id)
+            db_pedido = uow.pedidos.get_by_id_eager(pedido_id)
+            get_or_404(db_pedido, "Pedido no encontrado")
+            if db_pedido.estado_codigo != "PENDIENTE":
+                raise HTTPException(status_code=400, detail="Solo se pueden modificar detalles en pedidos PENDIENTE")
+
+            detalle = uow.pedidos.get_detalle_by_producto(pedido_id, producto_id)
             get_or_404(detalle, "Detalle no encontrado en el pedido")
 
             if cantidad <= 0:
@@ -422,7 +481,7 @@ class PedidoService:
                 uow.add(detalle)
 
             # Recalculate order totals from remaining details
-            detalles_restantes = repo.get_detalles(pedido_id)
+            detalles_restantes = uow.pedidos.get_detalles(pedido_id)
             nuevo_subtotal = sum(d.subtotal_snap for d in detalles_restantes)
             db_pedido = uow.pedidos.get_by_id(pedido_id)
             db_pedido.subtotal = nuevo_subtotal
@@ -614,12 +673,11 @@ class PedidoService:
         Raises:
             HTTPException(409): If stock is insufficient at creation time.
         """
-        from app.modules.CatalogoDeProductos.Producto.repository import ProductoRepository
         from ..CarritoSnapshot.repository import CarritoSnapshotRepository
 
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
             # ── Step 1: Validate product stock ──
-            producto_repo = ProductoRepository(session)
+            producto_repo = CatalogoDeProductosUnitOfWork(session).productos
             errores_stock: list[dict] = []
 
             for item_dict in snapshot.items:

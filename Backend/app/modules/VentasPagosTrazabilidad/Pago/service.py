@@ -24,6 +24,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 import mercadopago
+from fastapi import HTTPException, status
 from mercadopago.config.request_options import RequestOptions
 from sqlmodel import Session
 
@@ -33,8 +34,8 @@ from .schemas import PagoRead, InitFromCartRequest
 from ..uow import VentasPagosTrazabilidadUnitOfWork
 from ..Pedido.service import PedidoService
 from ..CarritoSnapshot.models import CarritoSnapshot
-from ..CarritoSnapshot.repository import CarritoSnapshotRepository
 from core.dependencies import fire_broadcast, fire_broadcast_admin, get_ws_manager
+from core.routing import get_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -315,10 +316,9 @@ class PagoService:
 
             # Freeze address if provided
             if data.direccion_id is not None:
-                from app.modules.IdentidadYAcceso.DireccionEntrega.repository import (
-                    DireccionEntregaRepository,
-                )
-                dir_repo = DireccionEntregaRepository(session)
+                from app.modules.IdentidadYAcceso.uow import IdentidadYAccesoUnitOfWork
+
+                dir_repo = IdentidadYAccesoUnitOfWork(session).direcciones
                 direccion = dir_repo.get_by_id(data.direccion_id)
                 if direccion:
                     snapshot.direccion_snapshot = {
@@ -588,53 +588,45 @@ class PagoService:
         Returns a dict with status, pedido_id, and mp_status for the
         GET /pagos/status endpoint.
         """
-        repo = PagoRepository(session)
-        pago = repo.get_by_external_reference(external_reference)
+        with VentasPagosTrazabilidadUnitOfWork(session) as uow:
+            pago = uow.pagos.get_by_external_reference(external_reference)
 
-        # Not found at all
-        if pago is None:
-            return {"status": "not_found", "pedido_id": None, "mp_status": None}
-
-        # Cross-user check: return not_found to avoid leaking information
-        from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import (
-            CarritoSnapshotRepository,
-        )
-        snapshot_repo = CarritoSnapshotRepository(session)
-        snapshot = snapshot_repo.get_by_external_reference(external_reference)
-        owner_id = snapshot.usuario_id if snapshot else None
-
-        # If snapshot exists and belongs to a different user -> deny
-        if owner_id is not None and owner_id != current_user.id:
-            return {"status": "not_found", "pedido_id": None, "mp_status": None}
-
-        # If snapshot was consumed (None) but pago has pedido_id, verify ownership via Pedido
-        if snapshot is None and pago.pedido_id is not None:
-            from app.modules.VentasPagosTrazabilidad.Pedido.repository import (
-                PedidoRepository as _PedidoRepo2,
-            )
-            pedido_repo = _PedidoRepo2(session)
-            pedido = pedido_repo.get_by_id(pago.pedido_id)
-            if pedido is not None and pedido.usuario_id != current_user.id:
+            # Not found at all
+            if pago is None:
                 return {"status": "not_found", "pedido_id": None, "mp_status": None}
 
-        # Pedido already created -> found
-        if pago.pedido_id is not None:
-            return {
-                "status": "found",
-                "pedido_id": pago.pedido_id,
-                "mp_status": pago.mp_status,
-            }
+            # Cross-user check: return not_found to avoid leaking information
+            snapshot = uow.snapshots.get_by_external_reference(external_reference)
+            owner_id = snapshot.usuario_id if snapshot else None
 
-        # Pago exists, pedido not yet created, payment approved -> pending
-        if pago.mp_status == "approved" and pago.pedido_id is None:
-            return {
-                "status": "pending",
-                "pedido_id": None,
-                "mp_status": pago.mp_status,
-            }
+            # If snapshot exists and belongs to a different user -> deny
+            if owner_id is not None and owner_id != current_user.id:
+                return {"status": "not_found", "pedido_id": None, "mp_status": None}
 
-        # Otherwise: pago exists but not approved (e.g., still pending)
-        return {"status": "not_found", "pedido_id": None, "mp_status": pago.mp_status}
+            # If snapshot was consumed (None) but pago has pedido_id, verify ownership via Pedido
+            if snapshot is None and pago.pedido_id is not None:
+                pedido = uow.pedidos.get_by_id(pago.pedido_id)
+                if pedido is not None and pedido.usuario_id != current_user.id:
+                    return {"status": "not_found", "pedido_id": None, "mp_status": None}
+
+            # Pedido already created -> found
+            if pago.pedido_id is not None:
+                return {
+                    "status": "found",
+                    "pedido_id": pago.pedido_id,
+                    "mp_status": pago.mp_status,
+                }
+
+            # Pago exists, pedido not yet created, payment approved -> pending
+            if pago.mp_status == "approved" and pago.pedido_id is None:
+                return {
+                    "status": "pending",
+                    "pedido_id": None,
+                    "mp_status": pago.mp_status,
+                }
+
+            # Otherwise: pago exists but not approved (e.g., still pending)
+            return {"status": "not_found", "pedido_id": None, "mp_status": pago.mp_status}
 
     @staticmethod
     def resolve_user_from_payment_ref(
@@ -653,20 +645,14 @@ class PagoService:
 
         Returns the Usuario if found, or None if the reference is invalid.
         """
-        from app.modules.IdentidadYAcceso.Usuario.repository import UsuarioRepository
-        from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import (
-            CarritoSnapshotRepository,
-        )
-        from app.modules.VentasPagosTrazabilidad.Pedido.repository import (
-            PedidoRepository as _PedidoRepo,
-        )
+        from app.modules.IdentidadYAcceso.uow import IdentidadYAccesoUnitOfWork
 
         # Primary path: lookup via CarritoSnapshot (still exists before webhook)
-        snapshot_repo = CarritoSnapshotRepository(session)
-        snapshot = snapshot_repo.get_by_external_reference(external_reference)
+        vtas_uow = VentasPagosTrazabilidadUnitOfWork(session)
+        snapshot = vtas_uow.snapshots.get_by_external_reference(external_reference)
         if snapshot is not None:
-            user_repo = UsuarioRepository(session)
-            user = user_repo.get_with_roles(snapshot.usuario_id)
+            identidad_uow = IdentidadYAccesoUnitOfWork(session)
+            user = identidad_uow.usuarios.get_with_roles(snapshot.usuario_id)
             if user is not None:
                 return user
             logger.warning(
@@ -678,15 +664,13 @@ class PagoService:
 
         # Fallback: snapshot was already consumed by webhook.
         # Resolve via Pago -> Pedido -> usuario_id chain.
-        repo = PagoRepository(session)
-        pago = repo.get_by_external_reference(external_reference)
+        pago = vtas_uow.pagos.get_by_external_reference(external_reference)
         if pago is not None:
             if pago.pedido_id is not None:
-                pedido_repo = _PedidoRepo(session)
-                pedido = pedido_repo.get_by_id(pago.pedido_id)
+                pedido = vtas_uow.pedidos.get_by_id(pago.pedido_id)
                 if pedido is not None:
-                    user_repo = UsuarioRepository(session)
-                    return user_repo.get_with_roles(pedido.usuario_id)
+                    identidad_uow = IdentidadYAccesoUnitOfWork(session)
+                    return identidad_uow.usuarios.get_with_roles(pedido.usuario_id)
             else:
                 logger.warning(
                     "resolve_user_from_payment_ref: Pago found (id=%s) but pedido_id is "
@@ -731,6 +715,34 @@ class PagoService:
         repo = PagoRepository(session)
         pagos = repo.get_by_pedido(pedido_id)
         return [PagoRead.model_validate(p) for p in pagos]
+
+    @staticmethod
+    def get_pagos_by_pedido_autorizado(
+        session: Session,
+        pedido_id: int,
+        current_user,
+    ) -> List[PagoRead]:
+        """List payments for a pedido with authorization checks.
+
+        Orchestrates across PedidoService (for ownership validation) and
+        PagoService (for payment listing). This is the single entry point
+        called by the Pago router — the router never calls PedidoService
+        directly.
+
+        Admins and PEDIDOS-role users can view any pedido's payments.
+        Regular users can only view their own pedidos' payments.
+        """
+        pedido = PedidoService.get_by_id(session, pedido_id)
+        get_or_404(pedido, "Pedido no encontrado")
+
+        if not any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles):
+            if pedido.usuario_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permiso para ver este pedido",
+                )
+
+        return PagoService.get_pagos_by_pedido(session, pedido_id)
 
     @staticmethod
     def process_webhook(body: dict, background_tasks=None) -> dict:
@@ -844,9 +856,8 @@ class PagoService:
                     if mp_status == "approved":
                         print(f"[WEBHOOK-PROCESS] Payment APPROVED, creating Pedido from snapshot...")
                         try:
-                            # Look up cart snapshot by external_reference
-                            snapshot_repo = CarritoSnapshotRepository(_session)
-                            snapshot = snapshot_repo.get_by_external_reference(external_reference)
+                            # Look up cart snapshot by external_reference via UoW
+                            snapshot = uow.snapshots.get_by_external_reference(external_reference)
 
                             if snapshot is None:
                                 print(f"[WEBHOOK-PROCESS] Snapshot ALREADY consumed for ext_ref={external_reference[:16]}")
@@ -862,7 +873,7 @@ class PagoService:
                                 from ..Pedido.service import PedidoService as _PedidoService
 
                                 nuevo_pedido = _PedidoService.crear_desde_snapshot(
-                                    _session, snapshot, snapshot_repo
+                                    _session, snapshot, snapshot_repo=uow.snapshots
                                 )
 
                                 # Backfill pago.pedido_id via direct SQL UPDATE to avoid
