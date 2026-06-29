@@ -56,52 +56,83 @@ def _make_mock_usuario():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TASK 1.1: auto_return in MercadoPago preference
+# TASK 1.1: back_urls in MercadoPago preference
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class TestAutoReturn:
-    """Verify auto_return: 'approved' is included in preference_data."""
+class TestBackUrls:
+    """Verify back_urls are correctly included in preference_data.
 
+    When using HTTPS (ngrok), back_urls use the mp-redirect proxy so
+    auto_return works with MercadoPago. When using HTTP, back_urls use
+    direct frontend URLs without auto_return (MP rejects HTTP back_urls).
+    notification_url still uses ngrok HTTPS for webhook delivery.
+    """
+
+    # ── HTTPS (ngrok) path ──
+
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_webhook_base_url")
     @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
-    def test_init_from_cart_includes_auto_return(self, mock_sdk, db_session):
-        """init_from_cart sends auto_return='approved' in preference_data."""
+    def test_init_from_cart_https_uses_mp_redirect(self, mock_sdk, mock_webhook_base, db_session):
+        """With HTTPS webhook_base, back_urls go through mp-redirect proxy and auto_return is set."""
         from tests.conftest import (
             _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
         )
         _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
-        producto_factory(db_session, id=1, nombre="AutoReturn", precio_base=Decimal("100.00"), stock_cantidad=10)
+        producto_factory(db_session, id=1, nombre="BackUrlsTest", precio_base=Decimal("100.00"), stock_cantidad=10)
+        mock_webhook_base.return_value = "https://abc.ngrok-free.app"
 
         mock_sdk_instance = MagicMock()
         mock_pref = MagicMock()
         mock_pref.create.return_value = {
-            "status": 201, "response": {"id": "pref-auto", "init_point": "https://mp.com/checkout"},
+            "status": 201, "response": {"id": "pref-https", "init_point": "https://mp.com/checkout"},
         }
         mock_sdk_instance.preference.return_value = mock_pref
         mock_sdk.return_value = mock_sdk_instance
 
         PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
 
-        # Capture the preference_data passed to create()
         create_call_args = mock_pref.create.call_args[0][0]
-        assert create_call_args.get("auto_return") == "approved", (
-            f"auto_return missing or wrong in init_from_cart preference_data: {create_call_args}"
+        back_urls = create_call_args.get("back_urls", {})
+        assert isinstance(back_urls, dict), f"back_urls missing or not a dict: {create_call_args}"
+        assert back_urls.get("success"), f"back_urls.success missing: {back_urls}"
+        assert back_urls.get("failure"), f"back_urls.failure missing: {back_urls}"
+        assert back_urls.get("pending"), f"back_urls.pending missing: {back_urls}"
+
+        # HTTPS: back_urls use mp-redirect proxy
+        assert "mp-redirect" in back_urls["success"], (
+            f"HTTPS back_urls.success should use mp-redirect proxy, got: {back_urls['success']}"
+        )
+        assert "mp-redirect" in back_urls["failure"], (
+            f"HTTPS back_urls.failure should use mp-redirect proxy, got: {back_urls['failure']}"
+        )
+        assert "mp-redirect" in back_urls["pending"], (
+            f"HTTPS back_urls.pending should use mp-redirect proxy, got: {back_urls['pending']}"
+        )
+        # HTTPS: auto_return IS set (safe with HTTPS back_urls)
+        assert "auto_return" in create_call_args, (
+            f"auto_return should be set when back_urls are HTTPS via mp-redirect: {create_call_args}"
+        )
+        assert create_call_args["auto_return"] == "approved", (
+            f"auto_return should be 'approved', got: {create_call_args.get('auto_return')}"
         )
 
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_webhook_base_url")
     @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
-    def test_init_mp_payment_includes_auto_return(self, mock_sdk, db_session):
-        """init_mp_payment sends auto_return='approved' in preference_data."""
+    def test_init_mp_payment_https_uses_mp_redirect(self, mock_sdk, mock_webhook_base, db_session):
+        """init_mp_payment with HTTPS uses mp-redirect proxy and auto_return."""
         from tests.conftest import (
             _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory, pedido_factory,
         )
         _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
         producto_factory(db_session, id=1, nombre="Test", precio_base=Decimal("100.00"), stock_cantidad=10)
         pedido_factory(db_session, usuario_id=1, id=123, total=Decimal("200.00"))
+        mock_webhook_base.return_value = "https://abc.ngrok-free.app"
 
         mock_sdk_instance = MagicMock()
         mock_pref = MagicMock()
         mock_pref.create.return_value = {
-            "status": 201, "response": {"id": "pref-legacy", "init_point": "https://mp.com/checkout"},
+            "status": 201, "response": {"id": "pref-legacy-https", "init_point": "https://mp.com/checkout"},
         }
         mock_sdk_instance.preference.return_value = mock_pref
         mock_sdk.return_value = mock_sdk_instance
@@ -109,8 +140,102 @@ class TestAutoReturn:
         PagoService.init_mp_payment(db_session, pedido_id=123)
 
         create_call_args = mock_pref.create.call_args[0][0]
-        assert create_call_args.get("auto_return") == "approved", (
-            f"auto_return missing or wrong in init_mp_payment preference_data: {create_call_args}"
+        back_urls = create_call_args.get("back_urls", {})
+        assert isinstance(back_urls, dict), f"back_urls missing or not a dict: {create_call_args}"
+        assert back_urls.get("success"), f"back_urls.success missing: {back_urls}"
+        assert back_urls.get("failure"), f"back_urls.failure missing: {back_urls}"
+        assert back_urls.get("pending"), f"back_urls.pending missing: {back_urls}"
+
+        # HTTPS: back_urls use mp-redirect proxy
+        assert "mp-redirect" in back_urls["success"], (
+            f"HTTPS back_urls.success should use mp-redirect proxy, got: {back_urls['success']}"
+        )
+        # HTTPS: auto_return IS set
+        assert "auto_return" in create_call_args, (
+            f"auto_return should be set when back_urls are HTTPS: {create_call_args}"
+        )
+        assert create_call_args["auto_return"] == "approved"
+
+    # ── HTTP path ──
+
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_webhook_base_url")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    def test_init_from_cart_http_uses_direct_frontend(self, mock_sdk, mock_webhook_base, db_session):
+        """With HTTP webhook_base, back_urls use direct frontend URLs, no auto_return."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory,
+        )
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        producto_factory(db_session, id=1, nombre="BackUrlsTest", precio_base=Decimal("100.00"), stock_cantidad=10)
+        mock_webhook_base.return_value = "http://localhost:8000"
+
+        mock_sdk_instance = MagicMock()
+        mock_pref = MagicMock()
+        mock_pref.create.return_value = {
+            "status": 201, "response": {"id": "pref-http", "init_point": "https://mp.com/checkout"},
+        }
+        mock_sdk_instance.preference.return_value = mock_pref
+        mock_sdk.return_value = mock_sdk_instance
+
+        PagoService.init_from_cart(db_session, _init_request(), _make_mock_usuario())
+
+        create_call_args = mock_pref.create.call_args[0][0]
+        back_urls = create_call_args.get("back_urls", {})
+        assert isinstance(back_urls, dict), f"back_urls missing or not a dict: {create_call_args}"
+        assert back_urls.get("success"), f"back_urls.success missing: {back_urls}"
+        assert back_urls.get("failure"), f"back_urls.failure missing: {back_urls}"
+        assert back_urls.get("pending"), f"back_urls.pending missing: {back_urls}"
+
+        # HTTP: auto_return is NOT set (MP would reject it)
+        assert "auto_return" not in create_call_args, (
+            f"auto_return should NOT be set when back_urls are HTTP frontend URLs: {create_call_args}"
+        )
+        # HTTP: back_urls use direct frontend URLs (not mp-redirect proxy)
+        frontend_url = "http://localhost:5173"
+        assert back_urls["success"].startswith(frontend_url), (
+            f"back_urls.success should use direct frontend URL, got: {back_urls['success']}"
+        )
+        assert "post-pago" in back_urls["success"], (
+            f"back_urls.success should point to post-pago page, got: {back_urls['success']}"
+        )
+
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_webhook_base_url")
+    @patch("app.modules.VentasPagosTrazabilidad.Pago.service._get_mp_sdk")
+    def test_init_mp_payment_http_uses_direct_frontend(self, mock_sdk, mock_webhook_base, db_session):
+        """init_mp_payment with HTTP uses direct frontend URLs, no auto_return."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago, producto_factory, pedido_factory,
+        )
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+        producto_factory(db_session, id=1, nombre="Test", precio_base=Decimal("100.00"), stock_cantidad=10)
+        pedido_factory(db_session, usuario_id=1, id=123, total=Decimal("200.00"))
+        mock_webhook_base.return_value = "http://localhost:8000"
+
+        mock_sdk_instance = MagicMock()
+        mock_pref = MagicMock()
+        mock_pref.create.return_value = {
+            "status": 201, "response": {"id": "pref-legacy-http", "init_point": "https://mp.com/checkout"},
+        }
+        mock_sdk_instance.preference.return_value = mock_pref
+        mock_sdk.return_value = mock_sdk_instance
+
+        PagoService.init_mp_payment(db_session, pedido_id=123)
+
+        create_call_args = mock_pref.create.call_args[0][0]
+        back_urls = create_call_args.get("back_urls", {})
+        assert isinstance(back_urls, dict), f"back_urls missing or not a dict: {create_call_args}"
+        assert back_urls.get("success"), f"back_urls.success missing: {back_urls}"
+        assert back_urls.get("failure"), f"back_urls.failure missing: {back_urls}"
+        assert back_urls.get("pending"), f"back_urls.pending missing: {back_urls}"
+
+        # HTTP: auto_return is NOT set
+        assert "auto_return" not in create_call_args, (
+            f"auto_return should NOT be set when back_urls are HTTP frontend URLs: {create_call_args}"
+        )
+        # HTTP: back_urls use direct frontend URLs
+        frontend_url = "http://localhost:5173"
+        assert back_urls["success"].startswith(frontend_url), (
+            f"back_urls.success should use direct frontend URL, got: {back_urls['success']}"
         )
 
 
@@ -631,3 +756,191 @@ class TestSyncFlowsRegression:
         assert data["estado_codigo"] == "CONFIRMADO"
         assert data["forma_pago_codigo"] == "PAGO_LOCAL"
         assert data["direccion_id"] is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fix: resolve_user_from_payment_ref fallback via Pago → Pedido chain
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestResolveUserFromPaymentRefFallback:
+    """resolve_user_from_payment_ref must fall back to Pago → Pedido when snapshot is consumed."""
+
+    def test_resolves_user_via_pedido_when_snapshot_deleted(self, db_session):
+        """When snapshot is deleted (consumed by webhook), resolve via Pago → Pedido chain."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago,
+            create_user_with_role, pedido_factory,
+        )
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        import uuid
+
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+
+        ext_ref = str(uuid.uuid4())
+
+        # Create a real user
+        user, _headers = create_user_with_role(
+            db_session, nombre="Owner", email="owner@test.com",
+        )
+
+        # Create pedido owned by this user
+        pedido = pedido_factory(
+            db_session, usuario_id=user.id, estado_codigo="CONFIRMADO",
+        )
+
+        # Create Pago pointing to that pedido (NO snapshot — webhook already consumed it)
+        pago = Pago(
+            pedido_id=pedido.id, mp_status="approved",
+            external_reference=ext_ref,
+            idempotency_key=str(uuid.uuid4()),
+            transaction_amount=100.00,
+        )
+        db_session.add(pago)
+        db_session.commit()
+
+        # ACT: resolve user from payment reference
+        resolved = PagoService.resolve_user_from_payment_ref(db_session, ext_ref)
+
+        # ASSERT: user is found via Pedido chain (snapshot is gone)
+        assert resolved is not None, (
+            "resolve_user_from_payment_ref must fall back to Pago → Pedido chain "
+            "when snapshot is deleted (consumed by webhook). Got None."
+        )
+        assert resolved.id == user.id, (
+            f"Expected user id {user.id}, got {resolved.id}"
+        )
+
+    def test_resolves_user_via_snapshot_when_present(self, db_session):
+        """When snapshot exists, resolve via snapshot (primary path, already working)."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago,
+            create_user_with_role,
+        )
+        import uuid
+
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+
+        ext_ref = str(uuid.uuid4())
+        user, _headers = create_user_with_role(
+            db_session, nombre="SnapOwner", email="snapowner@test.com",
+        )
+
+        # Create snapshot (webhook NOT yet processed)
+        snapshot = CarritoSnapshot(
+            usuario_id=user.id,
+            items=[{"producto_id": 1, "nombre": "Test", "precio": 100.0, "cantidad": 1}],
+            forma_pago_codigo="MERCADOPAGO", costo_envio=0,
+            subtotal=100.00, total=100.00, external_reference=ext_ref,
+        )
+        db_session.add(snapshot)
+        db_session.commit()
+
+        resolved = PagoService.resolve_user_from_payment_ref(db_session, ext_ref)
+        assert resolved is not None
+        assert resolved.id == user.id
+
+    def test_returns_none_when_both_snapshot_and_pedido_missing(self, db_session):
+        """Neither snapshot nor Pago with pedido → returns None."""
+        from tests.conftest import _seed_roles, _seed_estados_pedido, _seed_formas_pago
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+
+        resolved = PagoService.resolve_user_from_payment_ref(
+            db_session, "nonexistent-ref-999"
+        )
+        assert resolved is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fix: check_pedido_status cross-user when snapshot is consumed
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestCheckPedidoStatusSnapshotConsumed:
+    """Cross-user check must work even when snapshot is deleted (webhook consumed)."""
+
+    def test_cross_user_denied_when_snapshot_consumed(self, db_session):
+        """User B queries status, snapshot is gone, but Pedido belongs to User A → not_found."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago,
+            create_user_with_role, pedido_factory,
+        )
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        import uuid
+        from unittest.mock import MagicMock
+
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+
+        ext_ref = str(uuid.uuid4())
+
+        # User A: owns the payment and pedido
+        user_a, _ = create_user_with_role(
+            db_session, nombre="UserA", email="user_a_cross@test.com",
+        )
+        pedido_a = pedido_factory(
+            db_session, usuario_id=user_a.id, estado_codigo="CONFIRMADO",
+        )
+        pago = Pago(
+            pedido_id=pedido_a.id, mp_status="approved",
+            external_reference=ext_ref,
+            idempotency_key=str(uuid.uuid4()),
+            transaction_amount=100.00,
+        )
+        db_session.add(pago)
+        db_session.commit()
+
+        # User B: tries to query another user's payment status
+        mock_user_b = MagicMock()
+        mock_user_b.id = 999  # Different from user_a.id
+
+        result = PagoService.check_pedido_status(db_session, ext_ref, mock_user_b)
+
+        # BUG BEFORE FIX: snapshot is None → owner_id is None → cross-user check passes
+        # → result is "found" with pedido_id leaking to wrong user
+        assert result["status"] == "not_found", (
+            f"Cross-user query must return not_found when snapshot is consumed "
+            f"but Pedido belongs to different user. Got status={result['status']}, "
+            f"pedido_id={result['pedido_id']}"
+        )
+        assert result["pedido_id"] is None, (
+            "pedido_id must be None in not_found response (information leakage prevention)"
+        )
+
+    def test_same_user_found_when_snapshot_consumed(self, db_session):
+        """Same user queries status, snapshot is gone → found (happy path after webhook)."""
+        from tests.conftest import (
+            _seed_roles, _seed_estados_pedido, _seed_formas_pago,
+            create_user_with_role, pedido_factory,
+        )
+        from app.modules.VentasPagosTrazabilidad.Pago.models import Pago
+        import uuid
+
+        _seed_roles(db_session); _seed_estados_pedido(db_session); _seed_formas_pago(db_session)
+
+        ext_ref = str(uuid.uuid4())
+        user, _ = create_user_with_role(
+            db_session, nombre="Owner", email="owner_same@test.com",
+        )
+        pedido = pedido_factory(
+            db_session, usuario_id=user.id, estado_codigo="CONFIRMADO",
+        )
+        pago = Pago(
+            pedido_id=pedido.id, mp_status="approved",
+            external_reference=ext_ref,
+            idempotency_key=str(uuid.uuid4()),
+            transaction_amount=100.00,
+        )
+        db_session.add(pago)
+        db_session.commit()
+
+        # Same user queries — should get found
+        mock_user = MagicMock()
+        mock_user.id = user.id
+
+        result = PagoService.check_pedido_status(db_session, ext_ref, mock_user)
+
+        assert result["status"] == "found", (
+            f"Same user must get 'found' when snapshot consumed but Pedido exists. "
+            f"Got status={result['status']}"
+        )
+        assert result["pedido_id"] == pedido.id

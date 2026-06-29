@@ -19,7 +19,8 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useAuthStore } from "@/shared/store/authStore";
 import { useWsStore } from "@/features/pedidos/store/wsStore";
-import { useNotificationStore } from "@/features/pedidos/store/notificationStore";
+// useNotificationStore import removed — badge now uses useActivePedidosCount hook (backend count).
+// If incrementUnseen is re-enabled in the future, re-add this import.
 import type { WsEvent } from "@/features/pedidos/types/ws";
 
 const WS_BASE = (import.meta.env.VITE_WS_URL || "ws://localhost:8000") + "/api/v1";
@@ -90,7 +91,8 @@ export function useAdminPedidoFeed(
       try {
         const event: WsEvent = JSON.parse(msg.data as string);
         setLastEvent(event);
-        useNotificationStore.getState().incrementUnseen();
+        // DISABLED: Badge now uses active pedidos count from backend.
+        // useNotificationStore.getState().incrementUnseen();
         onEventRef.current?.(event);
       } catch {
         // Ignore malformed messages

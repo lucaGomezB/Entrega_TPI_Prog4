@@ -25,7 +25,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/shared/store/authStore";
 import { useCartStore } from "@/shared/store/cartStore";
 import { useWsStore } from "@/features/pedidos/store/wsStore";
-import { useNotificationStore } from "@/features/pedidos/store/notificationStore";
+// useNotificationStore import removed — badge now uses useActivePedidosCount hook (backend count).
+// If incrementUnseen is re-enabled in the future, re-add this import.
 import type { WsEvent } from "@/features/pedidos/types/ws";
 
 const WS_BASE = (import.meta.env.VITE_WS_URL || "ws://localhost:8000") + "/api/v1";
@@ -107,7 +108,8 @@ export function useEstadoPedidoWS(
       try {
         const event: WsEvent = JSON.parse(msg.data as string);
         setLastEvent(event);
-        useNotificationStore.getState().incrementUnseen();
+        // DISABLED: Badge now uses active pedidos count from backend.
+        // useNotificationStore.getState().incrementUnseen();
         onEventRef.current?.(event);
 
         // ── Handle pago_confirmado: clear cart and navigate ──

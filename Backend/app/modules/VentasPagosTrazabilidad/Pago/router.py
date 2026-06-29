@@ -9,10 +9,12 @@ import logging
 import os
 
 from fastapi import APIRouter, Depends, Request, status, HTTPException, BackgroundTasks
+from starlette.responses import RedirectResponse
+from sqlmodel import Session
 
 from core.database import get_session
 from core.routing import get_or_404
-from app.modules.IdentidadYAcceso.Auth.dependencies import get_current_user
+from app.modules.IdentidadYAcceso.Auth.dependencies import get_current_user, get_current_user_optional
 from app.modules.IdentidadYAcceso.Usuario.models import Usuario
 
 from .service import PagoService
@@ -24,8 +26,47 @@ from .schemas import (
 )
 
 logger = logging.getLogger("mercadopago.webhook")
+_auth_logger = logging.getLogger("pagos.auth")
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
+
+
+# ── Combined auth for post-pago status polling ──
+# Tries JWT first, falls back to external_reference (travels through MP redirect).
+async def _auth_for_status(
+    external_reference: str,
+    session: Session = Depends(get_session),
+    jwt_user: Usuario | None = Depends(get_current_user_optional),
+) -> Usuario:
+    """Authenticate for GET /pagos/status.
+
+    When the user returns from MercadoPago, their JWT may have expired.
+    The external_reference UUID (embedded in the redirect URL) acts as a
+    temporary credential — it resolves to the user who initiated the payment.
+    """
+    if jwt_user is not None:
+        return jwt_user
+
+    user = PagoService.resolve_user_from_payment_ref(session, external_reference)
+    if user is not None:
+        _auth_logger.info(
+            "_auth_for_status: resolved via external_reference=%s -> user_id=%s",
+            external_reference[:8], user.id,
+        )
+        return user
+
+    # Diagnostic: log WHY auth failed
+    _auth_logger.warning(
+        "_auth_for_status FAILED: external_reference=%s jwt_user=%s. "
+        "JWT may be expired AND external_reference could not resolve to a user.",
+        external_reference[:16] if external_reference else "None",
+        "present" if jwt_user is not None else "None",
+    )
+
+    raise HTTPException(
+        status_code=401,
+        detail="No se pudieron validar las credenciales",
+    )
 
 # ── Module-level guard: warn once if the webhook secret is missing or a placeholder ──
 _WEBHOOK_SECRET = os.getenv("MP_WEBHOOK_SECRET", "")
@@ -185,11 +226,12 @@ async def webhook_receiver(request: Request, background_tasks: BackgroundTasks):
 async def get_payment_status(
     external_reference: str,
     session=Depends(get_session),
-    current_user: Usuario = Depends(get_current_user),
+    current_user: Usuario = Depends(_auth_for_status),
 ):
     """GET /pagos/status?external_reference=<uuid> — Poll for Pedido creation.
 
     Used by PostPagoPage after MercadoPago redirects back.
+    Authenticated via JWT (normal) or external_reference (post-MP redirect).
     Returns found/pending/not_found based on whether the Pedido has been
     created from the payment's cart snapshot.
     """
@@ -200,6 +242,27 @@ async def get_payment_status(
             detail={"status": "not_found", "detail": "No payment found for this reference"},
         )
     return result
+
+
+@router.get("/mp-redirect")
+async def mp_redirect(
+    external_reference: str,
+    status: str = "approved",
+):
+    """GET /pagos/mp-redirect — HTTPS redirect proxy for MP back_urls.
+
+    MercadoPago requires HTTPS back_urls for auto_return to work.
+    Since the frontend runs on HTTP (localhost) in dev, this endpoint
+    receives the HTTPS redirect from MP (via ngrok) and forwards the
+    user's browser to the actual frontend URL.
+
+    Query params:
+        external_reference: UUID shared between Pago/Snapshot/Pedido
+        status: "approved" | "failure" | "pending"
+    """
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    target = f"{frontend_url}/pedidos/post-pago?external_reference={external_reference}&status={status}"
+    return RedirectResponse(url=target, status_code=302)
 
 
 @router.get("/{pedido_id}", response_model=list[PagoRead])

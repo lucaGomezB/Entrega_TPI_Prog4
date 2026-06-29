@@ -22,7 +22,7 @@ import type { UserInfo } from '@/shared/api/client'
 import { useCartStore } from '@/shared/store/cartStore'
 import { useAuthStore } from '@/shared/store/authStore'
 import { useUiStore } from '@/shared/store/uiStore'
-import { useNotificationStore } from '@/features/pedidos/store/notificationStore'
+import { useActivePedidosCount } from '@/features/pedidos/hooks/useActivePedidosCount'
 
 /* ── Helpers ── */
 
@@ -36,7 +36,7 @@ function App() {
   const user = useAuthStore((s) => s.user)
   const navigate = useNavigate()
   const cartCount = useCartStore((s) => s.getItemCount())
-  const unseenCount = useNotificationStore((s) => s.unseenCount)
+  const activeCount = useActivePedidosCount()
   const mobileMenuOpen = useUiStore((s) => s.mobileMenuOpen)
   const setMobileMenuOpen = useUiStore((s) => s.setMobileMenuOpen)
 
@@ -182,9 +182,9 @@ function App() {
                     }
                   >
                     {item.label}
-                    {item.to === '/pedidos' && unseenCount > 0 && (
+                    {item.to === '/pedidos' && activeCount > 0 && (
                       <span className="ml-1 inline-flex items-center justify-center bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1">
-                        {unseenCount > 99 ? '99+' : unseenCount}
+                        {activeCount > 99 ? '99+' : activeCount}
                       </span>
                     )}
                   </NavLink>
@@ -235,9 +235,9 @@ function App() {
                   }
                 >
                   {item.label}
-                  {item.to === '/pedidos' && unseenCount > 0 && (
+                  {item.to === '/pedidos' && activeCount > 0 && (
                     <span className="ml-1 inline-flex items-center justify-center bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1">
-                      {unseenCount > 99 ? '99+' : unseenCount}
+                      {activeCount > 99 ? '99+' : activeCount}
                     </span>
                   )}
                 </NavLink>

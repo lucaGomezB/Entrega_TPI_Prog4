@@ -76,8 +76,14 @@ function PollingContent({ externalReference }: { externalReference: string }) {
     }
   }, [status, pedidoId, navigate]);
 
-  // ── Polling spinner ──
-  if (isPolling && !isTimeout) {
+  // ── Active polling: show spinner as long as we haven't found, timed out, or errored ──
+  // NOTE: isPolling from the hook tracks query.isFetching which is only true DURING fetch.
+  // Between polls the component would fall through to the fallback text, alternating
+  // spinner → text → spinner every 2s. Instead, we track whether polling is still
+  // logically active (not yet resolved) and show the spinner continuously.
+  const isActive = status !== "found" && !isTimeout && !error;
+
+  if (isActive) {
     return (
       <div className="max-w-lg mx-auto mt-16 p-6 text-center">
         <div className="flex flex-col items-center gap-4">

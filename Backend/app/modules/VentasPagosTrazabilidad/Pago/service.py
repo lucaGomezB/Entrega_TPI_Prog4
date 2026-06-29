@@ -157,9 +157,6 @@ class PagoService:
 
         # ── Step 2: Idempotency — detect duplicate init ──
         fingerprint = _cart_fingerprint(data, usuario.id)
-        external_reference: str | None = None
-        idempotency_key: str | None = None
-        skip_snapshot = False
 
         # Check for existing Pago with same idempotency key (double-click guard)
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
@@ -167,7 +164,7 @@ class PagoService:
             if existing_pago:
                 mp_pid = existing_pago.mp_payment_id
                 if mp_pid is not None:
-                    # Try to get a fresh init_point in case the old one expired
+                    # Already paid — try to get a fresh init_point
                     try:
                         sdk = _get_mp_sdk()
                         mp_pago = sdk.payment().get(mp_pid)
@@ -182,25 +179,100 @@ class PagoService:
                     except Exception:
                         pass  # MP lookup failed, but Pago exists
 
-                # mp_payment_id is None (preference-only, not yet paid) OR
-                # MP lookup failed. Create a fresh MP preference with a new
-                # idempotency key so the user can retry the payment.
-                # Reuse the existing external_reference (both Pagos share the
-                # same snapshot — snapshot is NOT duplicated).
-                external_reference = existing_pago.external_reference
-                idempotency_key = f"{fingerprint}-retry-{uuid.uuid4()}"
-                skip_snapshot = True
+                # mp_payment_id is None (preference-only, not yet paid).
+                # Re-create the MP preference WITHOUT creating a new Pago
+                # record — that would violate the UNIQUE constraint on
+                # external_reference. Reuse existing Pago + Snapshot.
                 logger.info(
-                    "Retry init_from_cart for fingerprint=%s: creating new Pago "
-                    "with idempotency_key=%s, reusing external_reference=%s",
-                    fingerprint, idempotency_key, external_reference,
+                    "Retry init_from_cart for fingerprint=%s: re-creating MP "
+                    "preference for existing Pago id=%s external_reference=%s",
+                    fingerprint, existing_pago.id, existing_pago.external_reference,
                 )
+                # Build preference items from cart data
+                retry_preference_items = []
+                for item in data.items:
+                    retry_preference_items.append({
+                        "title": item.nombre,
+                        "quantity": item.cantidad,
+                        "unit_price": float(item.precio),
+                        "currency_id": "ARS",
+                    })
+                # Calculate total
+                retry_total = data.subtotal - data.descuento + data.costo_envio
+                if retry_total < 0:
+                    retry_total = Decimal("0.00")
+                # Build preference_data
+                frontend_url = _get_frontend_url()
+                webhook_base = _get_webhook_base_url()
+                ext_ref = existing_pago.external_reference
 
-        # ── Step 3: Generate external_reference (shared with snapshot) ──
-        if external_reference is None:
-            external_reference = str(uuid.uuid4())
-        if idempotency_key is None:
-            idempotency_key = fingerprint
+                # ── Build back_urls ──
+                # When ngrok provides HTTPS, use the mp-redirect proxy so auto_return works.
+                # Otherwise fall back to direct HTTP URLs without auto_return.
+                if webhook_base.startswith("https"):
+                    back_urls = {
+                        "success": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={ext_ref}&status=approved",
+                        "failure": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={ext_ref}&status=failure",
+                        "pending": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={ext_ref}&status=pending",
+                    }
+                else:
+                    back_urls = {
+                        "success": f"{frontend_url}/pedidos/post-pago?external_reference={ext_ref}&status=approved",
+                        "failure": f"{frontend_url}/carrito",
+                        "pending": f"{frontend_url}/pedidos/post-pago?external_reference={ext_ref}&status=approved",
+                    }
+
+                preference_data = {
+                    "items": retry_preference_items,
+                    "external_reference": ext_ref,
+                    "back_urls": back_urls,
+                }
+
+                # auto_return only safe with HTTPS back_urls (MP rejects HTTP)
+                if webhook_base.startswith("https"):
+                    preference_data["auto_return"] = "approved"
+
+                if usuario:
+                    preference_data["payer"] = {
+                        "name": usuario.nombre,
+                        "email": usuario.email,
+                    }
+                allow_http = os.getenv("MP_ALLOW_HTTP_WEBHOOK", "").lower() == "true"
+                if webhook_base and (webhook_base.startswith("https") or allow_http):
+                    if allow_http and not webhook_base.startswith("https"):
+                        logger.info("notification_url set with HTTP (dev mode)")
+                    preference_data["notification_url"] = f"{webhook_base}/pagos/webhook"
+
+                retry_idempotency_key = f"{fingerprint}-retry-{uuid.uuid4()}"
+                try:
+                    sdk = _get_mp_sdk()
+                    preference_response = sdk.preference().create(
+                        preference_data,
+                        RequestOptions(
+                            custom_headers={"X-Idempotency-Key": retry_idempotency_key}
+                        ),
+                    )
+                    response_data = preference_response.get("response", {})
+                    if preference_response.get("status") not in (200, 201):
+                        mp_message = response_data.get("message", "unknown error")
+                        mp_status = preference_response.get("status", "?")
+                        logger.error("MP preference creation failed [status=%s]: %s", mp_status, mp_message)
+                        pago_read = PagoRead.model_validate(existing_pago)
+                        return pago_read, None, f"MP[{mp_status}]: {mp_message}"
+                    init_point = (
+                        response_data.get("sandbox_init_point")
+                        or response_data.get("init_point")
+                    )
+                    pago_read = PagoRead.model_validate(existing_pago)
+                    return pago_read, init_point, None
+                except Exception as exc:
+                    logger.exception("Error re-creating MP preference for existing Pago %s", existing_pago.id)
+                    pago_read = PagoRead.model_validate(existing_pago)
+                    return pago_read, None, str(exc)
+
+        # ── Step 3: Generate external_reference and idempotency_key ──
+        external_reference = str(uuid.uuid4())
+        idempotency_key = fingerprint
 
         # ── Step 4: Calculate total ──
         total = data.subtotal - data.descuento + data.costo_envio
@@ -227,36 +299,35 @@ class PagoService:
 
         # ── Step 6: Create snapshot + Pago in a single UoW ──
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
-            # Create the cart snapshot (skip on retry — reuse existing one)
-            if not skip_snapshot:
-                snapshot = CarritoSnapshot(
-                    usuario_id=usuario.id,
-                    items=snapshot_items,
-                    direccion_id=data.direccion_id,
-                    direccion_snapshot=None,  # frozen address built below
-                    forma_pago_codigo="MERCADOPAGO",
-                    costo_envio=data.costo_envio,
-                    subtotal=data.subtotal,
-                    total=total,
-                    external_reference=external_reference,
-                    notas=data.notas,
+            # Create the cart snapshot
+            snapshot = CarritoSnapshot(
+                usuario_id=usuario.id,
+                items=snapshot_items,
+                direccion_id=data.direccion_id,
+                direccion_snapshot=None,  # frozen address built below
+                forma_pago_codigo="MERCADOPAGO",
+                costo_envio=data.costo_envio,
+                subtotal=data.subtotal,
+                total=total,
+                external_reference=external_reference,
+                notas=data.notas,
+            )
+
+            # Freeze address if provided
+            if data.direccion_id is not None:
+                from app.modules.IdentidadYAcceso.DireccionEntrega.repository import (
+                    DireccionEntregaRepository,
                 )
+                dir_repo = DireccionEntregaRepository(session)
+                direccion = dir_repo.get_by_id(data.direccion_id)
+                if direccion:
+                    snapshot.direccion_snapshot = {
+                        "linea1": getattr(direccion, "linea1", None),
+                        "linea2": getattr(direccion, "linea2", None),
+                        "ciudad": getattr(direccion, "ciudad", None),
+                    }
 
-                # Freeze address if provided
-                if data.direccion_id is not None:
-                    from app.modules.IdentidadYAcceso.DireccionEntrega.repository import (
-                        DireccionEntregaRepository,
-                    )
-                    dir_repo = DireccionEntregaRepository(session)
-                    direccion = dir_repo.get_by_id(data.direccion_id)
-                    if direccion:
-                        snapshot.direccion_snapshot = {
-                            "linea1": getattr(direccion, "linea1", None),
-                            "linea2": getattr(direccion, "linea2", None),
-                            "ciudad": getattr(direccion, "ciudad", None),
-                        }
-
-                uow.snapshots.create(snapshot)
+            uow.snapshots.create(snapshot)
 
             # Create the Pago record (pedido_id=NULL)
             pago = Pago(
@@ -279,16 +350,31 @@ class PagoService:
                 frontend_url = _get_frontend_url()
                 webhook_base = _get_webhook_base_url()
 
-                preference_data = {
-                    "items": preference_items,
-                    "external_reference": external_reference,
-                    "auto_return": "approved",
-                    "back_urls": {
+                # ── Build back_urls ──
+                # When ngrok provides HTTPS, use the mp-redirect proxy so auto_return works.
+                # Otherwise fall back to direct HTTP URLs without auto_return.
+                if webhook_base.startswith("https"):
+                    back_urls = {
+                        "success": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={external_reference}&status=approved",
+                        "failure": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={external_reference}&status=failure",
+                        "pending": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={external_reference}&status=pending",
+                    }
+                else:
+                    back_urls = {
                         "success": f"{frontend_url}/pedidos/post-pago?external_reference={external_reference}&status=approved",
                         "failure": f"{frontend_url}/carrito",
                         "pending": f"{frontend_url}/pedidos/post-pago?external_reference={external_reference}&status=approved",
-                    },
+                    }
+
+                preference_data = {
+                    "items": preference_items,
+                    "external_reference": external_reference,
+                    "back_urls": back_urls,
                 }
+
+                # auto_return only safe with HTTPS back_urls (MP rejects HTTP)
+                if webhook_base.startswith("https"):
+                    preference_data["auto_return"] = "approved"
 
                 if usuario:
                     preference_data["payer"] = {
@@ -413,6 +499,22 @@ class PagoService:
             webhook_base = _get_webhook_base_url()
             frontend_url = _get_frontend_url()
 
+            # ── Build back_urls ──
+            # When ngrok provides HTTPS, use the mp-redirect proxy so auto_return works.
+            # Otherwise fall back to direct HTTP URLs without auto_return.
+            if webhook_base.startswith("https"):
+                back_urls = {
+                    "success": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={external_reference}&status=approved",
+                    "failure": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={external_reference}&status=failure",
+                    "pending": f"{webhook_base}/api/v1/pagos/mp-redirect?external_reference={external_reference}&status=pending",
+                }
+            else:
+                back_urls = {
+                    "success": f"{frontend_url}/pedidos/{pedido_id}",
+                    "failure": f"{frontend_url}/carrito",
+                    "pending": f"{frontend_url}/pedidos/{pedido_id}",
+                }
+
             preference_data = {
                 "items": [
                     {
@@ -423,13 +525,12 @@ class PagoService:
                     }
                 ],
                 "external_reference": external_reference,
-                "auto_return": "approved",
-                "back_urls": {
-                    "success": f"{frontend_url}/pedidos/{pedido_id}",
-                    "failure": f"{frontend_url}/carrito",
-                    "pending": f"{frontend_url}/pedidos/{pedido_id}",
-                },
+                "back_urls": back_urls,
             }
+
+            # auto_return only safe with HTTPS back_urls (MP rejects HTTP)
+            if webhook_base.startswith("https"):
+                preference_data["auto_return"] = "approved"
 
             if pedido.usuario:
                 preference_data["payer"] = {
@@ -506,6 +607,16 @@ class PagoService:
         if owner_id is not None and owner_id != current_user.id:
             return {"status": "not_found", "pedido_id": None, "mp_status": None}
 
+        # If snapshot was consumed (None) but pago has pedido_id, verify ownership via Pedido
+        if snapshot is None and pago.pedido_id is not None:
+            from app.modules.VentasPagosTrazabilidad.Pedido.repository import (
+                PedidoRepository as _PedidoRepo2,
+            )
+            pedido_repo = _PedidoRepo2(session)
+            pedido = pedido_repo.get_by_id(pago.pedido_id)
+            if pedido is not None and pedido.usuario_id != current_user.id:
+                return {"status": "not_found", "pedido_id": None, "mp_status": None}
+
         # Pedido already created -> found
         if pago.pedido_id is not None:
             return {
@@ -524,6 +635,76 @@ class PagoService:
 
         # Otherwise: pago exists but not approved (e.g., still pending)
         return {"status": "not_found", "pedido_id": None, "mp_status": pago.mp_status}
+
+    @staticmethod
+    def resolve_user_from_payment_ref(
+        session: Session,
+        external_reference: str,
+    ):
+        """Resolve the Usuario who owns the payment identified by external_reference.
+
+        Used as an alternative auth mechanism for the post-pago redirect flow:
+        the external_reference UUID travels through the MP redirect and acts
+        as a temporary credential — only the user who initiated the payment
+        knows this UUID.
+
+        Primary path: lookup via CarritoSnapshot (still exists before webhook).
+        Fallback path: lookup via Pago -> Pedido chain (snapshot consumed by webhook).
+
+        Returns the Usuario if found, or None if the reference is invalid.
+        """
+        from app.modules.IdentidadYAcceso.Usuario.repository import UsuarioRepository
+        from app.modules.VentasPagosTrazabilidad.CarritoSnapshot.repository import (
+            CarritoSnapshotRepository,
+        )
+        from app.modules.VentasPagosTrazabilidad.Pedido.repository import (
+            PedidoRepository as _PedidoRepo,
+        )
+
+        # Primary path: lookup via CarritoSnapshot (still exists before webhook)
+        snapshot_repo = CarritoSnapshotRepository(session)
+        snapshot = snapshot_repo.get_by_external_reference(external_reference)
+        if snapshot is not None:
+            user_repo = UsuarioRepository(session)
+            user = user_repo.get_with_roles(snapshot.usuario_id)
+            if user is not None:
+                return user
+            logger.warning(
+                "resolve_user_from_payment_ref: snapshot found for external_reference=%s "
+                "but user_id=%s not found in DB",
+                external_reference[:16], snapshot.usuario_id,
+            )
+            return None
+
+        # Fallback: snapshot was already consumed by webhook.
+        # Resolve via Pago -> Pedido -> usuario_id chain.
+        repo = PagoRepository(session)
+        pago = repo.get_by_external_reference(external_reference)
+        if pago is not None:
+            if pago.pedido_id is not None:
+                pedido_repo = _PedidoRepo(session)
+                pedido = pedido_repo.get_by_id(pago.pedido_id)
+                if pedido is not None:
+                    user_repo = UsuarioRepository(session)
+                    return user_repo.get_with_roles(pedido.usuario_id)
+            else:
+                logger.warning(
+                    "resolve_user_from_payment_ref: Pago found (id=%s) but pedido_id is "
+                    "None (webhook not yet processed). Snapshot was %s.",
+                    pago.id,
+                    "found" if snapshot is not None else "NOT found",
+                )
+        else:
+            logger.warning(
+                "resolve_user_from_payment_ref: No Pago found for external_reference=%s",
+                external_reference[:16],
+            )
+
+        # Also handle: Pago exists but pedido not yet created (webhook still pending)
+        # and snapshot was deleted by expiration (TTL). In this case we still know
+        # the user from the Pago's preference context, but we have no user ID stored
+        # directly on Pago. This is an edge case that should be rare — return None.
+        return None
 
     @staticmethod
     def update_pago_status(
@@ -597,8 +778,10 @@ class PagoService:
             return {"status": "received", "detail": "no payment id found"}
 
         # ── Fetch real status from MP API ──
+        print(f"\n[WEBHOOK] mp_payment_id={mp_payment_id}, fetching from MP API...")
         payment_data = PagoService.get_payment_from_mp(mp_payment_id)
         if not payment_data:
+            print(f"[WEBHOOK] FAILED to fetch payment {mp_payment_id} from MP API!")
             logger.warning(
                 "MP webhook: could not fetch payment %s from MP API",
                 mp_payment_id,
@@ -606,6 +789,7 @@ class PagoService:
             return {"status": "received", "detail": "could not fetch from MP"}
 
         mp_status = payment_data.get("status", "unknown")
+        print(f"[WEBHOOK] payment_status={mp_status}, ext_ref={payment_data.get('external_reference', 'N/A')[:16]}...")
         mp_status_detail = payment_data.get("status_detail")
         external_reference = payment_data.get("external_reference", "")
         idempotency_key = payment_data.get("idempotency_key", str(uuid.uuid4()))
@@ -615,6 +799,7 @@ class PagoService:
         from sqlmodel import Session as _Session
 
         def _process():
+            print(f"[WEBHOOK-PROCESS] Starting background processing for ext_ref={external_reference[:16]}...")
             with _Session(_engine) as _session:
                 repo = PagoRepository(_session)
 
@@ -630,11 +815,13 @@ class PagoService:
                 # Find existing Pago by external_reference
                 pago = repo.get_by_external_reference(external_reference)
                 if not pago:
+                    print(f"[WEBHOOK-PROCESS] No Pago found for ext_ref={external_reference[:16]}")
                     logger.warning(
                         "MP webhook: no Pago found for external_reference=%s",
                         external_reference,
                     )
                     return
+                print(f"[WEBHOOK-PROCESS] Found Pago id={pago.id}, mp_status={pago.mp_status}, pedido_id={pago.pedido_id}")
 
                 # Update Pago status
                 _should_broadcast = False
@@ -655,12 +842,14 @@ class PagoService:
 
                     # ── If approved: create Pedido from snapshot ──
                     if mp_status == "approved":
+                        print(f"[WEBHOOK-PROCESS] Payment APPROVED, creating Pedido from snapshot...")
                         try:
                             # Look up cart snapshot by external_reference
                             snapshot_repo = CarritoSnapshotRepository(_session)
                             snapshot = snapshot_repo.get_by_external_reference(external_reference)
 
                             if snapshot is None:
+                                print(f"[WEBHOOK-PROCESS] Snapshot ALREADY consumed for ext_ref={external_reference[:16]}")
                                 # Idempotency: snapshot already consumed by prior webhook
                                 logger.info(
                                     "MP webhook: snapshot already consumed for ext_ref=%s "
@@ -668,6 +857,7 @@ class PagoService:
                                     external_reference,
                                 )
                             else:
+                                print(f"[WEBHOOK-PROCESS] Snapshot found, calling crear_desde_snapshot...")
                                 # Create Pedido from snapshot (validates stock, deducts, etc.)
                                 from ..Pedido.service import PedidoService as _PedidoService
 
@@ -675,9 +865,17 @@ class PagoService:
                                     _session, snapshot, snapshot_repo
                                 )
 
-                                # Backfill pago.pedido_id
-                                db_pago.pedido_id = nuevo_pedido.id
-                                uow.add(db_pago)
+                                # Backfill pago.pedido_id via direct SQL UPDATE to avoid
+                                # ORM state issues: crear_desde_snapshot commits the session
+                                # internally, expiring db_pago. A direct UPDATE bypasses the
+                                # expired-object problem.
+                                from sqlalchemy import text as _text
+                                uow.session.execute(
+                                    _text("UPDATE pago SET pedido_id = :pid WHERE id = :pago_id"),
+                                    {"pid": nuevo_pedido.id, "pago_id": db_pago.id},
+                                )
+
+                                print(f"[WEBHOOK-PROCESS] Pedido #{nuevo_pedido.id} CREATED for user {nuevo_pedido.usuario_id}")
 
                                 # Snapshot is deleted inside crear_desde_snapshot already,
                                 # but ensure it's gone in this UoW context
@@ -700,6 +898,8 @@ class PagoService:
                             )
                             # Re-raise so the UoW rolls back (snapshot preserved)
                             raise
+                    else:
+                        print(f"[WEBHOOK-PROCESS] Payment status is '{mp_status}', NOT 'approved' — skipping Pedido creation")
 
                     logger.info(
                         "MP webhook: payment %s updated to %s",
