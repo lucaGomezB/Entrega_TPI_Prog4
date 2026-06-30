@@ -13,7 +13,7 @@
  *   2. Clear cart
  *   3. Navigate to pedidos
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCartStore } from "@/shared/store/cartStore";
 import { AxiosError } from "axios";
@@ -179,6 +179,10 @@ export default function Carrito() {
   // ── TanStack Query: direcciones ──
   const { data: direcciones = [], isLoading: loadingDirs } = useDirecciones();
   const queryClient = useQueryClient();
+
+  // Save address selection when switching to pickup so it can be restored
+  // when switching back to delivery (don't lose the user's explicit choice)
+  const savedDireccionSelId = useRef<number | "nueva" | null>(null);
 
   // Auto-select primary direction — but NOT for pickup-only payment methods
   const esRetiroLocal = formaPago === "PAGO_LOCAL" || formaPago === "EFECTIVO";
@@ -530,11 +534,11 @@ export default function Carrito() {
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Metodo de pago</h2>
         <div className="flex gap-4">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="formaPago" value="PAGO_LOCAL" checked={formaPago === "PAGO_LOCAL"} onChange={() => { setFormaPago("PAGO_LOCAL"); setDireccionSelId(null); }} className="cursor-pointer" />
+            <input type="radio" name="formaPago" value="PAGO_LOCAL" checked={formaPago === "PAGO_LOCAL"} onChange={() => { savedDireccionSelId.current = direccionSelId; setFormaPago("PAGO_LOCAL"); setDireccionSelId(null); }} className="cursor-pointer" />
             <span className="text-sm">Pago y retiro en local</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="formaPago" value="MERCADOPAGO" checked={formaPago === "MERCADOPAGO"} onChange={() => setFormaPago("MERCADOPAGO")} className="cursor-pointer" />
+            <input type="radio" name="formaPago" value="MERCADOPAGO" checked={formaPago === "MERCADOPAGO"} onChange={() => { setFormaPago("MERCADOPAGO"); if (savedDireccionSelId.current !== null) { setDireccionSelId(savedDireccionSelId.current); } }} className="cursor-pointer" />
             <span className="text-sm">MercadoPago (tarjeta/debito)</span>
           </label>
         </div>

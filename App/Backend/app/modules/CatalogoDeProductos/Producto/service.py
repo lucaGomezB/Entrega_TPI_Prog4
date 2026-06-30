@@ -11,7 +11,7 @@ This is the thickest layer in the Product module. Key invariants:
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlmodel import Session
+from sqlmodel import Session, select
 from typing import Optional
 from .models import Producto
 from .schemas import ProductoCreate, ProductoRead, ProductoUpdate, IngredienteAsignado, CategoriaAsignada
@@ -21,6 +21,7 @@ from ..Categoria.models import Categoria
 from ..Ingrediente.models import Ingrediente
 from ..producto_ingrediente import ProductoIngrediente
 from ..uow import CatalogoDeProductosUnitOfWork
+from ..UnidadMedida.models import UnidadMedida
 
 # ── Unit conversion factors ──────────────────────────────────────────────
 # Each UnidadMedida ID maps to its conversion factor relative to the
@@ -28,6 +29,9 @@ from ..uow import CatalogoDeProductosUnitOfWork
 # pieza for unidad, metro cuadrado for area).
 #
 # Base units (factor=1): g(2), mL(4), pieza(5), m²(7)
+# These are also stored in the unidadmedida.factor_conversion column.
+# The dict below is the canonical seed; _load_conversion_factors()
+# reads from the DB at runtime.
 _CONVERSION: dict[int, Decimal] = {
     1: Decimal("1000"),   # kg → g
     2: Decimal("1"),       # g (base)
@@ -39,22 +43,38 @@ _CONVERSION: dict[int, Decimal] = {
 }
 
 
+def _load_conversion_factors(session) -> dict[int, Decimal]:
+    """Load conversion factors from the UnidadMedida table.
+
+    Falls back to the hardcoded _CONVERSION dict if the table is empty
+    (e.g. during tests before seeding).
+    """
+    rows = session.exec(select(UnidadMedida.id, UnidadMedida.factor_conversion)).all()
+    if not rows:
+        return dict(_CONVERSION)
+    return {row[0]: Decimal(str(row[1])) for row in rows}
+
+
 def _convertir_cantidad(
     cantidad: Decimal,
     unidad_origen_id: int | None,
     unidad_destino_id: int | None,
+    factores: dict[int, Decimal] | None = None,
 ) -> Decimal:
     """Convert a quantity from one unit to another within the same tipo.
 
     When both units are the same or either is None, returns cantidad unchanged.
-    Uses precomputed conversion factors relative to each tipo's base unit.
+    Uses conversion factors relative to each tipo's base unit.
+    If factores is not provided, falls back to the hardcoded _CONVERSION dict.
     """
     if unidad_origen_id is None or unidad_destino_id is None:
         return cantidad
     if unidad_origen_id == unidad_destino_id:
         return cantidad
-    factor_origen = _CONVERSION.get(unidad_origen_id, Decimal("1"))
-    factor_destino = _CONVERSION.get(unidad_destino_id, Decimal("1"))
+    if factores is None:
+        factores = _CONVERSION
+    factor_origen = factores.get(unidad_origen_id, Decimal("1"))
+    factor_destino = factores.get(unidad_destino_id, Decimal("1"))
     return cantidad * (factor_origen / factor_destino)
 
 
@@ -70,6 +90,7 @@ class ProductoService:
         - The price is recalculated from ingredients if any are assigned
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
+            factores = _load_conversion_factors(session)
             producto_data = data.model_dump(exclude={"categorias_ids", "categoria_principal_id", "ingredientes"})
             db_producto = Producto(**producto_data)
 
@@ -130,6 +151,7 @@ class ProductoService:
                             needed = (
                                 _convertir_cantidad(
                                     Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                    factores=factores,
                                 )
                                 * Decimal(db_producto.stock_cantidad)
                             )
@@ -152,6 +174,7 @@ class ProductoService:
                             needed = (
                                 _convertir_cantidad(
                                     Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                    factores=factores,
                                 )
                                 * Decimal(db_producto.stock_cantidad)
                             )
@@ -172,6 +195,7 @@ class ProductoService:
         This method does NOT manage its own UoW — the calling method
         is responsible for the transaction boundary. All writes go through uow.add().
         """
+        factores = _load_conversion_factors(uow.session)
         db_producto = uow.productos.get_with_ingredients(producto_id)
         if not db_producto:
             return
@@ -195,6 +219,7 @@ class ProductoService:
                     Decimal(pi.cantidad),
                     pi.unidad_medida_id,
                     ing.unidad_medida_id,
+                    factores=factores,
                 )
                 total += ing.precio_actual * cantidad_convertida
 
@@ -280,6 +305,7 @@ class ProductoService:
         - Price is recalculated if the product has ingredients
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
+            factores = _load_conversion_factors(session)
             db_producto = uow.productos.get_by_id(producto_id)
             if not db_producto:
                 return None
@@ -310,6 +336,7 @@ class ProductoService:
                         needed = (
                             _convertir_cantidad(
                                 Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                factores=factores,
                             )
                             * Decimal(diff)
                         )
@@ -333,6 +360,7 @@ class ProductoService:
                         needed = (
                             _convertir_cantidad(
                                 Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                factores=factores,
                             )
                             * Decimal(diff)
                         )
@@ -350,6 +378,7 @@ class ProductoService:
                         needed = (
                             _convertir_cantidad(
                                 Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                factores=factores,
                             )
                             * Decimal(diff)
                         )

@@ -7,6 +7,7 @@ Design decisions (from design.md):
     - tipo is VARCHAR(20) with application-level Literal validation (D3)
 """
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -29,6 +30,9 @@ class UnidadMedida(SQLModel, table=True):
         nombre: human-readable unit name (UNIQUE, e.g. "kilogramo")
         simbolo: short symbol (UNIQUE, e.g. "kg")
         tipo: classification — masa, volumen, unidad, area
+        factor_conversion: how many base units equal one of this unit.
+            Base units (factor=1): gramo(2), mililitro(4), pieza(5), m²(7).
+            Example: kilogramo → 1000 (1000g = 1kg), docena → 12 (12p = 1doc).
         created_at: record creation timestamp (UTC)
     """
 
@@ -38,6 +42,7 @@ class UnidadMedida(SQLModel, table=True):
     nombre: str = Field(max_length=50, nullable=False, unique=True)
     simbolo: str = Field(max_length=10, nullable=False, unique=True)
     tipo: str = Field(max_length=20, nullable=False)
+    factor_conversion: Decimal = Field(default=Decimal("1"), nullable=False)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
     productos: List["Producto"] = Relationship(back_populates="unidad_medida")

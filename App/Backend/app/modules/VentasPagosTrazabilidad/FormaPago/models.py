@@ -3,15 +3,16 @@ FormaPago models — Payment method catalog table.
 
 Like EstadoPedido, uses a SEMANTIC PRIMARY KEY (string 'codigo')
 instead of an auto-increment ID, making it self-documenting:
-    forma_pago_codigo = "MP"  # MercadoPago
+    forma_pago_codigo = "MERCADOPAGO"  # MercadoPago
 
 The 'habilitado' flag allows disabling a payment method without
 removing it (existing orders still reference the code).
 
-Typical seed data:
-    EFECTIVO | Efectivo        | true
-    MP       | Mercado Pago    | true
-    TARJETA  | Tarjeta         | true
+Current seed data:
+    MERCADOPAGO   | MercadoPago                | true
+    EFECTIVO      | Efectivo                   | true
+    PAGO_LOCAL    | Pago y retiro en local      | true
+    TRANSFERENCIA | Transferencia              | true
 """
 from typing import Optional
 from sqlmodel import Field

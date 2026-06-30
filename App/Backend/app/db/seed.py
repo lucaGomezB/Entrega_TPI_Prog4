@@ -96,38 +96,42 @@ CATEGORIAS_SEED = [
 # es_alergeno=True means this ingredient is a common allergen.
 # Names are CLEAN — no unit suffixes. Unit/quantity data is now structured
 # in ProductoIngrediente rows via unidad_medida_id and Decimal cantidad.
+# Ingredients with stock, pricing, and measurement unit.
+# Each tuple is (nombre, descripcion, es_alergeno, precio_actual, stock_actual, unidad_medida_id).
+# unidad_medida_id: FK to unidadmedida — the unit in which stock_actual is tracked.
+# IDs: 1=kg, 2=g, 3=L, 4=mL, 5=pieza, 6=docena, 7=m²
 INGREDIENTES_SEED = [
-    ("Pan de Hamburguesa",     "Pan suave para hamburguesas",                                      False, Decimal("50"),   500),
-    ("Pan de Miga",            "Pan de miga para sandwich",                                        False, Decimal("60"),   300),
-    ("Pan Ciabatta",           "Pan italiano tipo ciabatta",                                       False, Decimal("80"),   200),
-    ("Medallón de Carne Res",  "Medallón de carne vacuna",                                         False, Decimal("200"),  200),
-    ("Pechuga de Pollo",       "Pechuga de pollo fresca",                                          False, Decimal("1800"), 50),
-    ("Queso Cheddar",          "Queso cheddar",                                                    True,  Decimal("800"),  30),
-    ("Queso Mozzarella",       "Queso mozzarella",                                                 True,  Decimal("900"),  25),
-    ("Lechuga",                "Lechuga fresca",                                                   False, Decimal("30"),   150),
-    ("Tomate",                 "Tomate fresco",                                                    False, Decimal("250"),  18),
-    ("Cebolla",                "Cebolla fresca",                                                   False, Decimal("200"),  20),
-    ("Huevo",                  "Huevo fresco",                                                     True,  Decimal("180"),  50),
-    ("Mayonesa",               "Mayonesa",                                                         True,  Decimal("400"),  20),
-    ("Mostaza",                "Mostaza",                                                          False, Decimal("350"),  15),
-    ("Ketchup",                "Ketchup",                                                          False, Decimal("300"),  20),
-    ("Papa",                   "Papa fresca",                                                      False, Decimal("450"),  60),
-    ("Aceite Girasol",         "Aceite de girasol",                                                False, Decimal("600"),  20),
-    ("Sal Fina",               "Sal fina",                                                         False, Decimal("100"),  20),
-    ("Café Molido",            "Café molido",                                                      False, Decimal("1500"), 10),
-    ("Leche Entera",           "Leche entera pasteurizada",                                        True,  Decimal("700"),  30),
-    ("Crema de Leche",         "Crema de leche",                                                   True,  Decimal("900"),  15),
-    ("Chocolate Cobertura",    "Chocolate para cobertura",                                         True,  Decimal("1200"), 10),
-    ("Harina 0000",            "Harina 0000",                                                      True,  Decimal("400"),  40),
-    ("Azúcar",                 "Azúcar refinada",                                                  False, Decimal("350"),  30),
-    ("Agua Mineral",           "Agua mineral sin gas",                                             False, Decimal("50"),   200),
-    ("Gasificación",           "Agua gasificada",                                                  False, Decimal("100"),  50),
-    ("Levadura",               "Levadura fresca",                                                  False, Decimal("250"),  20),
-    ("Manteca",                "Manteca",                                                          True,  Decimal("800"),  15),
-    ("Dulce de Leche",         "Dulce de leche",                                                   True,  Decimal("1100"), 10),
-    ("Esencia de Vainilla",    "Esencia de vainilla",                                              False, Decimal("200"),  20),
-    ("Hielo",                  "Hielo en bolsa",                                                   False, Decimal("50"),   100),
-    ("Jamón Cocido",           "Jamón cocido",                                                     False, Decimal("1200"), 15),
+    ("Pan de Hamburguesa",     "Pan suave para hamburguesas",                                      False, Decimal("50"),   500, 5),
+    ("Pan de Miga",            "Pan de miga para sandwich",                                        False, Decimal("60"),   300, 5),
+    ("Pan Ciabatta",           "Pan italiano tipo ciabatta",                                       False, Decimal("80"),   200, 5),
+    ("Medallón de Carne Res",  "Medallón de carne vacuna",                                         False, Decimal("200"),  200, 5),
+    ("Pechuga de Pollo",       "Pechuga de pollo fresca",                                          False, Decimal("1800"), 50,  1),
+    ("Queso Cheddar",          "Queso cheddar",                                                    True,  Decimal("800"),  30,  1),
+    ("Queso Mozzarella",       "Queso mozzarella",                                                 True,  Decimal("900"),  25,  1),
+    ("Lechuga",                "Lechuga fresca",                                                   False, Decimal("30"),   150, 5),
+    ("Tomate",                 "Tomate fresco",                                                    False, Decimal("250"),  18,  1),
+    ("Cebolla",                "Cebolla fresca",                                                   False, Decimal("200"),  20,  1),
+    ("Huevo",                  "Huevo fresco",                                                     True,  Decimal("180"),  50,  6),
+    ("Mayonesa",               "Mayonesa",                                                         True,  Decimal("400"),  20,  3),
+    ("Mostaza",                "Mostaza",                                                          False, Decimal("350"),  15,  3),
+    ("Ketchup",                "Ketchup",                                                          False, Decimal("300"),  20,  3),
+    ("Papa",                   "Papa fresca",                                                      False, Decimal("450"),  60,  1),
+    ("Aceite Girasol",         "Aceite de girasol",                                                False, Decimal("600"),  20,  3),
+    ("Sal Fina",               "Sal fina",                                                         False, Decimal("100"),  20,  1),
+    ("Café Molido",            "Café molido",                                                      False, Decimal("1500"), 10,  1),
+    ("Leche Entera",           "Leche entera pasteurizada",                                        True,  Decimal("700"),  30,  3),
+    ("Crema de Leche",         "Crema de leche",                                                   True,  Decimal("900"),  15,  3),
+    ("Chocolate Cobertura",    "Chocolate para cobertura",                                         True,  Decimal("1200"), 10,  1),
+    ("Harina 0000",            "Harina 0000",                                                      True,  Decimal("400"),  40,  1),
+    ("Azúcar",                 "Azúcar refinada",                                                  False, Decimal("350"),  30,  1),
+    ("Agua Mineral",           "Agua mineral sin gas",                                             False, Decimal("50"),   200, 3),
+    ("Gasificación",           "Agua gasificada",                                                  False, Decimal("100"),  50,  3),
+    ("Levadura",               "Levadura fresca",                                                  False, Decimal("250"),  20,  2),
+    ("Manteca",                "Manteca",                                                          True,  Decimal("800"),  15,  2),
+    ("Dulce de Leche",         "Dulce de leche",                                                   True,  Decimal("1100"), 10,  1),
+    ("Esencia de Vainilla",    "Esencia de vainilla",                                              False, Decimal("200"),  20,  4),
+    ("Hielo",                  "Hielo en bolsa",                                                   False, Decimal("50"),   100, 1),
+    ("Jamón Cocido",           "Jamón cocido",                                                     False, Decimal("1200"), 15,  1),
 ]
 
 # Mapping old suffixed ingredient names to new clean names.
@@ -317,15 +321,17 @@ FORMAS_PAGO_SEED = [
 ]
 
 # Standard measurement units for the product catalog.
-# Each tuple is (nombre, simbolo, tipo).
+# Each tuple is (nombre, simbolo, tipo, factor_conversion).
+# factor_conversion: how many base units equal one of this unit.
+# Base units (factor=1): gramo, mililitro, pieza, metro cuadrado.
 UNIDADES_MEDIDA_SEED = [
-    ("kilogramo", "kg", "masa"),
-    ("gramo", "g", "masa"),
-    ("litro", "L", "volumen"),
-    ("mililitro", "mL", "volumen"),
-    ("pieza", "p", "unidad"),
-    ("docena", "doc", "unidad"),
-    ("metro cuadrado", "m²", "area"),
+    ("kilogramo", "kg", "masa", Decimal("1000")),
+    ("gramo", "g", "masa", Decimal("1")),
+    ("litro", "L", "volumen", Decimal("1000")),
+    ("mililitro", "mL", "volumen", Decimal("1")),
+    ("pieza", "p", "unidad", Decimal("1")),
+    ("docena", "doc", "unidad", Decimal("12")),
+    ("metro cuadrado", "m²", "area", Decimal("1")),
 ]
 
 
@@ -492,7 +498,7 @@ def seed_ingredientes(session: Session):
     session.commit()
 
     # Step 2: Create any ingredients that don't exist yet (matched by clean name)
-    for nombre, descripcion, alergeno, precio, stock in INGREDIENTES_SEED:
+    for nombre, descripcion, alergeno, precio, stock, unidad_id in INGREDIENTES_SEED:
         existing = _get_by_name(session, Ingrediente, nombre)
         if existing:
             continue
@@ -503,6 +509,7 @@ def seed_ingredientes(session: Session):
             es_alergeno=alergeno,
             precio_actual=precio,
             stock_actual=stock,
+            unidad_medida_id=unidad_id,
         )
         session.add(ing)
     session.commit()
@@ -614,14 +621,15 @@ def seed_unidades_medida(session: Session):
     Create standard measurement units idempotently.
 
     Checks by nombre to avoid duplicates. The 7 predefined units
-    cover masa, volumen, unidad, and area types.
+    cover masa, volumen, unidad, and area types. Each unit carries
+    its factor_conversion relative to its tipo's base unit.
     """
-    for nombre, simbolo, tipo in UNIDADES_MEDIDA_SEED:
+    for nombre, simbolo, tipo, factor in UNIDADES_MEDIDA_SEED:
         existing = session.exec(
             select(UnidadMedida).where(UnidadMedida.nombre == nombre)
         ).first()
         if not existing:
-            session.add(UnidadMedida(nombre=nombre, simbolo=simbolo, tipo=tipo))
+            session.add(UnidadMedida(nombre=nombre, simbolo=simbolo, tipo=tipo, factor_conversion=factor))
     session.commit()
 
 

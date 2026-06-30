@@ -193,12 +193,13 @@ def avanzar(
     """PATCH /pedidos/{id}/avanzar — Advance the order to the next FSM state.
 
     Transitions:
-        PENDIENTE -> CONFIRMADO (payment confirmed)
+        PENDIENTE -> CONFIRMADO (payment confirmed — sync methods only)
         CONFIRMADO -> EN_PREP (preparation started)
         EN_PREP -> ENTREGADO (delivered)
 
-    NOTE: PENDIENTE -> CONFIRMADO is EXCLUSIVELY via payment webhook.
-    This endpoint does NOT handle that transition anymore.
+    NOTE: PENDIENTE -> CONFIRMADO is allowed for PAGO_LOCAL, EFECTIVO, and
+    TRANSFERENCIA via this endpoint. MERCADOPAGO orders MUST go through the
+    IPN webhook and are blocked here.
 
     Requires ADMIN or PEDIDOS role.
     """

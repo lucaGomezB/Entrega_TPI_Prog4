@@ -9,7 +9,7 @@ Key behaviors:
 """
 from decimal import Decimal
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 from typing import List, Optional
 from fastapi import HTTPException, status
 from app.core.routing import get_or_404
@@ -20,6 +20,7 @@ from app.core.paginated_response import PaginatedResponse
 from app.core.base import get_utc_now
 from ..uow import CatalogoDeProductosUnitOfWork
 from ..Producto.service import ProductoService
+from ..UnidadMedida.models import UnidadMedida
 
 
 class IngredienteService:
@@ -28,6 +29,17 @@ class IngredienteService:
     @staticmethod
     def create(session: Session, data: IngredienteCreate) -> Ingrediente:
         """Create a new ingredient with duplicate name handling."""
+        # Validate unidad_medida_id exists (if provided)
+        if data.unidad_medida_id is not None:
+            unidad = session.exec(
+                select(UnidadMedida).where(UnidadMedida.id == data.unidad_medida_id)
+            ).first()
+            if not unidad:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unidad de medida con id {data.unidad_medida_id} no encontrada.",
+                )
+
         with CatalogoDeProductosUnitOfWork(session) as uow:
             db_ingrediente = Ingrediente.model_validate(data)
             uow.ingredientes.add(db_ingrediente)

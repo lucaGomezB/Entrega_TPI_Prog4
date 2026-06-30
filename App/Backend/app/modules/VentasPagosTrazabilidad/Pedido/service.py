@@ -44,9 +44,10 @@ from app.core.dependencies import fire_broadcast, fire_broadcast_admin
 # Full flow:
 #
 #   PENDIENTE --[confirm]--> CONFIRMADO --[start prep]--> EN_PREP --[deliver]--> ENTREGADO
-#       |                                                                   |
-#       |  (customer or admin)                                              |
-#       +--[cancel]--> CANCELADO                                            |
+#       |                        |                        |
+#       |  (customer/admin)      +--[cancel]--------------+
+#       |                                                     (ADMIN/PEDIDOS)
+#       +--[cancel]------------> CANCELADO <--[cancel]--------+
 #
 # Terminal states (no further transitions allowed):
 #   - ENTREGADO: delivery completed
@@ -54,8 +55,8 @@ from app.core.dependencies import fire_broadcast, fire_broadcast_admin
 #
 # State transition rules:
 #   - Only one state advance at a time
-#   - From PENDIENTE or CONFIRMADO: customer or admin can CANCEL
-#   - From EN_PREP: only ADMIN/PEDIDOS can cancel
+#   - From PENDIENTE, CONFIRMADO, or EN_PREP: ADMIN/PEDIDOS can cancel
+#   - From PENDIENTE or CONFIRMADO: CLIENT can also cancel (frontend-enforced)
 #   - ENTREGADO and CANCELADO are TERMINAL — no coming back
 # ---------------------------------------------------------------------------
 ESTADOS_TERMINALES = {"ENTREGADO", "CANCELADO"}
@@ -946,9 +947,10 @@ class PedidoService:
         """Cancel an order. Only PENDIENTE, CONFIRMADO, or EN_PREP orders can be cancelled.
 
         Permission rules:
-            - ALL roles can only cancel PENDIENTE or CONFIRMADO orders
+            - Allowed states: PENDIENTE, CONFIRMADO, EN_PREP
             - Stock is restored if cancelling from CONFIRMADO or EN_PREP (previously deducted)
             - ENTREGADO and CANCELADO cannot be cancelled
+            - Role restriction (AdminOrPedidos) is enforced at the router level
 
         Args:
             motivo: User-provided cancellation reason (replaces hardcoded string).
