@@ -147,9 +147,10 @@ class ProductoService:
                     for pi in associations:
                         ing = uow.productos.get_ingrediente(pi.ingrediente_id)
                         if ing:
+                            pi_unidad = pi.unidad_medida_id or ing.unidad_medida_id
                             needed = (
                                 _convertir_cantidad(
-                                    Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                    Decimal(pi.cantidad), pi_unidad, ing.unidad_medida_id,
                                     factores=factores,
                                 )
                                 * Decimal(db_producto.stock_cantidad)
@@ -170,9 +171,10 @@ class ProductoService:
                     for pi in associations:
                         ing = uow.productos.get_ingrediente(pi.ingrediente_id)
                         if ing:
+                            pi_unidad = pi.unidad_medida_id or ing.unidad_medida_id
                             needed = (
                                 _convertir_cantidad(
-                                    Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                                    Decimal(pi.cantidad), pi_unidad, ing.unidad_medida_id,
                                     factores=factores,
                                 )
                                 * Decimal(db_producto.stock_cantidad)
@@ -214,9 +216,12 @@ class ProductoService:
             ing = uow.productos.get_ingrediente(pi.ingrediente_id)
             if ing and ing.precio_actual:
                 # Convert: pi.cantidad (in pi.unidad_medida) → ing.unidad_medida
+                # Fallback: if pi.unidad_medida_id is None, default to the
+                # ingredient's own unit so the quantity is not misinterpreted.
+                pi_unidad = pi.unidad_medida_id or ing.unidad_medida_id
                 cantidad_convertida = _convertir_cantidad(
                     Decimal(pi.cantidad),
-                    pi.unidad_medida_id,
+                    pi_unidad,
                     ing.unidad_medida_id,
                     factores=factores,
                 )

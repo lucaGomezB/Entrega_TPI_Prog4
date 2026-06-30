@@ -5,6 +5,7 @@ Covers model creation, constraints, repository queries, and API endpoints.
 Uses real SQLite DB via conftest fixtures.
 """
 import pytest
+from decimal import Decimal
 from fastapi import status
 from datetime import datetime
 from sqlmodel import Session, select
@@ -505,3 +506,60 @@ class TestUnidadMedidaAPI:
         """No auth returns 401."""
         response = client.get("/api/v1/unidades-medida/")
         assert response.status_code == 401
+
+    def test_list_unidades_medida_includes_factor_conversion(self, client, admin_headers, db_session):
+        """GET /api/v1/unidades-medida/ returns factor_conversion in each item."""
+        self._seed_roles(db_session)
+        self._seed_unit(db_session, "kilogramo", "kg", "masa")
+        self._seed_unit(db_session, "gramo", "g", "masa")
+
+        response = client.get("/api/v1/unidades-medida/", headers=admin_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert all("factor_conversion" in item for item in data), (
+            "Every unit must include factor_conversion field"
+        )
+
+    def test_get_unidad_medida_by_id_includes_factor_conversion(self, client, admin_headers, db_session):
+        """GET /api/v1/unidades-medida/{id} returns factor_conversion."""
+        self._seed_roles(db_session)
+        unit = self._seed_unit(db_session, "docena", "doc", "unidad")
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        found = db_session.exec(
+            select(UnidadMedida).where(UnidadMedida.nombre == "docena")
+        ).first()
+
+        response = client.get(f"/api/v1/unidades-medida/{found.id}", headers=admin_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "factor_conversion" in data, (
+            "Single unit response must include factor_conversion field"
+        )
+
+    def test_factor_conversion_default_is_one(self, client, admin_headers, db_session):
+        """Units created without an explicit factor default to 1."""
+        self._seed_roles(db_session)
+        self._seed_unit(db_session, "porcion", "p", "unidad")
+
+        response = client.get("/api/v1/unidades-medida/", headers=admin_headers)
+        assert response.status_code == 200
+        data = response.json()
+        porcion_unit = [u for u in data if u["nombre"] == "porcion"][0]
+        assert Decimal(porcion_unit["factor_conversion"]) == Decimal("1"), (
+            "factor_conversion should default to 1"
+        )
+
+    def test_factor_conversion_non_default_value(self, client, admin_headers, db_session):
+        """Units with an explicit factor return that value."""
+        from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
+        self._seed_roles(db_session)
+        unit = UnidadMedida(nombre="docena", simbolo="doc", tipo="unidad", factor_conversion=12)
+        db_session.add(unit)
+        db_session.flush()
+
+        response = client.get(f"/api/v1/unidades-medida/{unit.id}", headers=admin_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert Decimal(data["factor_conversion"]) == Decimal("12"), (
+            "Explicit factor_conversion=12 should be returned"
+        )

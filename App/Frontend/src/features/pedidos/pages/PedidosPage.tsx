@@ -3,7 +3,7 @@
  * Uses TanStack Query for data fetching and mutations.
  * Uses DataTable with server-side pagination.
  */
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { type Pedido, type DetallePedido, type StockInsuficienteDetalle } from "@/features/pedidos/api/pedidos";
 import { type PagoRead } from "@/features/pedidos/api/pagos";
 import { getUserRoles } from "@/shared/api/client";
@@ -335,6 +335,9 @@ export default function PedidosPage() {
   const autoOpenedRef = useRef(false);
   const { id: autoOpenId } = useParams<{ id: string }>();
 
+  // ── Column-level filters ──
+  const [filters, setFilters] = useState<Record<string, string>>({});
+
   const roles = getUserRoles();
   const esGestor = roles.includes("ADMIN") || roles.includes("PEDIDOS");
   const wsStatus = useWsStatus();
@@ -353,6 +356,19 @@ export default function PedidosPage() {
   const { data, isLoading, isError, error } = activeQuery;
   const pedidos = data?.items ?? [];
   const total = data?.total ?? 0;
+
+  // ── Client-side filtering ──
+  const filteredPedidos = useMemo(() => {
+    return pedidos.filter(p => {
+      if (filters["id"] && !String(p.id).includes(filters["id"])) return false;
+      if (filters["estado_codigo"] && p.estado_codigo !== filters["estado_codigo"]) return false;
+      if (filters["created_at"]) {
+        const dateStr = new Date(p.created_at).toLocaleDateString("es-AR");
+        if (!dateStr.includes(filters["created_at"])) return false;
+      }
+      return true;
+    });
+  }, [pedidos, filters]);
 
   // ── TanStack Query: pagos for selected pedido ──
   const { data: pagosData } = usePagosByPedido(selectedPedidoId);
@@ -402,6 +418,11 @@ export default function PedidosPage() {
   const handleSort = (newSortBy: string, newSortOrder: "asc" | "desc") => {
     setSortBy(newSortBy);
     setSortOrder(newSortOrder);
+    handlePageChange(0);
+  };
+
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
     handlePageChange(0);
   };
 
@@ -464,6 +485,7 @@ export default function PedidosPage() {
       label: "Pedido #",
       render: (ped: Pedido) => <span className="font-mono">#{ped.id}</span>,
       sortable: true,
+      filterable: true,
     },
     ...(esGestor ? [
       {
@@ -482,6 +504,15 @@ export default function PedidosPage() {
         </span>
       ),
       sortable: true,
+      filterable: true,
+      filterType: "select",
+      filterOptions: [
+        { value: "PENDIENTE", label: ETIQUETAS_ESTADO["PENDIENTE"] },
+        { value: "CONFIRMADO", label: ETIQUETAS_ESTADO["CONFIRMADO"] },
+        { value: "EN_PREP", label: ETIQUETAS_ESTADO["EN_PREP"] },
+        { value: "ENTREGADO", label: ETIQUETAS_ESTADO["ENTREGADO"] },
+        { value: "CANCELADO", label: ETIQUETAS_ESTADO["CANCELADO"] },
+      ],
     },
     {
       key: "created_at" as const,
@@ -493,6 +524,7 @@ export default function PedidosPage() {
       ),
       hideOnMobile: true,
       sortable: true,
+      filterable: true,
     },
     {
       key: "total" as const,
@@ -549,8 +581,8 @@ export default function PedidosPage() {
 
       <DataTable
         columns={columns}
-        data={pedidos}
-        total={total}
+        data={filteredPedidos}
+        total={filteredPedidos.length}
         skip={skip}
         limit={limit}
         sortBy={sortBy}
@@ -560,6 +592,8 @@ export default function PedidosPage() {
         onLimitChange={handleLimitChange}
         isLoading={isLoading}
         emptyMessage={esHistorial ? "No hay historial de pedidos" : "No hay pedidos activos"}
+        filters={filters}
+        onFilterChange={handleFilterChange}
       />
 
       {detailPopup && (

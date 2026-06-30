@@ -3,10 +3,11 @@ UnidadMedida schemas — Pydantic models for API request/response validation.
 
 Design decisions:
     - tipo uses Literal validation (application-level, not DB enum — D3)
-    - UnidadMedidaRead includes all 5 fields (id, nombre, simbolo, tipo, created_at)
+    - UnidadMedidaRead includes all 6 fields (id, nombre, simbolo, tipo, factor_conversion, created_at)
     - No updated_at (immutable catalog — D4)
 """
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional, Literal
 from sqlmodel import SQLModel
 from app.core.base_schema import ReadModel
@@ -44,7 +45,8 @@ class UnidadMedidaUpdate(SQLModel):
 class UnidadMedidaRead(ReadModel, UnidadMedidaBase):
     """Response schema for reading a measurement unit.
 
-    Includes all columns: id, nombre, simbolo, tipo, created_at.
+    Includes all columns: id, nombre, simbolo, tipo, factor_conversion, created_at.
     """
     id: int
+    factor_conversion: Decimal
     created_at: datetime

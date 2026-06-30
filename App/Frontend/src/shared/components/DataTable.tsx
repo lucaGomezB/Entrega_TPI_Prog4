@@ -27,6 +27,12 @@ export interface DataTableColumn<T> {
   hideOnMobile?: boolean;
   /** When true, the header is clickable to sort by this column. */
   sortable?: boolean;
+  /** When true, a filter input/select is rendered in a second header row. */
+  filterable?: boolean;
+  /** Type of filter control to render. Default: "text" */
+  filterType?: "text" | "select";
+  /** Options for select-type filters. Ignored for text filters. */
+  filterOptions?: { value: string; label: string }[];
 }
 
 export interface DataTableProps<T> {
@@ -58,6 +64,10 @@ export interface DataTableProps<T> {
   className?: string;
   /** Optional per-row className function. Receives the row data; return a CSS class string or undefined. */
   getRowClassName?: (row: T) => string | undefined;
+  /** Current filter values keyed by column key. */
+  filters?: Record<string, string>;
+  /** Called when any filter value changes. */
+  onFilterChange?: (key: string, value: string) => void;
 }
 
 // ── Helpers ──
@@ -90,6 +100,8 @@ export default function DataTable<T>({
   emptyMessage = "No hay datos disponibles",
   className = "",
   getRowClassName,
+  filters,
+  onFilterChange,
 }: DataTableProps<T>) {
   const currentPage = Math.floor(skip / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -134,6 +146,37 @@ export default function DataTable<T>({
                 );
               })}
             </tr>
+            {/* ── Filter row (rendered only when at least one column is filterable) ── */}
+            {columns.some(c => c.filterable) && (
+              <tr className="bg-gray-50 border-b border-gray-200">
+                {columns.map((col) => (
+                  <th key={`filter-${col.key}`} className={`px-2 py-1.5 ${col.hideOnMobile ? "hidden md:table-cell" : ""}`}>
+                    {col.filterable ? (
+                      col.filterType === "select" && col.filterOptions ? (
+                        <select
+                          value={filters?.[col.key] ?? ""}
+                          onChange={(e) => onFilterChange?.(col.key, e.target.value)}
+                          className="border border-gray-300 rounded px-2 py-1 text-xs w-full bg-white"
+                        >
+                          <option value="">Todos</option>
+                          {col.filterOptions.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={filters?.[col.key] ?? ""}
+                          onChange={(e) => onFilterChange?.(col.key, e.target.value)}
+                          placeholder={col.label}
+                          className="border border-gray-300 rounded px-2 py-1 text-xs w-full"
+                        />
+                      )
+                    ) : null}
+                  </th>
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody className="divide-y divide-gray-100">
             {/* ── Loading state ── */}

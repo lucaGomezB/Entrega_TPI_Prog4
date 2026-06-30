@@ -13,6 +13,7 @@ export interface UnidadMedida {
   nombre: string;
   simbolo: string;
   tipo: UnidadMedidaTipo;
+  factor_conversion: number;
   created_at: string;
 }
 

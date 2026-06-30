@@ -11,6 +11,7 @@
  * Uses DataTable with server-side pagination.
  */
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useStore } from "@tanstack/react-form";
 import { useAppForm } from "@/shared/hooks/useAppForm";
 import type { Producto, ProductoCreate, ProductoIngredienteRead, ProductoCategoriaRead } from "@/features/productos/api/productos";
 import { productosApi } from "@/features/productos/api/productos";
@@ -99,10 +100,11 @@ function IngredienteSelector({ allIngredientes, unidades, selected, onSelect, on
   const [localSelected, setLocalSelected] = useState<SelectedIngredientItem[]>(selected);
 
   const toggleIngredient = (id: number) => {
+    const ing = allIngredientes.find(i => i.id === id);
     setLocalSelected(prev =>
       prev.some(s => s.id === id)
         ? prev.filter(s => s.id !== id)
-        : [...prev, { id, cantidad: 1, unidad_medida_id: null }]
+        : [...prev, { id, cantidad: 1, unidad_medida_id: ing?.unidad_medida_id ?? null }]
     );
   };
 
@@ -693,6 +695,9 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const [recentlyAdded, setRecentlyAdded] = useState<Set<number>>(new Set());
   const addTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
+  // Track previous unidad_medida_id for price/stock conversion on unit change
+  const prevUnidadMedidaIdRef = useRef<number | null>(null);
+
   // Cloudinary Upload Widget state (managed by shared hook)
   const [imagenPublicIds, setImagenPublicIds] = useState<string[]>([]);
 
@@ -700,6 +705,11 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const { data, isLoading, isError, error } = useProductos(skip, limit, search || undefined);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
+
+  const editingProductName = useMemo(() => {
+    if (!editingId) return null;
+    return items.find(p => p.id === editingId)?.nombre ?? null;
+  }, [editingId, items]);
 
   // Client-side sort
   const sortedItems = useMemo(() => {
@@ -917,7 +927,63 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     },
   });
 
+  // ── Price/stock conversion when unidad_medida_id changes ──
+  const watchedUnidadMedidaId = useStore(
+    form.store,
+    (state) => state.values.unidad_medida_id ?? null
+  );
+
+  useEffect(() => {
+    const currentId = watchedUnidadMedidaId;
+
+    // First render: just track the current ID, no conversion
+    if (prevUnidadMedidaIdRef.current === null) {
+      prevUnidadMedidaIdRef.current = currentId;
+      return;
+    }
+
+    // Guard: same unit (no-op) or null previous/current
+    if (currentId === prevUnidadMedidaIdRef.current) return;
+    if (currentId === null || prevUnidadMedidaIdRef.current === null) return;
+
+    // Look up both units in the loaded unidades array
+    const oldUnit = unidades.find(
+      (u) => u.id === prevUnidadMedidaIdRef.current
+    );
+    const newUnit = unidades.find((u) => u.id === currentId);
+
+    // Guard: both units must exist and have positive conversion factors
+    if (!oldUnit?.factor_conversion || !newUnit?.factor_conversion) return;
+    if (oldUnit.factor_conversion <= 0 || newUnit.factor_conversion <= 0) return;
+
+    const oldFactor = Number(oldUnit.factor_conversion);
+    const newFactor = Number(newUnit.factor_conversion);
+
+    // Price conversion: newPrice = oldPrice * newFactor / oldFactor
+    // (price is PER unit — smaller unit = smaller price)
+    const convertPrice = (oldPrice: number) =>
+      Math.round((oldPrice * newFactor / oldFactor) * 100) / 100;
+
+    const oldPrecioBase = form.getFieldValue("precio_base") ?? 0;
+    const oldPrecioActual = form.getFieldValue("precio_actual") ?? 0;
+
+    form.setFieldValue("precio_base", convertPrice(Number(oldPrecioBase)));
+    form.setFieldValue("precio_actual", convertPrice(Number(oldPrecioActual)));
+
+    // Stock conversion: newStock = oldStock * oldFactor / newFactor
+    // (stock is total quantity — smaller unit = larger number of units)
+    const oldStock = form.getFieldValue("stock_cantidad") ?? 0;
+    form.setFieldValue(
+      "stock_cantidad",
+      Math.round(Number(oldStock) * oldFactor / newFactor)
+    );
+
+    // Track new unit as "old" for next change
+    prevUnidadMedidaIdRef.current = currentId;
+  }, [watchedUnidadMedidaId, unidades]);
+
   const handleStartCreate = () => {
+    prevUnidadMedidaIdRef.current = null;
     form.reset();
     setImagenPublicIds([]);
     setEditingId(null);
@@ -928,6 +994,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   };
 
   const handleStartEdit = (prod: Producto) => {
+    prevUnidadMedidaIdRef.current = null;
     form.reset({
       nombre: prod.nombre,
       descripcion: prod.descripcion ?? "",
@@ -951,6 +1018,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   };
 
   const handleStartStockEdit = (prod: Producto) => {
+    prevUnidadMedidaIdRef.current = null;
     form.reset({
       nombre: prod.nombre,
       descripcion: prod.descripcion ?? "",
@@ -974,6 +1042,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   };
 
   const handleCloseForm = () => {
+    prevUnidadMedidaIdRef.current = null;
     form.reset();
     setImagenPublicIds([]);
     setShowForm(false);
@@ -1139,7 +1208,13 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       {showForm && (!hideCreate || stockEditOnly) && (
         <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); void form.handleSubmit(); }} className="border p-4 mb-4 rounded bg-gray-50">
           {stockEditOnly ? (
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <>
+              {editingProductName && (
+                <h2 className="text-lg font-bold text-amber-800 mb-3">
+                  Editando stock de: {editingProductName}
+                </h2>
+              )}
+              <div className="grid grid-cols-2 gap-4 mb-4">
               {!readOnly && (
                 <form.Field name="es_insumo">
                   {(field) => (
@@ -1192,6 +1267,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 </form.Field>
               )}
             </div>
+          </>
           ) : (
             <>
             <div className="grid grid-cols-2 gap-4 mb-4">
