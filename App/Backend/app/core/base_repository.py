@@ -77,6 +77,37 @@ class BaseRepository(Generic[T]):
 
         The entity is not persisted until commit() or flush() is called.
         Returns the entity itself for method chaining convenience.
+
+        Prefer create() for new entities or update() for existing ones
+        — the semantic names make the caller's intent explicit.
+        """
+        self.session.add(entity)
+        return entity
+
+    def create(self, entity: T) -> T:
+        """
+        Insert a new entity and immediately flush + refresh.
+
+        After this call the entity has its auto-generated fields populated
+        (primary key, created_at, updated_at). Use this when you need the
+        generated id for subsequent operations within the same transaction.
+
+        Returns the refreshed entity.
+        """
+        self.session.add(entity)
+        self.session.flush()
+        self.session.refresh(entity)
+        return entity
+
+    def update(self, entity: T) -> T:
+        """
+        Stage an existing entity for update in the current session.
+
+        SQLAlchemy detects the entity already has a primary key and
+        treats it as an update. No flush/refresh is performed — the
+        caller's UoW handles commit. Returns the entity itself.
+
+        Use this when modifying an entity fetched via get_by_id().
         """
         self.session.add(entity)
         return entity

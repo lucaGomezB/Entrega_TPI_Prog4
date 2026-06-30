@@ -68,7 +68,7 @@ export default function IngredientesCRUD() {
 
   const form = useAppForm<IngredienteCreate>({
     defaultValues: { nombre: "", descripcion: "", es_alergeno: true, precio_actual: 0, stock_actual: 0, unidad_medida_id: null },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value }: { value: IngredienteCreate }) => {
       try {
         if (editingId) {
           await updateMutation.mutateAsync({ id: editingId, data: value });

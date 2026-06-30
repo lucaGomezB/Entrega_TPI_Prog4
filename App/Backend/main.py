@@ -13,9 +13,12 @@ exposes its own APIRouter.
 import asyncio
 import logging
 import os
+import traceback
 from datetime import datetime, timezone
 from decimal import Decimal
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger("app.startup")
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
@@ -97,33 +100,46 @@ async def lifespan(app: FastAPI):
     cleanup or graceful worker shutdown.
     """
     # --- Startup ---
-    alembic_cfg = Config("alembic.ini")
-    # Override the database URL from the environment so Alembic connects
-    # to the correct host (e.g., "db" in Docker instead of "localhost").
-    database_url = os.getenv("DATABASE_URL")
-    if database_url:
-        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
-    command.upgrade(alembic_cfg, "head")
+    _snapshot_cleanup_task = None
+    try:
+        alembic_cfg = Config("alembic.ini")
+        # Override the database URL from the environment so Alembic connects
+        # to the correct host (e.g., "db" in Docker instead of "localhost").
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+        logger.info("Running Alembic migrations...")
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Alembic migrations completed")
 
-    # Seed roles, users, products, and other reference data (idempotent)
-    from app.db.seed import run_seed
-    run_seed()
+        # Seed roles, users, products, and other reference data (idempotent)
+        from app.db.seed import run_seed
+        logger.info("Running database seed...")
+        run_seed()
+        logger.info("Database seed completed")
 
-    # Cleanup expired refresh tokens to prevent DB bloat
-    with Session(engine) as session:
-        cleanup_expired_tokens(session)
+        # Cleanup expired refresh tokens to prevent DB bloat
+        with Session(engine) as session:
+            cleanup_expired_tokens(session)
 
-    # Start snapshot cleanup background task (runs every 5 minutes)
-    _snapshot_cleanup_task = asyncio.create_task(_cleanup_expired_snapshots())
+        # Start snapshot cleanup background task (runs every 5 minutes)
+        _snapshot_cleanup_task = asyncio.create_task(_cleanup_expired_snapshots())
+
+        logger.info("Application startup complete")
+    except Exception as exc:
+        logger.critical("FATAL: Application startup failed: %s", exc)
+        logger.critical(traceback.format_exc())
+        raise
 
     yield  # Application runs here — between startup and shutdown
 
     # --- Shutdown ---
-    _snapshot_cleanup_task.cancel()
-    try:
-        await _snapshot_cleanup_task
-    except asyncio.CancelledError:
-        pass
+    if _snapshot_cleanup_task is not None:
+        _snapshot_cleanup_task.cancel()
+        try:
+            await _snapshot_cleanup_task
+        except asyncio.CancelledError:
+            pass
 
 
 # Initialize the FastAPI application with the lifespan manager
@@ -178,7 +194,7 @@ async def log_request_timing(request: Request, call_next):
     start = datetime.now(timezone.utc)
     response = await call_next(request)
     elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
-    print(f"  [{request.method}] {request.url.path} → {response.status_code} ({elapsed_ms:.0f}ms)")
+    print(f"  [{request.method}] {request.url.path} -> {response.status_code} ({elapsed_ms:.0f}ms)")
     return response
 
 # Include all domain routers under the /api/v1 prefix

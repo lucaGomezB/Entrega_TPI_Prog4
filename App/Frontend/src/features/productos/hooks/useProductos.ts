@@ -36,7 +36,7 @@ export function useCreateProducto() {
 export function useUpdateProducto() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: ProductoUpdate }) => productosApi.update(id, data),
+    mutationFn: ({ id, data }: { id: number; data: ProductoUpdate }) => productosApi.update(id, data as Parameters<typeof productosApi.update>[1]),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.productos.all }),
   })
 }

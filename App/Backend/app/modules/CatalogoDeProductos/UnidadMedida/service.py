@@ -39,9 +39,7 @@ class UnidadMedidaService:
                 simbolo=data.simbolo,
                 tipo=data.tipo,
             )
-            uow.unidades_medida.add(unit)
-            uow.flush()
-            uow.unidades_medida.refresh(unit)
+            uow.unidades_medida.create(unit)
             return unit
 
     @staticmethod
@@ -59,9 +57,7 @@ class UnidadMedidaService:
             for field, value in update_data.items():
                 setattr(unit, field, value)
 
-            uow.unidades_medida.add(unit)
-            uow.flush()
-            uow.unidades_medida.refresh(unit)
+            uow.unidades_medida.update(unit)
             return unit
 
     @staticmethod

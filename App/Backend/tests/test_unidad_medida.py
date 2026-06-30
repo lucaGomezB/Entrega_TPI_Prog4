@@ -88,7 +88,7 @@ class TestUnidadMedidaRepository:
             UnidadMedida(nombre="kilogramo", simbolo="kg", tipo="masa"),
             UnidadMedida(nombre="gramo", simbolo="g", tipo="masa"),
             UnidadMedida(nombre="litro", simbolo="L", tipo="volumen"),
-            UnidadMedida(nombre="pieza", simbolo="p", tipo="unidad"),
+            UnidadMedida(nombre="porcion", simbolo="p", tipo="unidad"),
         ]
         for u in units:
             db_session.add(u)
@@ -103,11 +103,11 @@ class TestUnidadMedidaRepository:
         result = repo.get_all()
 
         assert len(result) == 4
-        # Expected order: masa (gramo, kilogramo), unidad (pieza), volumen (litro)
+        # Expected order: masa (gramo, kilogramo), unidad (porcion), volumen (litro)
         # Within masa: gramo before kilogramo alphabetically
         assert result[0].nombre == "gramo"
         assert result[1].nombre == "kilogramo"
-        assert result[2].nombre == "pieza"
+        assert result[2].nombre == "porcion"
         assert result[3].nombre == "litro"
 
     def test_get_all_filtered_by_tipo(self, db_session):
@@ -449,10 +449,10 @@ class TestUnidadMedidaAPI:
     def test_delete_unidad_medida_as_admin(self, client, admin_headers, db_session):
         """DELETE as ADMIN removes an unreferenced unit."""
         self._seed_roles(db_session)
-        unit = self._seed_unit(db_session, "pieza", "p", "unidad")
+        unit = self._seed_unit(db_session, "porcion", "p", "unidad")
         from app.modules.CatalogoDeProductos.UnidadMedida.models import UnidadMedida
         found = db_session.exec(
-            select(UnidadMedida).where(UnidadMedida.nombre == "pieza")
+            select(UnidadMedida).where(UnidadMedida.nombre == "porcion")
         ).first()
 
         response = client.delete(

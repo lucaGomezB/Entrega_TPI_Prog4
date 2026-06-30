@@ -21,6 +21,7 @@ import ErrorBanner from "@/shared/components/ErrorBanner";
 import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
 import FormFooter from "@/shared/components/FormFooter";
 import { useCloudinaryUpload } from "@/shared/hooks/useCloudinaryUpload";
+import SearchFilter from "@/shared/components/SearchFilter";
 
 /* ── Helpers ── */
 
@@ -258,8 +259,7 @@ export default function CategoriasCRUD() {
 
   const form = useAppForm<CategoriaCreate>({
     defaultValues: { nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] },
-    onSubmit: async ({ value }) => {
-      setSubmitting(true);
+    onSubmit: async ({ value }: { value: CategoriaCreate }) => {
       try {
         if (editingId) {
           await updateMutation.mutateAsync({ id: editingId, data: value });
@@ -359,9 +359,7 @@ export default function CategoriasCRUD() {
       <ErrorBanner isError={isError} error={error} message="Error al cargar" />
 
       <div className="flex gap-2 mb-4 flex-wrap items-center">
-        <input type="text" placeholder="Filtrar por nombre..." value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="border px-3 py-1 rounded" />
+        <SearchFilter onSearch={setFilter} placeholder="Filtrar por nombre..." />
 
         <button onClick={handleCreate}
           className="bg-green-600 text-white px-4 py-1.5 rounded cursor-pointer hover:bg-green-700">+ Nueva</button>
@@ -389,7 +387,7 @@ export default function CategoriasCRUD() {
             <form.Field name="descripcion">
               {(field) => (
                 <input
-                  value={field.state.value}
+                  value={field.state.value as string ?? ""}
                   onChange={(e) => field.handleChange(e.target.value)}
                   onBlur={field.handleBlur}
                   className="border px-2 py-1 rounded w-full"

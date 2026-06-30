@@ -36,7 +36,7 @@ export function useCreateCategoria() {
 export function useUpdateCategoria() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: CategoriaUpdate }) => categoriasApi.update(id, data),
+    mutationFn: ({ id, data }: { id: number; data: CategoriaUpdate }) => categoriasApi.update(id, data as Parameters<typeof categoriasApi.update>[1]),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.categorias.all })
       qc.invalidateQueries({ queryKey: queryKeys.categorias.tree })

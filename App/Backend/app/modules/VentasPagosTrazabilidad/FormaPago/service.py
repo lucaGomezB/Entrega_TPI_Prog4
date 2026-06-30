@@ -31,7 +31,7 @@ class FormaPagoService:
         """Create a new payment method. Requires ADMIN role."""
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
             db_obj = FormaPago(**data.model_dump())
-            uow.formas_pago.add(db_obj)
+            uow.formas_pago.create(db_obj)
             return db_obj
 
     @staticmethod
@@ -44,7 +44,7 @@ class FormaPagoService:
             values = data.model_dump(exclude_unset=True)
             for key, value in values.items():
                 setattr(db_obj, key, value)
-            uow.formas_pago.add(db_obj)
+            uow.formas_pago.update(db_obj)
             return db_obj
 
     @staticmethod

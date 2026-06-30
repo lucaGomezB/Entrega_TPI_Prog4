@@ -10,6 +10,7 @@ import {
   email,
   minLength,
 } from "@/shared/hooks/useAppForm";
+import RegistrarForm from "@/features/auth/components/RegistrarForm";
 
 /**
  * Response shape from the backend auth endpoints (login/register).
@@ -36,14 +37,10 @@ interface UserInfo {
 /** Discriminated union to toggle between login and register modes. */
 type Modo = "login" | "register";
 
-/** All form fields for both login and register modes. */
+/** Form fields for login mode only. Registration uses RegistrarForm. */
 interface LoginFormValues {
   email: string;
   password: string;
-  confirmPassword: string;
-  nombre: string;
-  apellido: string;
-  celular: string;
 }
 
 /**
@@ -66,7 +63,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const navigate = useNavigate();
 
   /**
-   * Finalises authentication flow:
+   * Finalises authentication flow for LOGIN mode:
    *   1. Fetch the authenticated user's info from /auth/me.
    *   2. Persist it to the client-side store via setUserInfo().
    *   3. Invoke the parent's onLogin callback (if provided).
@@ -87,11 +84,25 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   };
 
   /**
-   * TanStack Form instance for the login/register form.
+   * Redirect handler for RegistrarForm.onSuccess.
+   * RegistrarForm already fetched /auth/me and set user info — we just
+   * need to invoke onLogin callback and redirect based on role.
+   */
+  const handleRegistroSuccess = () => {
+    onLogin?.();
+    const roles = useAuthStore.getState().user?.roles ?? [];
+    if (roles.includes("ADMIN")) {
+      navigate("/admin/dashboard", { replace: true });
+    } else {
+      navigate("/", { replace: true });
+    }
+  };
+
+  /**
+   * TanStack Form instance for the login form.
    *
-   * On submit:
-   *   - login mode:  POST /auth/login with email + password -> store token -> finalize
-   *   - register mode:  validates password match, POST /auth/register -> store token -> finalize
+   * On submit: POST /auth/login with email + password -> store token -> finalize.
+   * Registration is handled entirely by RegistrarForm.
    *
    * Error handling covers:
    *   - Network failure (TypeError "Failed to fetch"): backend not running.
@@ -102,46 +113,19 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     defaultValues: {
       email: "",
       password: "",
-      confirmPassword: "",
-      nombre: "",
-      apellido: "",
-      celular: "",
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value }: { value: LoginFormValues }) => {
       setError("");
       setIsLoading(true);
 
       try {
-        if (modo === "login") {
-          const response = await apiFetch<LoginResponse>("/auth/login", {
-            method: "POST",
-            body: JSON.stringify({ email: value.email, password: value.password }),
-          });
+        const response = await apiFetch<LoginResponse>("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email: value.email, password: value.password }),
+        });
 
-          setToken(response.access_token, response.expires_in);
-          await finalizarAuth();
-        } else {
-          // Client-side password confirmation check before hitting the backend
-          if (value.password !== value.confirmPassword) {
-            setError("Las contraseñas no coinciden");
-            return;
-          }
-
-          const response = await apiFetch<LoginResponse>("/auth/register", {
-            method: "POST",
-            body: JSON.stringify({
-              nombre: value.nombre.trim(),
-              apellido: value.apellido.trim(),
-              email: value.email.trim(),
-              // Send null instead of empty string to keep the field absent on the backend
-              celular: value.celular.trim() || null,
-              password: value.password,
-            }),
-          });
-
-          setToken(response.access_token, response.expires_in);
-          await finalizarAuth();
-        }
+        setToken(response.access_token, response.expires_in);
+        await finalizarAuth();
       } catch (err: unknown) {
         console.error("Auth error:", err);
 
@@ -153,11 +137,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
           }
         }
         if (!errorMsg) {
-          if (modo === "register") {
-            errorMsg = "Error al crear la cuenta. Es posible que el email ya este registrado.";
-          } else {
-            errorMsg = "No se pudo iniciar sesion. Verifique su email y contrasena.";
-          }
+          errorMsg = "No se pudo iniciar sesion. Verifique su email y contrasena.";
         }
         setError(errorMsg);
       } finally {
@@ -223,83 +203,46 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
           </button>
         </div>
 
-        <h1 className="text-xl font-bold mb-4 text-center text-gray-800">
-          {modo === "login" ? "Iniciar Sesion" : "Crear Cuenta"}
-        </h1>
+        {modo === "register" ? (
+          <>
+            <h1 className="text-xl font-bold mb-4 text-center text-gray-800">Crear Cuenta</h1>
+            <RegistrarForm onSuccess={handleRegistroSuccess} />
+          </>
+        ) : (
+          <>
+            <h1 className="text-xl font-bold mb-4 text-center text-gray-800">Iniciar Sesion</h1>
 
-        {/* Error banner — shown when auth fails (network, validation, or credentials) */}
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4 text-sm text-center">
-            {error}
-          </div>
-        )}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            void form.handleSubmit();
-          }}
-          className="flex flex-col gap-4"
-        >
-          {/* Registration-only fields: nombre, apellido, celular */}
-          {modo === "register" && (
-            <>
-              <div className="flex gap-3">
-                <form.Field
-                  name="nombre"
-                  validators={{ onChange: required() }}
-                >
-                  {(field) => (
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-                      <input
-                        value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                        onBlur={field.handleBlur}
-                        disabled={isLoading}
-                        className="w-full border border-gray-300 px-3 py-2 rounded focus:outline-none focus:border-blue-500"
-                      />
-                      {field.state.meta.errors.length > 0 && (
-                        <em className="text-red-500 text-xs mt-1 block">{field.state.meta.errors.join(", ")}</em>
-                      )}
-                    </div>
-                  )}
-                </form.Field>
-                <form.Field
-                  name="apellido"
-                  validators={{ onChange: required() }}
-                >
-                  {(field) => (
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
-                      <input
-                        value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                        onBlur={field.handleBlur}
-                        disabled={isLoading}
-                        className="w-full border border-gray-300 px-3 py-2 rounded focus:outline-none focus:border-blue-500"
-                      />
-                      {field.state.meta.errors.length > 0 && (
-                        <em className="text-red-500 text-xs mt-1 block">{field.state.meta.errors.join(", ")}</em>
-                      )}
-                    </div>
-                  )}
-                </form.Field>
+            {/* Error banner — shown when login fails (network, validation, or credentials) */}
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4 text-sm text-center">
+                {error}
               </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void form.handleSubmit();
+              }}
+              className="flex flex-col gap-4"
+            >
+              {/* Email field */}
               <form.Field
-                name="celular"
-                validators={{ onChange: required() }}
+                name="email"
+                validators={{ onChange: composeValidators(required(), email()) }}
               >
                 {(field) => (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <input
+                      type="email"
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                       onBlur={field.handleBlur}
-                      disabled={isLoading}
+                      placeholder="ej: client@email.com"
                       className="w-full border border-gray-300 px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                      disabled={isLoading}
                     />
                     {field.state.meta.errors.length > 0 && (
                       <em className="text-red-500 text-xs mt-1 block">{field.state.meta.errors.join(", ")}</em>
@@ -307,114 +250,63 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                   </div>
                 )}
               </form.Field>
-            </>
-          )}
 
-          {/* Email field — required in both login and register modes */}
-          <form.Field
-            name="email"
-            validators={{ onChange: composeValidators(required(), email()) }}
-          >
-            {(field) => (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  onBlur={field.handleBlur}
-                  placeholder={modo === "login" ? "ej: client@email.com" : ""}
-                  className="w-full border border-gray-300 px-3 py-2 rounded focus:outline-none focus:border-blue-500"
-                  disabled={isLoading}
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <em className="text-red-500 text-xs mt-1 block">{field.state.meta.errors.join(", ")}</em>
-                )}
-              </div>
-            )}
-          </form.Field>
-
-          {/* Password field with show/hide toggle icon */}
-          <form.Field
-            name="password"
-            validators={{ onChange: composeValidators(required(), minLength(6)) }}
-          >
-            {(field) => (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    onBlur={field.handleBlur}
-                    placeholder="********"
-                    className="w-full border border-gray-300 px-3 py-2 pr-10 rounded focus:outline-none focus:border-blue-500"
-                    disabled={isLoading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={isLoading}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 cursor-pointer"
-                    tabIndex={-1}
-                  >
-                    {showPassword ? (
-                      // Eye-off icon when password is visible
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                      </svg>
-                    ) : (
-                      // Eye icon when password is hidden
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
+              {/* Password field with show/hide toggle icon */}
+              <form.Field
+                name="password"
+                validators={{ onChange: composeValidators(required(), minLength(6)) }}
+              >
+                {(field) => (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        onBlur={field.handleBlur}
+                        placeholder="********"
+                        className="w-full border border-gray-300 px-3 py-2 pr-10 rounded focus:outline-none focus:border-blue-500"
+                        disabled={isLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={isLoading}
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 cursor-pointer"
+                        tabIndex={-1}
+                      >
+                        {showPassword ? (
+                          // Eye-off icon when password is visible
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                          </svg>
+                        ) : (
+                          // Eye icon when password is hidden
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                    {field.state.meta.errors.length > 0 && (
+                      <em className="text-red-500 text-xs mt-1 block">{field.state.meta.errors.join(", ")}</em>
                     )}
-                  </button>
-                </div>
-                {field.state.meta.errors.length > 0 && (
-                  <em className="text-red-500 text-xs mt-1 block">{field.state.meta.errors.join(", ")}</em>
+                  </div>
                 )}
-              </div>
-            )}
-          </form.Field>
+              </form.Field>
 
-          {/* Password confirmation — only shown in register mode */}
-          {modo === "register" && (
-            <form.Field
-              name="confirmPassword"
-              validators={{ onChange: required() }}
-            >
-              {(field) => (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contrasena</label>
-                  <input
-                    type="password"
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    onBlur={field.handleBlur}
-                    disabled={isLoading}
-                    className="w-full border border-gray-300 px-3 py-2 rounded focus:outline-none focus:border-blue-500"
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <em className="text-red-500 text-xs mt-1 block">{field.state.meta.errors.join(", ")}</em>
-                  )}
-                </div>
-              )}
-            </form.Field>
-          )}
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-2 transition-colors cursor-pointer disabled:bg-blue-400 disabled:cursor-not-allowed"
-          >
-            {isLoading
-              ? modo === "login" ? "Iniciando..." : "Creando cuenta..."
-              : modo === "login" ? "Entrar" : "Crear cuenta"}
-          </button>
-        </form>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-2 transition-colors cursor-pointer disabled:bg-blue-400 disabled:cursor-not-allowed"
+              >
+                {isLoading ? "Iniciando..." : "Entrar"}
+              </button>
+            </form>
+          </>
+        )}
 
         {/* Guest / toggle section — divider with guest button (login) or "already have account" link (register) */}
         <div className="mt-6 text-center space-y-3">

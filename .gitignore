@@ -5,6 +5,8 @@ dist/
 build/
 __pycache__/
 *.pyc
+*.log
+App/Backend/logs/
 docs/50-preguntas-examen.md
 .engram
 openspec/

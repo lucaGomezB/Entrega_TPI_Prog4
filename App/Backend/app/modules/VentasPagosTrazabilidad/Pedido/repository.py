@@ -7,7 +7,9 @@ and cross-module lookups for stock validation (Producto, Ingrediente).
 from sqlmodel import Session, select, col, asc, desc
 from typing import List, Optional
 from sqlalchemy.orm import selectinload
+from sqlalchemy import or_, cast, String
 from app.core.base_repository import BaseRepository
+from app.modules.IdentidadYAcceso.Usuario.models import Usuario
 from .models import Pedido
 from ..DetallePedido.models import DetallePedido
 
@@ -90,44 +92,79 @@ class PedidoRepository(BaseRepository[Pedido]):
         )
         return self.session.exec(statement).all()
 
-    def get_activos(self, skip: int = 0, limit: int = 100, sort_by: str = "id", sort_order: str = "desc") -> List[Pedido]:
-        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), with dynamic sorting."""
+    def get_activos(self, skip: int = 0, limit: int = 100, sort_by: str = "id", sort_order: str = "desc", search: Optional[str] = None) -> List[Pedido]:
+        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), with dynamic sorting and optional text search.
+
+        When `search` is provided, filters by ILIKE on:
+          - Pedido.id (cast to text) — match by order number
+          - Usuario.email — match by customer email (via join)
+          - Usuario.nombre — match by customer name (via join)
+          - Pedido.notas — match by order notes
+        """
         statement = (
             select(Pedido)
             .options(*self._eager_options())
             .where(col(Pedido.estado_codigo).not_in(ESTADOS_TERMINALES))
             .where(col(Pedido.deleted_at).is_(None))
-            .offset(skip)
-            .limit(limit)
         )
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            statement = statement.join(Pedido.usuario).where(
+                or_(
+                    cast(Pedido.id, String).ilike(pattern),
+                    Usuario.email.ilike(pattern),
+                    Usuario.nombre.ilike(pattern),
+                    Pedido.notas.ilike(pattern),
+                )
+            )
+        statement = statement.offset(skip).limit(limit)
         statement = _apply_sort(statement, Pedido, sort_by, sort_order)
         return self.session.exec(statement).all()
 
-    def get_historial(self, skip: int = 0, limit: int = 100, sort_by: str = "id", sort_order: str = "desc") -> List[Pedido]:
-        """Fetch terminal-state orders (ENTREGADO or CANCELADO), with dynamic sorting."""
+    def get_historial(self, skip: int = 0, limit: int = 100, sort_by: str = "id", sort_order: str = "desc", search: Optional[str] = None) -> List[Pedido]:
+        """Fetch terminal-state orders (ENTREGADO or CANCELADO), with dynamic sorting and optional text search.
+
+        When `search` is provided, filters by ILIKE on Pedido.id (cast to text),
+        Usuario.email, Usuario.nombre (via join), and Pedido.notas.
+        """
         statement = (
             select(Pedido)
             .options(*self._eager_options())
             .where(col(Pedido.estado_codigo).in_(ESTADOS_TERMINALES))
             .where(col(Pedido.deleted_at).is_(None))
-            .offset(skip)
-            .limit(limit)
         )
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            statement = statement.join(Pedido.usuario).where(
+                or_(
+                    cast(Pedido.id, String).ilike(pattern),
+                    Usuario.email.ilike(pattern),
+                    Usuario.nombre.ilike(pattern),
+                    Pedido.notas.ilike(pattern),
+                )
+            )
+        statement = statement.offset(skip).limit(limit)
         statement = _apply_sort(statement, Pedido, sort_by, sort_order)
         return self.session.exec(statement).all()
 
-    def get_historial_by_usuario(self, usuario_id: int, skip: int = 0, limit: int = 100) -> List[Pedido]:
-        """Fetch terminal-state orders for a specific user."""
+    def get_historial_by_usuario(self, usuario_id: int, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> List[Pedido]:
+        """Fetch terminal-state orders for a specific user, with optional text search."""
         statement = (
             select(Pedido)
             .options(*self._eager_options())
             .where(Pedido.usuario_id == usuario_id)
             .where(col(Pedido.estado_codigo).in_(ESTADOS_TERMINALES))
             .where(col(Pedido.deleted_at).is_(None))
-            .offset(skip)
-            .limit(limit)
-            .order_by(Pedido.updated_at.desc())
         )
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            statement = statement.where(
+                or_(
+                    cast(Pedido.id, String).ilike(pattern),
+                    Pedido.notas.ilike(pattern),
+                )
+            )
+        statement = statement.offset(skip).limit(limit).order_by(Pedido.updated_at.desc())
         return self.session.exec(statement).all()
 
     # ------------------------------------------------------------------
@@ -182,8 +219,8 @@ class PedidoRepository(BaseRepository[Pedido]):
         result = self.session.exec(statement)
         return result.one()
 
-    def count_activos(self) -> int:
-        """Count non-terminal (not ENTREGADO or CANCELADO) non-deleted orders."""
+    def count_activos(self, search: Optional[str] = None) -> int:
+        """Count non-terminal (not ENTREGADO or CANCELADO) non-deleted orders, with optional text search."""
         from sqlmodel import func
         from sqlalchemy import column
         statement = select(func.count()).select_from(self.model_class)
@@ -191,11 +228,21 @@ class PedidoRepository(BaseRepository[Pedido]):
             column("estado_codigo").not_in(ESTADOS_TERMINALES),
             column("deleted_at").is_(None),
         )
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            statement = statement.join(Usuario, Pedido.usuario_id == Usuario.id).where(
+                or_(
+                    cast(Pedido.id, String).ilike(pattern),
+                    Usuario.email.ilike(pattern),
+                    Usuario.nombre.ilike(pattern),
+                    column("notas").ilike(pattern),
+                )
+            )
         result = self.session.exec(statement)
         return result.one()
 
-    def count_historial(self) -> int:
-        """Count terminal-state (ENTREGADO or CANCELADO) non-deleted orders."""
+    def count_historial(self, search: Optional[str] = None) -> int:
+        """Count terminal-state (ENTREGADO or CANCELADO) non-deleted orders, with optional text search."""
         from sqlmodel import func
         from sqlalchemy import column
         statement = select(func.count()).select_from(self.model_class)
@@ -203,11 +250,21 @@ class PedidoRepository(BaseRepository[Pedido]):
             column("estado_codigo").in_(ESTADOS_TERMINALES),
             column("deleted_at").is_(None),
         )
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            statement = statement.join(Usuario, Pedido.usuario_id == Usuario.id).where(
+                or_(
+                    cast(Pedido.id, String).ilike(pattern),
+                    Usuario.email.ilike(pattern),
+                    Usuario.nombre.ilike(pattern),
+                    column("notas").ilike(pattern),
+                )
+            )
         result = self.session.exec(statement)
         return result.one()
 
-    def count_by_usuario_id(self, usuario_id: int) -> int:
-        """Count non-deleted orders for a given user."""
+    def count_by_usuario_id(self, usuario_id: int, search: Optional[str] = None) -> int:
+        """Count non-deleted orders for a given user, with optional text search."""
         from sqlmodel import func
         from sqlalchemy import column
         statement = select(func.count()).select_from(self.model_class)
@@ -215,5 +272,13 @@ class PedidoRepository(BaseRepository[Pedido]):
             column("usuario_id") == usuario_id,
             column("deleted_at").is_(None),
         )
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            statement = statement.where(
+                or_(
+                    cast(Pedido.id, String).ilike(pattern),
+                    column("notas").ilike(pattern),
+                )
+            )
         result = self.session.exec(statement)
         return result.one()

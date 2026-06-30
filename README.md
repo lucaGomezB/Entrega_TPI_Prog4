@@ -244,7 +244,7 @@ Entrega_TPI_Prog4/
 │   │   ├── .env.example
 │   │   ├── alembic.ini
 │   │   ├── main.py                      # FastAPI app factory + lifespan
-│   │   ├── core/                        # Infraestructura compartida
+│   │   ├── app/core/                    # Infraestructura compartida
 │   │   │   ├── database.py              # Engine SQLModel + get_session
 │   │   │   ├── dependencies.py          # Dependencias FastAPI (roles, auth)
 │   │   │   ├── security/                # JWT, hash passwords

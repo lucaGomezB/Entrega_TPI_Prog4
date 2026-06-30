@@ -26,9 +26,9 @@ from ..UnidadMedida.models import UnidadMedida
 # ── Unit conversion factors ──────────────────────────────────────────────
 # Each UnidadMedida ID maps to its conversion factor relative to the
 # canonical base unit of its tipo (gramo for masa, mililitro for volumen,
-# pieza for unidad, metro cuadrado for area).
+# porcion for unidad, metro cuadrado for area).
 #
-# Base units (factor=1): g(2), mL(4), pieza(5), m²(7)
+# Base units (factor=1): g(2), mL(4), porcion(5), m²(7)
 # These are also stored in the unidadmedida.factor_conversion column.
 # The dict below is the canonical seed; _load_conversion_factors()
 # reads from the DB at runtime.
@@ -37,8 +37,8 @@ _CONVERSION: dict[int, Decimal] = {
     2: Decimal("1"),       # g (base)
     3: Decimal("1000"),   # L → mL
     4: Decimal("1"),       # mL (base)
-    5: Decimal("1"),       # pieza (base)
-    6: Decimal("12"),     # docena → pieza
+    5: Decimal("1"),       # porcion (base)
+    6: Decimal("12"),     # docena → porcion
     7: Decimal("1"),       # m² (base)
 }
 
@@ -113,8 +113,7 @@ class ProductoService:
                     detail="El precio base debe ser mayor a 0 cuando el producto no tiene ingredientes ni es de reventa"
                 )
 
-            uow.productos.add(db_producto)
-            uow.productos.flush()
+            uow.productos.create(db_producto)
 
             if data.categorias_ids:
                 for cat_id in data.categorias_ids:
@@ -229,7 +228,7 @@ class ProductoService:
         if db_producto.precio_actual < db_producto.precio_base:
             db_producto.precio_actual = db_producto.precio_base
 
-        uow.add(db_producto)
+        uow.productos.update(db_producto)
 
     @staticmethod
     def recalcular_precio_productos_afectados(session: Session, ingrediente_id: int):
@@ -423,7 +422,7 @@ class ProductoService:
             if not db_producto.es_insumo and db_producto.ingredientes:
                 ProductoService._recalcular_precio_producto(uow, producto_id)
 
-            uow.productos.add(db_producto)
+            uow.productos.update(db_producto)
             return db_producto
 
     @staticmethod
@@ -438,7 +437,7 @@ class ProductoService:
                 return None
 
             db_producto.deleted_at = get_utc_now()
-            uow.productos.add(db_producto)
+            uow.productos.update(db_producto)
             return db_producto
 
     @staticmethod
@@ -485,8 +484,8 @@ class ProductoService:
             return result
 
     @staticmethod
-    def update_ingrediente_cantidad(session: Session, producto_id: int, ingrediente_id: int, cantidad: Decimal):
-        """Update the cantidad of a ProductoIngrediente association.
+    def update_ingrediente(session: Session, producto_id: int, ingrediente_id: int, data: "IngredienteAsignado"):
+        """Update a ProductoIngrediente association (cantidad, removible, principal, unidad).
 
         Returns the updated ingredient list on success, None if not found.
         """
@@ -495,10 +494,14 @@ class ProductoService:
             if not pi:
                 return None
 
-            pi.cantidad = cantidad
-            uow.add(pi)
+            pi.cantidad = data.cantidad
+            pi.es_removible = data.es_removible
+            pi.es_principal = data.es_principal
+            if data.unidad_medida_id is not None:
+                pi.unidad_medida_id = data.unidad_medida_id
+            uow.update(pi)
 
-            # Recalculate price after quantity change
+            # Recalculate price after change
             ProductoService._recalcular_precio_producto(uow, producto_id)
 
             return uow.productos.get_ingredientes(producto_id)

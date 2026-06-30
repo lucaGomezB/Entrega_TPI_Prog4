@@ -180,7 +180,7 @@ Router → Service → Unit of Work → Repository → SQLModel
 
 - JWT access token (corto, en memoria/sessionStorage)
 - Refresh token en httpOnly cookie (inaccesible desde JavaScript)
-- RBAC con roles: ADMIN, CLIENTE, STOCK, PEDIDOS
+- RBAC con roles: ADMIN, CLIENT, STOCK, PEDIDOS
 - Roles planos: cada endpoint lista explicitamente los roles permitidos via require_roles(). No existe jerarquia de herencia entre roles. El seeder asigna un rol por usuario. Cada endpoint declara que roles pueden acceder.
 
 ### WebSocket

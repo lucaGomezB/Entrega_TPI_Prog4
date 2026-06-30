@@ -65,7 +65,7 @@ function EditarUsuarioModal({
       email: usuario.email,
       celular: usuario.celular ?? "",
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value }: { value: EditarForm }) => {
       setGuardando(true);
       try {
         await onSave(usuario.id, {
@@ -187,8 +187,7 @@ function CrearUsuarioModal({
 
   const form = useAppForm<CrearForm>({
     defaultValues: { nombre: "", apellido: "", email: "", celular: "", password: "", confirmPassword: "" },
-    onSubmit: async ({ value }) => {
-      setError(null);
+    onSubmit: async ({ value }: { value: CrearForm }) => {
       if (value.password.length < 6) { setError("La contrasena debe tener al menos 6 caracteres"); return; }
       if (value.password !== value.confirmPassword) { setError("Las contrasenas no coinciden"); return; }
       setGuardando(true);

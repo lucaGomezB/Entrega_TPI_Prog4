@@ -101,7 +101,7 @@ class PedidoService:
         ))
         # Update the order's current state
         pedido.estado_codigo = estado_siguiente
-        uow.pedidos.add(pedido)
+        uow.pedidos.update(pedido)
 
     @staticmethod
     def _validar_personalizacion(session: Session, producto_id: int, personalizacion: list[int]):
@@ -184,14 +184,15 @@ class PedidoService:
 
     @staticmethod
     def get_activos(session: Session, skip: int = 0, limit: int = 100,
-                    sort_by: str = "id", sort_order: str = "desc") -> PaginatedResponse[PedidoRead]:
-        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), with dynamic sorting.
+                    sort_by: str = "id", sort_order: str = "desc",
+                    search: Optional[str] = None) -> PaginatedResponse[PedidoRead]:
+        """Fetch non-terminal orders (not ENTREGADO or CANCELADO), with dynamic sorting and optional text search.
 
         Used for the "active orders" dashboard.
         """
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
-            rows = uow.pedidos.get_activos(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
-            total = uow.pedidos.count_activos()
+            rows = uow.pedidos.get_activos(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order, search=search)
+            total = uow.pedidos.count_activos(search=search)
             return PaginatedResponse(
                 items=[PedidoRead.model_validate(r) for r in rows],
                 total=total,
@@ -201,8 +202,9 @@ class PedidoService:
 
     @staticmethod
     def get_activos_scoped(session: Session, user, skip: int = 0, limit: int = 100,
-                           sort_by: str = "id", sort_order: str = "desc") -> PaginatedResponse[PedidoRead]:
-        """Fetch active orders scoped to the user's role.
+                           sort_by: str = "id", sort_order: str = "desc",
+                           search: Optional[str] = None) -> PaginatedResponse[PedidoRead]:
+        """Fetch active orders scoped to the user's role, with optional text search.
 
         ADMIN/PEDIDOS see all active orders; regular users only see their own.
         Sort validation is done here so the router stays thin.
@@ -221,10 +223,12 @@ class PedidoService:
         es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in user.roles)
         if es_gestor:
             return PedidoService.get_activos(session, skip=skip, limit=limit,
-                                             sort_by=sort_by, sort_order=sort_order)
+                                             sort_by=sort_by, sort_order=sort_order,
+                                             search=search)
         # Regular user: filter to their own active orders
         todos_activos = PedidoService.get_activos(session, skip=0, limit=10000,
-                                                   sort_by=sort_by, sort_order=sort_order)
+                                                   sort_by=sort_by, sort_order=sort_order,
+                                                   search=search)
         items_filtrados = [p for p in todos_activos.items if p.usuario_id == user.id]
         return PaginatedResponse(
             items=items_filtrados[skip:skip + limit],
@@ -235,14 +239,15 @@ class PedidoService:
 
     @staticmethod
     def get_historial(session: Session, skip: int = 0, limit: int = 100,
-                      sort_by: str = "id", sort_order: str = "desc") -> PaginatedResponse[PedidoRead]:
-        """Fetch terminal-state orders (ENTREGADO or CANCELADO), with dynamic sorting.
+                      sort_by: str = "id", sort_order: str = "desc",
+                      search: Optional[str] = None) -> PaginatedResponse[PedidoRead]:
+        """Fetch terminal-state orders (ENTREGADO or CANCELADO), with dynamic sorting and optional text search.
 
         Used for the order history view.
         """
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
-            rows = uow.pedidos.get_historial(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order)
-            total = uow.pedidos.count_historial()
+            rows = uow.pedidos.get_historial(skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order, search=search)
+            total = uow.pedidos.count_historial(search=search)
             return PaginatedResponse(
                 items=[PedidoRead.model_validate(r) for r in rows],
                 total=total,
@@ -251,11 +256,12 @@ class PedidoService:
             )
 
     @staticmethod
-    def get_historial_by_usuario(session: Session, usuario_id: int, skip: int = 0, limit: int = 100) -> PaginatedResponse[PedidoRead]:
-        """Fetch terminal-state orders for a specific user, most recently updated first."""
+    def get_historial_by_usuario(session: Session, usuario_id: int, skip: int = 0, limit: int = 100,
+                                 search: Optional[str] = None) -> PaginatedResponse[PedidoRead]:
+        """Fetch terminal-state orders for a specific user, most recently updated first, with optional text search."""
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
-            rows = uow.pedidos.get_historial_by_usuario(usuario_id, skip=skip, limit=limit)
-            total = uow.pedidos.count_by_usuario_id(usuario_id)
+            rows = uow.pedidos.get_historial_by_usuario(usuario_id, skip=skip, limit=limit, search=search)
+            total = uow.pedidos.count_by_usuario_id(usuario_id, search=search)
             return PaginatedResponse(
                 items=[PedidoRead.model_validate(r) for r in rows],
                 total=total,
@@ -375,8 +381,7 @@ class PedidoService:
                 total=total,
                 notas=data.notas,
             )
-            uow.add(db_pedido)
-            uow.flush()
+            uow.pedidos.create(db_pedido)
 
             # ── Step 4: Create DetallePedido rows ──
             if data.detalles:
@@ -479,7 +484,7 @@ class PedidoService:
             else:
                 detalle.cantidad = cantidad
                 detalle.subtotal_snap = detalle.precio_snapshot * cantidad
-                uow.add(detalle)
+                uow.detalles.update(detalle)
 
             # Recalculate order totals from remaining details
             detalles_restantes = uow.pedidos.get_detalles(pedido_id)
@@ -758,8 +763,7 @@ class PedidoService:
                 total=snapshot.total,
                 notas=snapshot.notas,
             )
-            uow.add(db_pedido)
-            uow.flush()
+            uow.pedidos.create(db_pedido)
 
             # ── Step 4: Create DetallePedido rows ──
             for item_dict in snapshot.items:
@@ -1086,7 +1090,7 @@ class PedidoService:
             for key, value in values.items():
                 setattr(db_pedido, key, value)
 
-            uow.add(db_pedido)
+            uow.pedidos.update(db_pedido)
             uow.refresh(db_pedido)
             return db_pedido
 
@@ -1102,5 +1106,5 @@ class PedidoService:
             if not db_pedido:
                 return False
             db_pedido.deleted_at = get_utc_now()
-            uow.add(db_pedido)
+            uow.pedidos.update(db_pedido)
             return True

@@ -34,5 +34,5 @@ class DetallePedidoService:
                 subtotal_snap=subtotal,
                 personalizacion=data.personalizacion,
             )
-            uow.detalles.add(db_detalle)
+            uow.detalles.create(db_detalle)
             return db_detalle

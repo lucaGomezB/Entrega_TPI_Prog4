@@ -1,1 +1,0 @@
-MP_WEBHOOK_SECRET is missing or still the default placeholder. Webhook signature validation will be skipped — any caller can POST to /pagos/webhook.

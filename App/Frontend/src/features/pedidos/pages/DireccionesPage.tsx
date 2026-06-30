@@ -22,6 +22,7 @@ import {
 import ErrorBanner from "@/shared/components/ErrorBanner";
 import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
 import FormFooter from "@/shared/components/FormFooter";
+import SearchFilter from "@/shared/components/SearchFilter";
 
 const DEFAULT_LIMIT = 10;
 
@@ -59,7 +60,7 @@ function DireccionModal({
       codigo_postal: direccion?.codigo_postal ?? "",
       es_principal: direccion?.es_principal ?? false,
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value }: { value: DireccionFormFields }) => {
       const base = {
         alias: value.alias.trim() || null,
         linea1: value.linea1.trim(),
@@ -170,6 +171,7 @@ export default function DireccionesPage() {
   const [editando, setEditando] = useState<DireccionEntrega | undefined>(undefined);
   const [skip, setSkip] = useState(0);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
+  const [search, setSearch] = useState("");
 
   // ── TanStack Query ──
   const { data: direccionesRaw = [], isLoading, isError, error } = useDirecciones();
@@ -188,9 +190,21 @@ export default function DireccionesPage() {
     return sorted;
   }, [direccionesRaw]);
 
+  // Client-side search filter on alias, linea1, ciudad
+  const filteredDirecciones = useMemo(() => {
+    if (!search.trim()) return direcciones;
+    const s = search.toLowerCase();
+    return direcciones.filter(
+      (d) =>
+        (d.alias ?? "").toLowerCase().includes(s) ||
+        d.linea1.toLowerCase().includes(s) ||
+        d.ciudad.toLowerCase().includes(s)
+    );
+  }, [direcciones, search]);
+
   // Client-side pagination
-  const total = direcciones.length;
-  const pagedDirecciones = direcciones.slice(skip, skip + limit);
+  const total = filteredDirecciones.length;
+  const pagedDirecciones = filteredDirecciones.slice(skip, skip + limit);
 
   const handleCreate = async (data: DireccionEntregaInput) => {
     await createMutation.mutateAsync(data);
@@ -287,7 +301,13 @@ export default function DireccionesPage() {
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Mis Direcciones</h1>
-        <button onClick={() => { setEditando(undefined); setShowModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 cursor-pointer">+ Nueva Direccion</button>
+        <div className="flex items-center gap-3">
+          <SearchFilter
+            onSearch={(v) => { setSearch(v); setSkip(0); }}
+            placeholder="Buscar direccion..."
+          />
+          <button onClick={() => { setEditando(undefined); setShowModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700 cursor-pointer">+ Nueva Direccion</button>
+        </div>
       </div>
       <ErrorBanner isError={isError} error={error} message="Error al cargar" />
       <DataTable

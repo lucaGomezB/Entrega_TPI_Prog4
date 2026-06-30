@@ -36,7 +36,7 @@ export function useCreateIngrediente() {
 export function useUpdateIngrediente() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: IngredienteUpdate }) => ingredientesApi.update(id, data),
+    mutationFn: ({ id, data }: { id: number; data: IngredienteUpdate }) => ingredientesApi.update(id, data as Parameters<typeof ingredientesApi.update>[1]),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.ingredientes.all }),
   })
 }

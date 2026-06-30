@@ -38,7 +38,7 @@ class DireccionEntregaService:
                 existing_principal = uow.direcciones.get_principal(usuario_id)
                 if existing_principal:
                     existing_principal.es_principal = False
-                    uow.direcciones.add(existing_principal)
+                    uow.direcciones.update(existing_principal)
 
             db_direccion = DireccionEntrega(
                 usuario_id=usuario_id,
@@ -52,9 +52,7 @@ class DireccionEntregaService:
                 longitud=data.longitud,
                 es_principal=data.es_principal,
             )
-            uow.direcciones.add(db_direccion)
-            uow.flush()
-            uow.direcciones.refresh(db_direccion)
+            uow.direcciones.create(db_direccion)
             return db_direccion
 
     @staticmethod
@@ -116,7 +114,7 @@ class DireccionEntregaService:
                     existing_principal = uow.direcciones.get_principal(usuario_id)
                     if existing_principal and existing_principal.id != direccion_id:
                         existing_principal.es_principal = False
-                        uow.direcciones.add(existing_principal)
+                        uow.direcciones.update(existing_principal)
                     direccion.es_principal = True
                 else:
                     # Unsetting principal on this address
@@ -126,7 +124,7 @@ class DireccionEntregaService:
             for key, value in values.items():
                 setattr(direccion, key, value)
 
-            uow.direcciones.add(direccion)
+            uow.direcciones.update(direccion)
             return direccion
 
     @staticmethod
@@ -154,11 +152,11 @@ class DireccionEntregaService:
             existing_principal = uow.direcciones.get_principal(usuario_id)
             if existing_principal:
                 existing_principal.es_principal = False
-                uow.direcciones.add(existing_principal)
+                uow.direcciones.update(existing_principal)
 
             # Set the new principal
             direccion.es_principal = True
-            uow.direcciones.add(direccion)
+            uow.direcciones.update(direccion)
             return direccion
 
     @staticmethod
@@ -179,5 +177,5 @@ class DireccionEntregaService:
                 return False
 
             direccion.deleted_at = get_utc_now()
-            uow.direcciones.add(direccion)
+            uow.direcciones.update(direccion)
             return True

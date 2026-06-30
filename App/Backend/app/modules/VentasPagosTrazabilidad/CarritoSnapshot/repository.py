@@ -7,21 +7,20 @@ from uuid import UUID
 
 from sqlmodel import Session, select, delete, col
 
+from app.core.base_repository import BaseRepository
 from .models import CarritoSnapshot
 
 
-class CarritoSnapshotRepository:
-    """Repository for CarritoSnapshot CRUD and TTL cleanup."""
+class CarritoSnapshotRepository(BaseRepository[CarritoSnapshot]):
+    """Repository for CarritoSnapshot CRUD and TTL cleanup.
+
+    Inherits from BaseRepository[CarritoSnapshot] for standard CRUD operations
+    (create, add, get_by_id, get_all, count_all, search, flush, refresh, with_deleted).
+    Overrides delete() for hard-delete since CarritoSnapshot uses TTL, not soft-delete.
+    """
 
     def __init__(self, session: Session):
-        self.session = session
-
-    def create(self, snapshot: CarritoSnapshot) -> CarritoSnapshot:
-        """Insert a new snapshot."""
-        self.session.add(snapshot)
-        self.session.flush()
-        self.session.refresh(snapshot)
-        return snapshot
+        super().__init__(session, CarritoSnapshot)
 
     def get_by_external_reference(self, external_reference: str) -> Optional[CarritoSnapshot]:
         """Lookup a snapshot by its external_reference (shared with Pago)."""
@@ -31,7 +30,7 @@ class CarritoSnapshotRepository:
         return self.session.exec(statement).first()
 
     def delete(self, snapshot: CarritoSnapshot) -> None:
-        """Delete a snapshot by ORM entity."""
+        """Hard delete — CarritoSnapshot uses TTL, not soft-delete."""
         self.session.delete(snapshot)
 
     def delete_expired(self) -> int:

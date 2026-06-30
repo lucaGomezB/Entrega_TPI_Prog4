@@ -85,9 +85,7 @@ class CategoriaService:
                 get_or_404(parent, "La categoría padre indicada no existe")
 
             db_categoria = Categoria(**data.model_dump())
-            uow.categorias.add(db_categoria)
-            uow.flush()
-            uow.categorias.refresh(db_categoria)
+            uow.categorias.create(db_categoria)
             return db_categoria
 
     @staticmethod
@@ -130,7 +128,7 @@ class CategoriaService:
             for key, value in values.items():
                 setattr(db_categoria, key, value)
 
-            uow.categorias.add(db_categoria)
+            uow.categorias.update(db_categoria)
             return db_categoria
 
     @staticmethod
@@ -153,5 +151,5 @@ class CategoriaService:
                 )
 
             db_categoria.deleted_at = get_utc_now()
-            uow.categorias.add(db_categoria)
+            uow.categorias.update(db_categoria)
             return db_categoria

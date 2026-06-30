@@ -15,7 +15,7 @@ def create_rol(session: Session, data: RolCreate):
     """Create a new role with the provided data."""
     with IdentidadYAccesoUnitOfWork(session) as uow:
         db_rol = Rol.model_validate(data)
-        uow.roles.add(db_rol)
+        uow.roles.create(db_rol)
         uow.roles.refresh(db_rol)
         return db_rol
 
@@ -51,7 +51,7 @@ def update_rol(session: Session, codigo: str, data: RolUpdate):
         values = data.model_dump(exclude_unset=True)
         for key, value in values.items():
             setattr(db_rol, key, value)
-        uow.roles.add(db_rol)
+        uow.roles.update(db_rol)
         uow.roles.refresh(db_rol)
         return db_rol
 

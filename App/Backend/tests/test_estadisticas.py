@@ -67,8 +67,8 @@ class TestAuth:
             )
 
     def test_non_admin_returns_403(self):
-        """Scenario: user with CLIENTE role receives 403 on every endpoint."""
-        app.dependency_overrides[get_current_user] = lambda: _mock_user("CLIENTE")
+        """Scenario: user with CLIENT role receives 403 on every endpoint."""
+        app.dependency_overrides[get_current_user] = lambda: _mock_user("CLIENT")
         app.dependency_overrides[get_session] = _mock_session
         try:
             client = TestClient(app)

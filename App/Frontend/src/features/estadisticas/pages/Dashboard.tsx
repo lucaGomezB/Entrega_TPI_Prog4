@@ -18,10 +18,6 @@ import {
   Pie,
   Line,
 } from "recharts";
-import type {
-  ProductoTopItem,
-  PedidosEstadoItem,
-} from "@/features/estadisticas/api/estadisticas";
 import {
   useResumen,
   useVentasPeriodo,
@@ -198,7 +194,7 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="fecha" tick={{ fontSize: 11 }} tickFormatter={(val: string) => { const d = new Date(val + "T00:00:00"); return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }); }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(val: number) => formatCurrency(val)} />
-              <Tooltip formatter={(val: number | string) => { const n = typeof val === "string" ? Number(val) : val; return [formatCurrency(n), "Total"]; }} labelFormatter={(label: string) => { const d = new Date(label + "T00:00:00"); return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }); }} />
+              <Tooltip formatter={(val: any) => { const n = typeof val === "number" ? val : Number(val); return [formatCurrency(n), "Total"]; }} labelFormatter={(label: React.ReactNode) => { const d = new Date(String(label ?? '') + "T00:00:00"); return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }); }} />
               <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -210,7 +206,7 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(val: number) => formatCurrency(val)} />
               <YAxis dataKey="nombre" type="category" tick={{ fontSize: 10 }} tickFormatter={(val: string) => truncate(val, PRODUCT_NAME_MAX_LEN)} width={130} />
-              <Tooltip formatter={(val: number | string, _name: string, props: { payload: ProductoTopItem }) => { const n = typeof val === "string" ? Number(val) : val; return [formatCurrency(n), "Ingresos"]; }} labelFormatter={(label: string) => label} />
+              <Tooltip formatter={(_val: any, _name: any, _props: any) => { return [formatCurrency(Number((_props as any)?.payload?.ingresos)), "Ingresos"]; }} labelFormatter={(label: React.ReactNode) => String(label ?? '')} />
               <Bar dataKey="ingresos" fill="#6366f1" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -219,10 +215,10 @@ export default function Dashboard() {
         <ChartSection title="Pedidos por Estado" loading={pedidosEstadoQuery.isLoading} empty={pedidosEstadoData.length === 0 && !pedidosEstadoQuery.isLoading && !pedidosEstadoQuery.isError} emptyMessage="Sin datos de pedidos" error={pedidosEstadoQuery.isError ? (pedidosEstadoQuery.error as Error)?.message || "Error" : null} onRetry={() => pedidosEstadoQuery.refetch()}>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
-              <Pie data={pedidosEstadoData} dataKey="cantidad" nameKey="estado_codigo" cx="50%" cy="50%" outerRadius={90} label={({ estado_codigo, cantidad }: PedidosEstadoItem) => `${ESTADO_LABELS[estado_codigo] || estado_codigo}: ${cantidad}`}>
+              <Pie data={pedidosEstadoData} dataKey="cantidad" nameKey="estado_codigo" cx="50%" cy="50%" outerRadius={90} label={(entry: any) => `${ESTADO_LABELS[entry.estado_codigo] || entry.estado_codigo}: ${entry.cantidad}`}>
                 {pedidosEstadoData.map((entry) => (<Cell key={entry.estado_codigo} fill={ESTADO_COLORS[entry.estado_codigo] || FALLBACK_ESTADO_COLOR} />))}
               </Pie>
-              <Tooltip formatter={(val: number, _name: string, props: { payload: PedidosEstadoItem }) => { return [val, ESTADO_LABELS[props.payload.estado_codigo] || props.payload.estado_codigo]; }} />
+              <Tooltip formatter={(_val: any, _name: any, entry: any) => { return [_val, ESTADO_LABELS[(entry as any)?.payload?.estado_codigo] || (entry as any)?.payload?.estado_codigo]; }} />
               <Legend formatter={(val: string) => ESTADO_LABELS[val] || val} />
             </PieChart>
           </ResponsiveContainer>
@@ -234,7 +230,7 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(val: number) => formatCurrency(val)} />
               <YAxis dataKey="forma_pago_codigo" type="category" tick={{ fontSize: 11 }} width={100} />
-              <Tooltip formatter={(val: number | string) => { const n = typeof val === "string" ? Number(val) : val; return [formatCurrency(n), "Total"]; }} />
+              <Tooltip formatter={(_val: any) => { const n = typeof _val === "number" ? _val : Number(_val); return [formatCurrency(n), "Total"]; }} />
               <Bar dataKey="total" fill="#f59e0b" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>

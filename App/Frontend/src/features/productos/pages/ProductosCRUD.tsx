@@ -292,6 +292,34 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
     }
   };
 
+  const handleToggleRemovible = async (ingredienteId: number, newValue: boolean, cantidad: number) => {
+    setToggling(ingredienteId);
+    try {
+      const updated = await productosApi.toggleIngredienteFlag(productoId, ingredienteId, "es_removible", newValue, cantidad);
+      setIngs(updated);
+      notifyIngredientsChanged(updated);
+    } catch (err) {
+      console.error("[removible-toggle] Error:", err);
+      alert("Error al cambiar. Revisa que tengas permisos de administrador o stock.");
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const handleTogglePrincipal = async (ingredienteId: number, newValue: boolean, cantidad: number) => {
+    setToggling(ingredienteId);
+    try {
+      const updated = await productosApi.toggleIngredienteFlag(productoId, ingredienteId, "es_principal", newValue, cantidad);
+      setIngs(updated);
+      notifyIngredientsChanged(updated);
+    } catch (err) {
+      console.error("[principal-toggle] Error:", err);
+      alert("Error al cambiar. Revisa que tengas permisos de administrador o stock.");
+    } finally {
+      setToggling(null);
+    }
+  };
+
   const getIngInfo = (ingredienteId: number) =>
     allIngs.find((i) => i.id === ingredienteId);
 
@@ -321,9 +349,9 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
             ) : (
               <table className="w-full border-collapse border mb-4">
                 <thead><tr className="bg-gray-200">
-                  <th className="border p-2 text-left">Orden</th>
                   <th className="border p-2 text-left">Ingrediente</th>
                   <th className="border p-2 text-left">Cantidad</th>
+                  <th className="border p-2 text-left">Unidad</th>
                   <th className="border p-2 text-left">Costo</th>
                   <th className="border p-2 text-left">Alergeno</th>
                   <th className="border p-2 text-left">Removible</th>
@@ -346,7 +374,6 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
                           const cost = Number(precioIng) * Number(ing.cantidad);
                           return (
                             <tr key={ing.ingrediente_id}>
-                              <td className="border p-2">{ing.orden}</td>
                               <td className="border p-2">{ing.ingrediente_nombre}</td>
                               <td className="border p-2">
                                 <span className="inline-flex items-center gap-1">
@@ -355,10 +382,10 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
                                     disabled={updatingCantidad === ing.ingrediente_id}
                                     onChange={(e) => handleCantidadChange(ing.ingrediente_id, Number(e.target.value) || 0.001, ing.unidad_medida_id)}
                                     className="border px-2 py-1 rounded w-20" />
-                                  <span className="text-gray-600 text-sm font-medium">
-                                    {ing.unidad_medida_simbolo ?? ""}
-                                  </span>
                                 </span>
+                              </td>
+                              <td className="border p-2 text-sm text-gray-600">
+                                {ing.unidad_medida_simbolo ?? "—"}
                               </td>
                               <td className="border p-2 font-mono">
                                 ${cost.toFixed(2)}
@@ -378,8 +405,34 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
                                   </button>
                                 </span>
                               </td>
-                              <td className="border p-2">{ing.es_removible ? "Si" : "No"}</td>
-                              <td className="border p-2">{ing.es_principal ? "Si" : "No"}</td>
+                              <td className="border p-2">
+                                <span className="inline-flex items-center gap-1">
+                                  <span className={ing.es_removible ? "text-green-600 font-medium" : "text-gray-500"}>
+                                    {ing.es_removible ? "Si" : "No"}
+                                  </span>
+                                  <button
+                                    onClick={() => handleToggleRemovible(ing.ingrediente_id, !ing.es_removible, ing.cantidad)}
+                                    disabled={toggling === ing.ingrediente_id}
+                                    className="text-xs border border-gray-400 rounded px-1.5 py-0.5 hover:bg-gray-100 cursor-pointer disabled:opacity-50"
+                                  >
+                                    {toggling === ing.ingrediente_id ? "..." : "Cambiar"}
+                                  </button>
+                                </span>
+                              </td>
+                              <td className="border p-2">
+                                <span className="inline-flex items-center gap-1">
+                                  <span className={ing.es_principal ? "text-blue-600 font-medium" : "text-gray-500"}>
+                                    {ing.es_principal ? "Si" : "No"}
+                                  </span>
+                                  <button
+                                    onClick={() => handleTogglePrincipal(ing.ingrediente_id, !ing.es_principal, ing.cantidad)}
+                                    disabled={toggling === ing.ingrediente_id}
+                                    className="text-xs border border-gray-400 rounded px-1.5 py-0.5 hover:bg-gray-100 cursor-pointer disabled:opacity-50"
+                                  >
+                                    {toggling === ing.ingrediente_id ? "..." : "Cambiar"}
+                                  </button>
+                                </span>
+                              </td>
                               <td className="border p-2">
                                 <button onClick={() => handleRemove(ing.ingrediente_id)}
                                   className="bg-red-600 text-white px-2 py-1 rounded text-sm cursor-pointer hover:bg-red-700">Quitar</button>
@@ -754,7 +807,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       ingredientes: [],
       unidad_medida_id: 5,
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value }: { value: ProductoCreate }) => {
       try {
         if (editingId) {
           if (stockEditOnly) {
@@ -791,7 +844,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
           }
           addToast('exito', 'Producto actualizado correctamente');
         } else {
-          if (!value.es_insumo && selectedIngredientes.length === 0 && value.precio_base <= 0) {
+          if (!value.es_insumo && selectedIngredientes.length === 0 && Number(value.precio_base ?? 0) <= 0) {
             throw new Error("El precio base debe ser mayor a 0 cuando no hay ingredientes");
           }
           await createMutation.mutateAsync({

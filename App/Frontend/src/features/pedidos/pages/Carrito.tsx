@@ -23,7 +23,6 @@ import { pedidosApi, type ValidarStockDetalle } from "@/features/pedidos/api/ped
 import { productosApi, type ProductoIngredienteRead } from "@/features/productos/api/productos";
 import {
   direccionesApi,
-  formatDireccion,
   type DireccionEntregaInput,
 } from "@/features/pedidos/api/direcciones";
 import { pagosApi, type InitFromCartRequest } from "@/features/pedidos/api/pagos";
@@ -31,6 +30,9 @@ import { getAccessToken } from "@/shared/api/client";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
 import { useStore } from "@tanstack/react-form";
 import { useDirecciones } from "@/features/pedidos/hooks/useDirecciones";
+import { DireccionSelector } from "@/features/pedidos/components/DireccionSelector";
+import { MetodoPagoSelector } from "@/features/pedidos/components/MetodoPagoSelector";
+import { ResumenPedido } from "@/features/pedidos/components/ResumenPedido";
 
 /* ── Modal rapido para crear direccion desde el carrito ── */
 
@@ -41,9 +43,9 @@ function NuevaDireccionModal({ onClose, onSave }: {
   const [guardando, setGuardando] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
-  const form = useAppForm({
+  const form = useAppForm<{ alias: string; linea1: string; linea2: string; ciudad: string }>({
     defaultValues: { alias: "", linea1: "", linea2: "", ciudad: "" },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value }: { value: { alias: string; linea1: string; linea2: string; ciudad: string } }) => {
       setGuardando(true);
       setModalError(null);
       try {
@@ -294,7 +296,7 @@ export default function Carrito() {
         }
       } else {
         // ── SYNCHRONOUS FLOW (PAGO_LOCAL, EFECTIVO) ──
-        const pedido = await pedidosApi.create({
+        await pedidosApi.create({
           forma_pago_codigo: formaPago,
           subtotal: subtotal,
           descuento: 0,
@@ -417,13 +419,6 @@ export default function Carrito() {
   const total = useCartStore((s) => s.getTotal());
   const itemCount = useCartStore((s) => s.getItemCount());
 
-  const buttonText = () => {
-    if (enviando && formaPago === "MERCADOPAGO") return "Redirigiendo a MercadoPago...";
-    if (enviando) return "Creando pedido...";
-    if (formaPago === "MERCADOPAGO") return "Pagar con MercadoPago";
-    return "Realizar Pedido";
-  };
-
   if (items.length === 0) {
     return (
       <div className="p-4 text-center">
@@ -484,65 +479,33 @@ export default function Carrito() {
         </tbody>
       </table>
 
-      <div className="border-t pt-4 mb-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Direccion de entrega</h2>
-        {loadingDirs ? (
-          <p className="text-sm text-gray-400">Cargando direcciones...</p>
-        ) : esRetiroLocal ? (
-          <div className="flex items-center gap-2">
-            <span className="flex-1 text-sm border border-green-300 bg-green-50 rounded px-3 py-2 text-green-800">
-              Retiro en el local mas cercano (sin costo de envio)
-            </span>
-            <span className="text-xs text-green-600 font-medium whitespace-nowrap">Gratis</span>
-          </div>
-        ) : (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <select
-              value={direccionSelId === null ? "retiro" : direccionSelId}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === "nueva") setShowNewDir(true);
-                else if (val === "retiro") setDireccionSelId(null);
-                else setDireccionSelId(val ? Number(val) : null);
-              }}
-              className="border border-gray-300 rounded px-3 py-2 text-sm w-full sm:flex-1"
-            >
-              <option value="retiro">Retirar en el local mas cercano (gratis)</option>
-              {direcciones.length > 0 && (
-                <optgroup label="--- Tus direcciones ---">
-                  {direcciones.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {formatDireccion(d)}{d.es_principal ? " (Principal)" : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              <option value="nueva" disabled={direcciones.length >= 10}>
-                + Agregar nueva direccion
-              </option>
-            </select>
-            {direccionSelId === null ? (
-              <span className="text-xs text-green-600 font-medium whitespace-nowrap">Retiro en local (gratis)</span>
-            ) : (
-              <span className="text-xs text-blue-600 font-medium whitespace-nowrap">Con envio (+$50.00)</span>
-            )}
-          </div>
-        )}
-      </div>
+      <DireccionSelector
+        direccionSelId={direccionSelId}
+        direcciones={direcciones}
+        loadingDirs={loadingDirs}
+        esRetiroLocal={esRetiroLocal}
+        onChange={(val) => {
+          if (val === "retiro") setDireccionSelId(null);
+          else setDireccionSelId(val ? Number(val) : null);
+        }}
+        onNuevaDireccion={() => setShowNewDir(true)}
+      />
 
-      <div className="border-t pt-4 mb-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Metodo de pago</h2>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="formaPago" value="PAGO_LOCAL" checked={formaPago === "PAGO_LOCAL"} onChange={() => { savedDireccionSelId.current = direccionSelId; setFormaPago("PAGO_LOCAL"); setDireccionSelId(null); }} className="cursor-pointer" />
-            <span className="text-sm">Pago y retiro en local</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="formaPago" value="MERCADOPAGO" checked={formaPago === "MERCADOPAGO"} onChange={() => { setFormaPago("MERCADOPAGO"); if (savedDireccionSelId.current !== null) { setDireccionSelId(savedDireccionSelId.current); } }} className="cursor-pointer" />
-            <span className="text-sm">MercadoPago (tarjeta/debito)</span>
-          </label>
-        </div>
-      </div>
+      <MetodoPagoSelector
+        formaPago={formaPago}
+        onChange={(val) => {
+          if (val === "PAGO_LOCAL") {
+            savedDireccionSelId.current = direccionSelId;
+            setFormaPago("PAGO_LOCAL");
+            setDireccionSelId(null);
+          } else {
+            setFormaPago("MERCADOPAGO");
+            if (savedDireccionSelId.current !== null) {
+              setDireccionSelId(savedDireccionSelId.current);
+            }
+          }
+        }}
+      />
 
       <div className="border-t pt-4 mb-4">
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Notas del pedido</h2>
@@ -556,17 +519,13 @@ export default function Carrito() {
         />
       </div>
 
-      <div className="border-t pt-4 flex justify-between items-center">
-        <div className="text-xl font-bold">
-          Subtotal: <span className="text-blue-700">${total.toFixed(2)}</span>
-          {!esRetiroLocal && direccionSelId && typeof direccionSelId === "number" && (
-            <span className="text-base font-normal text-gray-500 ml-2">(+ $50.00 envio)</span>
-          )}
-        </div>
-        <button onClick={handleRealizarPedido} disabled={enviando} className="bg-green-700 text-white px-6 py-2 rounded text-lg font-semibold cursor-pointer hover:bg-green-800 disabled:opacity-60 disabled:cursor-not-allowed">
-          {buttonText()}
-        </button>
-      </div>
+      <ResumenPedido
+        subtotal={total}
+        costoEnvio={typeof direccionSelId === "number" ? 50 : 0}
+        enviando={enviando}
+        formaPago={formaPago}
+        onSubmit={handleRealizarPedido}
+      />
 
       {stockWarnings && <StockWarningModal detalles={stockWarnings} onAdjust={handleStockAdjust} onClose={() => setStockWarnings(null)} />}
       {showNewDir && <NuevaDireccionModal onClose={() => setShowNewDir(false)} onSave={handleCrearDireccion} />}

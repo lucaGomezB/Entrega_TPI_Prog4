@@ -6,18 +6,20 @@ import { apiFetchPaginatedFull, type PaginatedResponse } from '@/shared/api/clie
 import type { Pedido } from '../api/pedidos'
 
 /** Fetches all active (non-terminal) pedidos with pagination. Returns full response with total. */
-export function usePedidosActivos(skip = 0, limit = 10, sortBy = "id", sortOrder: "asc" | "desc" = "desc") {
+export function usePedidosActivos(skip = 0, limit = 10, sortBy = "id", sortOrder: "asc" | "desc" = "desc", search?: string) {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : ""
   return useQuery<PaginatedResponse<Pedido>>({
-    queryKey: [...queryKeys.pedidos.activos, skip, limit, sortBy, sortOrder] as const,
-    queryFn: () => apiFetchPaginatedFull<Pedido>(`/pedidos/activos?skip=${skip}&limit=${limit}&sort_by=${sortBy}&sort_order=${sortOrder}`),
+    queryKey: [...queryKeys.pedidos.activos, skip, limit, sortBy, sortOrder, search ?? ""] as const,
+    queryFn: () => apiFetchPaginatedFull<Pedido>(`/pedidos/activos?skip=${skip}&limit=${limit}&sort_by=${sortBy}&sort_order=${sortOrder}${searchParam}`),
   })
 }
 
 /** Fetches the pedidos historial (cancelled/completed) with pagination. Returns full response with total. */
-export function usePedidosHistorial(skip = 0, limit = 10, sortBy = "id", sortOrder: "asc" | "desc" = "desc") {
+export function usePedidosHistorial(skip = 0, limit = 10, sortBy = "id", sortOrder: "asc" | "desc" = "desc", search?: string) {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : ""
   return useQuery<PaginatedResponse<Pedido>>({
-    queryKey: [...queryKeys.pedidos.historial, skip, limit, sortBy, sortOrder] as const,
-    queryFn: () => apiFetchPaginatedFull<Pedido>(`/pedidos/historial?skip=${skip}&limit=${limit}&sort_by=${sortBy}&sort_order=${sortOrder}`),
+    queryKey: [...queryKeys.pedidos.historial, skip, limit, sortBy, sortOrder, search ?? ""] as const,
+    queryFn: () => apiFetchPaginatedFull<Pedido>(`/pedidos/historial?skip=${skip}&limit=${limit}&sort_by=${sortBy}&sort_order=${sortOrder}${searchParam}`),
   })
 }
 

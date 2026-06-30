@@ -20,6 +20,7 @@ import { categoriasApi } from "@/features/categorias/api/categorias";
 import { useCartStore } from "@/shared/store/cartStore";
 import { getAccessToken, getUserRoles } from "@/shared/api/client";
 import ProductCard from "@/features/productos/components/ProductCard";
+import SearchFilter from "@/shared/components/SearchFilter";
 
 const PAGE_SIZE = 12;
 
@@ -133,12 +134,9 @@ export default function ProductosCliente() {
 
       {/* Search filter */}
       <div className="flex gap-2 mb-4 items-center">
-        <input
-          type="text"
+        <SearchFilter
+          onSearch={(v) => { setFilter(v); setPage(0); }}
           placeholder="Filtrar por nombre..."
-          value={filter}
-          onChange={(e) => { setFilter(e.target.value); setPage(0); }}
-          className="border px-2 py-1 rounded flex-grow"
         />
       </div>
 

@@ -114,7 +114,7 @@ def create_refresh_token(session: Session, usuario_id: int) -> str:
             expires_at=expires_at,
             created_at=now,
         )
-        uow.refresh_tokens.add(db_token)
+        uow.refresh_tokens.create(db_token)
 
     return raw_token
 
@@ -153,7 +153,7 @@ def revoke_refresh_token(session: Session, raw_token: str) -> bool:
         if not stored:
             return False
         stored.revoked_at = get_utc_now()
-        uow.refresh_tokens.add(stored)
+        uow.refresh_tokens.update(stored)
         return True
 
 
@@ -238,7 +238,7 @@ class AuthService:
             # Because we used FOR UPDATE, no concurrent transaction could have
             # validated this same token between our lookup and this revocation.
             stored_token.revoked_at = get_utc_now()
-            uow.refresh_tokens.add(stored_token)
+            uow.refresh_tokens.update(stored_token)
 
             # Retrieve the token owner with eager-loaded roles
             user = uow.usuarios.get_with_roles(stored_token.usuario_id)
@@ -267,7 +267,7 @@ class AuthService:
                 expires_at=now + timedelta(days=7),
                 created_at=now,
             )
-            uow.refresh_tokens.add(db_token)
+        uow.refresh_tokens.create(db_token)
 
         # After UoW commit — set cookie and return
         _set_refresh_cookie(request, response, raw_new_token)

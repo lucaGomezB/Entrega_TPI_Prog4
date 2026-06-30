@@ -244,7 +244,7 @@ class TestUpdatePagoStatus:
         assert result.mp_status_detail == "accredited"
         assert result.mp_payment_id == 12345
         assert result.external_reference == "ext-ref-1"
-        mock_uow.add.assert_called_once_with(existing_pago)
+        mock_repo.update.assert_called_once_with(existing_pago)
 
     def test_raises_if_mp_payment_not_found(self):
         """update_pago_status raises ValueError when mp_payment_id not found."""

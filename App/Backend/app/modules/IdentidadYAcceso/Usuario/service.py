@@ -54,7 +54,7 @@ def crear_usuario(session: Session, datos: UsuarioCreate, admin_id: int = None) 
             celular=datos.celular,
             password_hash=get_password_hash(datos.password),
         )
-        uow.usuarios.add(nuevo_usuario)
+        uow.usuarios.create(nuevo_usuario)
         uow.flush()
 
         # Assign roles if specified (explicit UsuarioRol to set asignado_por_id)
@@ -162,7 +162,7 @@ def actualizar_usuario(
         values = datos.model_dump(exclude_unset=True, exclude={"roles_codigos"})
         for key, value in values.items():
             setattr(usuario, key, value)
-        uow.usuarios.add(usuario)
+        uow.usuarios.update(usuario)
 
         # Reassign roles if the field was explicitly provided
         # (explicit UsuarioRol to set asignado_por_id)
@@ -197,5 +197,5 @@ def eliminar_usuario(session: Session, usuario_id: int) -> bool:
             return False
         from app.core.base import get_utc_now
         usuario.deleted_at = get_utc_now()
-        uow.usuarios.add(usuario)
+        uow.usuarios.update(usuario)
         return True

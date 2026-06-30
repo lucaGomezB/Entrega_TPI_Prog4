@@ -9,14 +9,16 @@
  *   - Client-side pagination via DataTable
  *   - Gated to ADMIN role via router
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { UnidadMedida, UnidadMedidaCreate } from "@/features/unidades-medida/types";
 import { unidadesMedidaApi } from "@/features/unidades-medida/api/unidadesMedidaApi";
 import UnidadMedidaForm from "@/features/unidades-medida/components/UnidadMedidaForm";
 import { addToast } from "@/shared/components/Toast";
+import ErrorBanner from "@/shared/components/ErrorBanner";
 import DataTable, { type DataTableColumn } from "@/shared/components/DataTable";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
+import SearchFilter from "@/shared/components/SearchFilter";
 
 const DEFAULT_LIMIT = 10;
 
@@ -30,8 +32,10 @@ const TIPO_FILTERS = [
 
 export default function UnidadesMedidaAdminPage() {
   const [units, setUnits] = useState<UnidadMedida[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tipoFilter, setTipoFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValues, setEditValues] = useState<UnidadMedidaCreate | undefined>();
@@ -44,7 +48,9 @@ export default function UnidadesMedidaAdminPage() {
     try {
       const data = await unidadesMedidaApi.getAll(tipoFilter || undefined);
       setUnits(data);
+      setError(null);
     } catch {
+      setError("Error al cargar unidades de medida");
       addToast("error", "Error al cargar unidades de medida");
     } finally {
       setLoading(false);
@@ -112,9 +118,17 @@ export default function UnidadesMedidaAdminPage() {
     setEditingId(null);
   };
 
-  // Client-side pagination
-  const total = units.length;
-  const pagedUnits = units.slice(skip, skip + limit);
+  // Client-side search filter + pagination
+  const filteredUnits = useMemo(() => {
+    if (!search.trim()) return units;
+    const s = search.toLowerCase();
+    return units.filter(
+      (u) => u.nombre.toLowerCase().includes(s) || u.simbolo.toLowerCase().includes(s)
+    );
+  }, [units, search]);
+
+  const total = filteredUnits.length;
+  const pagedUnits = filteredUnits.slice(skip, skip + limit);
 
   const columns: DataTableColumn<UnidadMedida>[] = [
     {
@@ -147,6 +161,16 @@ export default function UnidadesMedidaAdminPage() {
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Unidades de Medida</h1>
+
+      {error && <ErrorBanner isError={!!error} message={error} />}
+
+      {/* Search filter */}
+      <div className="mb-4">
+        <SearchFilter
+          onSearch={(v) => { setSearch(v); handlePageChange(0); }}
+          placeholder="Filtrar por nombre o simbolo..."
+        />
+      </div>
 
       {/* Filter tabs + Create button */}
       <div className="flex gap-2 mb-4 flex-wrap items-center">

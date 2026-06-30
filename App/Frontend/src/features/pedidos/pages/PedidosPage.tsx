@@ -24,10 +24,11 @@ import {
   useAvanzarPedido,
   useCancelarPedido,
   useActualizarDetalle,
-  useHistorialPedido,
 } from "@/features/pedidos/hooks/usePedidos";
 import { usePagosByPedido } from "@/features/pedidos/hooks/usePagos";
+import { HistorialTimeline } from "@/features/pedidos/components/HistorialTimeline";
 import ErrorBanner from "@/shared/components/ErrorBanner";
+import SearchFilter from "@/shared/components/SearchFilter";
 
 const DEFAULT_LIMIT = 10;
 
@@ -115,49 +116,7 @@ function PedidoWSSubscriber({ pedidoId, enabled }: { pedidoId: number; enabled: 
   return null;
 }
 
-function TimelineEstados({ pedidoId }: { pedidoId: number }) {
-  const { data: historial, isLoading } = useHistorialPedido(pedidoId);
-  if (isLoading) return <p className="text-xs text-gray-400 mt-3">Cargando historial...</p>;
-  if (!historial || historial.length === 0) return <p className="text-xs text-gray-400 mt-3">Sin historial de estados</p>;
-
-  return (
-    <div className="mt-4 border-t pt-3">
-      <h3 className="text-md font-semibold mb-3">Linea de tiempo</h3>
-      <div className="relative ml-2">
-        {historial.map((entry, i) => (
-          <div key={entry.id} className="flex gap-3 mb-3 relative">
-            <div className="flex flex-col items-center">
-              <div className={`w-3 h-3 rounded-full border-2 ${entry.es_sistema ? 'border-gray-300 bg-gray-200' : 'border-blue-500 bg-blue-400'} z-10`} />
-              {i < historial.length - 1 && <div className="w-0.5 flex-1 bg-gray-300" />}
-            </div>
-            <div className="flex-1 pb-1">
-              <p className="text-sm">
-                {entry.estado_desde ? (
-                  <span>
-                    <span className="text-gray-500">{entry.estado_desde}</span>
-                    <span className="mx-1 text-gray-400">→</span>
-                  </span>
-                ) : (
-                  <span className="text-gray-400">Creacion </span>
-                )}
-                <span className="font-medium">{entry.estado_hacia}</span>
-                {entry.es_sistema && <span className="text-xs text-gray-400 ml-1">(sistema)</span>}
-              </p>
-              {entry.motivo && <p className="text-xs text-red-500 mt-0.5">Motivo: {entry.motivo}</p>}
-              <p className="text-xs text-gray-400 mt-0.5">
-                {new Date(entry.created_at).toLocaleString("es-AR", {
-                  day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-                })}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DetallesPopup({ pedido, detalles, onClose, esGestor, pagos }: {
+function DetallesPopup({ pedido, detalles, onClose, esGestor: _esGestor, pagos }: {
   pedido: Pedido; detalles: DetallePedido[]; onClose: () => void; esGestor?: boolean; pagos?: PagoRead[];
 }) {
   return (
@@ -232,7 +191,7 @@ function DetallesPopup({ pedido, detalles, onClose, esGestor, pagos }: {
         </>
       )}
 
-      <TimelineEstados pedidoId={pedido.id} />
+      <HistorialTimeline pedidoId={pedido.id} />
     </Modal>
   );
 }
@@ -367,6 +326,7 @@ export default function PedidosPage() {
   const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [search, setSearch] = useState("");
   const [detailPopup, setDetailPopup] = useState<Pedido | null>(null);
   const [selectedPedidoId, setSelectedPedidoId] = useState<number>(0);
   const [stockIssue, setStockIssue] = useState<{ pedido: Pedido; detalles: StockInsuficienteDetalle[] } | null>(null);
@@ -387,8 +347,8 @@ export default function PedidosPage() {
   }, []);
 
   // ── TanStack Query: pedidos ──
-  const activosQuery = usePedidosActivos(skip, limit, sortBy, sortOrder);
-  const historialQuery = usePedidosHistorial(skip, limit, sortBy, sortOrder);
+  const activosQuery = usePedidosActivos(skip, limit, sortBy, sortOrder, search);
+  const historialQuery = usePedidosHistorial(skip, limit, sortBy, sortOrder, search);
   const activeQuery = esHistorial ? historialQuery : activosQuery;
   const { data, isLoading, isError, error } = activeQuery;
   const pedidos = data?.items ?? [];
@@ -572,6 +532,13 @@ export default function PedidosPage() {
       </div>
 
       <ErrorBanner isError={isError} error={error} message="Error al cargar" />
+
+      <div className="mb-4">
+        <SearchFilter
+          onSearch={(v) => { setSearch(v); handlePageChange(0); }}
+          placeholder="Buscar pedidos..."
+        />
+      </div>
 
       <DataTable
         columns={columns}

@@ -14,6 +14,7 @@
 import { useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { usePagoStatus } from "@/features/pedidos/hooks/usePagos";
+import { useCartStore } from "@/shared/store/cartStore";
 import { addToast } from "@/shared/components/Toast";
 import ErrorBanner from "@/shared/components/ErrorBanner";
 
@@ -65,12 +66,16 @@ export default function PostPagoPage() {
 /** Internal component that renders the polling UI. */
 function PollingContent({ externalReference }: { externalReference: string }) {
   const navigate = useNavigate();
-  const { status, pedidoId, isPolling, isTimeout, error } =
+  const { status, pedidoId, isPolling: _isPolling, isTimeout, error } =
     usePagoStatus(externalReference);
 
   // ── Pedido found → redirect ──
   useEffect(() => {
     if (status === "found" && pedidoId) {
+      // Clear the cart now that the order is confirmed. The WebSocket
+      // pago_confirmado event would do this too, but the user was on
+      // MercadoPago's page when the event fired — they missed it.
+      useCartStore.getState().clearCarrito();
       addToast("exito", `Pago confirmado! Tu pedido #${pedidoId} esta en proceso.`);
       navigate(`/pedidos/${pedidoId}`, { replace: true });
     }

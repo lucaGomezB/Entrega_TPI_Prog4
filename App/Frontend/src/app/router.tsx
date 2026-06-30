@@ -4,30 +4,48 @@
  * Receives role flags as props and returns <Routes> with the appropriate
  * route set for each role. No side effects, no state, no API calls.
  *
+ * All page imports use React.lazy for code splitting by route.
+ * Each <Routes> block is wrapped in <Suspense> with a spinner fallback.
+ *
  * Cross-feature imports follow the rule: only API modules from other features.
  */
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import CategoriasCRUD from '@/features/categorias/pages/CategoriasCRUD'
-import IngredientesCRUD from '@/features/productos/pages/IngredientesCRUD'
-import ProductosCRUD from '@/features/productos/pages/ProductosCRUD'
-import ProductosCliente from '@/features/productos/pages/ProductosCliente'
-import ProductoDetail from '@/features/productos/pages/ProductoDetail'
-import Carrito from '@/features/pedidos/pages/Carrito'
-import PedidosPage from '@/features/pedidos/pages/PedidosPage'
-import DireccionesPage from '@/features/pedidos/pages/DireccionesPage'
-import AdminUsuariosPage from '@/features/auth/pages/AdminUsuariosPage'
-import Dashboard from '@/features/estadisticas/pages/Dashboard'
-import UnidadesMedidaAdminPage from '@/features/unidades-medida/pages/UnidadesMedidaAdminPage'
-import Login from '@/features/auth/pages/LoginConceptual'
-import PostPagoPage from '@/features/pedidos/pages/PostPagoPage'
 
-/* ── Helpers ── */
+// ── Lazy page imports (code-split by route) ──
+
+const CategoriasCRUD = lazy(() => import('@/features/categorias/pages/CategoriasCRUD'))
+const IngredientesCRUD = lazy(() => import('@/features/productos/pages/IngredientesCRUD'))
+const ProductosCRUD = lazy(() => import('@/features/productos/pages/ProductosCRUD'))
+const ProductosCliente = lazy(() => import('@/features/productos/pages/ProductosCliente'))
+const ProductoDetail = lazy(() => import('@/features/productos/pages/ProductoDetail'))
+const Carrito = lazy(() => import('@/features/pedidos/pages/Carrito'))
+const PedidosPage = lazy(() => import('@/features/pedidos/pages/PedidosPage'))
+const DireccionesPage = lazy(() => import('@/features/pedidos/pages/DireccionesPage'))
+const AdminUsuariosPage = lazy(() => import('@/features/auth/pages/AdminUsuariosPage'))
+const Dashboard = lazy(() => import('@/features/estadisticas/pages/Dashboard'))
+const UnidadesMedidaAdminPage = lazy(() => import('@/features/unidades-medida/pages/UnidadesMedidaAdminPage'))
+const Login = lazy(() => import('@/features/auth/pages/LoginConceptual'))
+const PostPagoPage = lazy(() => import('@/features/pedidos/pages/PostPagoPage'))
+
+// ── Fallback ──
+
+/** Simple centered spinner shown while a lazy route chunk is loading. */
+function PageSkeleton() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+// ── Helpers ──
 
 function hasRole(roles: string[], ...allowed: string[]) {
   return allowed.some((r) => roles.includes(r));
 }
 
-/* ── Props ── */
+// ── Props ──
 
 export interface AppRoutesProps {
   roles: string[]
@@ -37,7 +55,7 @@ export interface AppRoutesProps {
   isPedidos: boolean
 }
 
-/* ── Component ── */
+// ── Component ──
 
 export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppRoutesProps) {
   let productRole: 'admin' | 'stock' | 'pedidos' | 'client';
@@ -48,10 +66,58 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
 
   if (isClient) {
     return (
+      <Suspense fallback={<PageSkeleton />}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/productos" replace />} />
+          <Route path="/productos/:id" element={<ProductoDetail />} />
+          <Route path="/productos" element={<ProductosCliente />} />
+          {!isGuest && <Route path="/carrito" element={<Carrito />} />}
+          <Route path="/pedidos" element={<PedidosPage />} />
+          <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
+          <Route path="/pedidos/:id" element={<PedidosPage />} />
+          <Route path="/direcciones" element={<DireccionesPage />} />
+          <Route path="*" element={<Navigate to="/productos" replace />} />
+        </Routes>
+      </Suspense>
+    );
+  }
+  if (isStock) {
+    return (
+      <Suspense fallback={<PageSkeleton />}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/productos" replace />} />
+          <Route path="/productos" element={<ProductosCRUD role={productRole} />} />
+          <Route path="*" element={<Navigate to="/productos" replace />} />
+        </Routes>
+      </Suspense>
+    );
+  }
+  if (isPedidos) {
+    return (
+      <Suspense fallback={<PageSkeleton />}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/pedidos" replace />} />
+          <Route path="/pedidos" element={<PedidosPage />} />
+          <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
+          <Route path="/pedidos/:id" element={<PedidosPage />} />
+          <Route path="*" element={<Navigate to="/pedidos" replace />} />
+        </Routes>
+      </Suspense>
+    );
+  }
+  return (
+    <Suspense fallback={<PageSkeleton />}>
       <Routes>
         <Route path="/" element={<Navigate to="/productos" replace />} />
+        <Route path="/categorias" element={<CategoriasCRUD />} />
+        <Route path="/ingredientes" element={<IngredientesCRUD />} />
+        <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
+        <Route path="/admin/dashboard" element={<Dashboard />} />
+        <Route path="/admin/unidades-medida" element={<UnidadesMedidaAdminPage />} />
         <Route path="/productos/:id" element={<ProductoDetail />} />
-        <Route path="/productos" element={<ProductosCliente />} />
+        <Route path="/productos" element={
+          productRole === 'client' ? <ProductosCliente /> : <ProductosCRUD role={productRole} />
+        } />
         {!isGuest && <Route path="/carrito" element={<Carrito />} />}
         <Route path="/pedidos" element={<PedidosPage />} />
         <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
@@ -59,47 +125,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
         <Route path="/direcciones" element={<DireccionesPage />} />
         <Route path="*" element={<Navigate to="/productos" replace />} />
       </Routes>
-    );
-  }
-  if (isStock) {
-    return (
-      <Routes>
-        <Route path="/" element={<Navigate to="/productos" replace />} />
-        <Route path="/productos" element={<ProductosCRUD role={productRole} />} />
-        <Route path="*" element={<Navigate to="/productos" replace />} />
-      </Routes>
-    );
-  }
-  if (isPedidos) {
-    return (
-      <Routes>
-        <Route path="/" element={<Navigate to="/pedidos" replace />} />
-        <Route path="/pedidos" element={<PedidosPage />} />
-        <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
-        <Route path="/pedidos/:id" element={<PedidosPage />} />
-        <Route path="*" element={<Navigate to="/pedidos" replace />} />
-      </Routes>
-    );
-  }
-  return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/productos" replace />} />
-      <Route path="/categorias" element={<CategoriasCRUD />} />
-      <Route path="/ingredientes" element={<IngredientesCRUD />} />
-      <Route path="/admin/usuarios" element={<AdminUsuariosPage />} />
-      <Route path="/admin/dashboard" element={<Dashboard />} />
-      <Route path="/admin/unidades-medida" element={<UnidadesMedidaAdminPage />} />
-      <Route path="/productos/:id" element={<ProductoDetail />} />
-      <Route path="/productos" element={
-        productRole === 'client' ? <ProductosCliente /> : <ProductosCRUD role={productRole} />
-      } />
-      {!isGuest && <Route path="/carrito" element={<Carrito />} />}
-      <Route path="/pedidos" element={<PedidosPage />} />
-      <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
-      <Route path="/pedidos/:id" element={<PedidosPage />} />
-      <Route path="/direcciones" element={<DireccionesPage />} />
-      <Route path="*" element={<Navigate to="/productos" replace />} />
-    </Routes>
+    </Suspense>
   );
 }
 
@@ -109,9 +135,11 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
  */
 export function UnauthenticatedRoutes() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+    <Suspense fallback={<PageSkeleton />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </Suspense>
   )
 }

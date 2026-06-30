@@ -78,8 +78,8 @@ def remove_producto_ingrediente(producto_id: int, ingrediente_id: int, session: 
 
 @router.patch("/{producto_id}/ingredientes/{ingrediente_id}", response_model=List[ProductoIngredienteRead], dependencies=[Depends(require_roles(AdminOrStock))])
 def update_producto_ingrediente_cantidad(producto_id: int, ingrediente_id: int, data: IngredienteAsignado, session: Session = Depends(get_session)):
-    """PATCH /productos/{id}/ingredientes/{ingrediente_id} — Update the quantity of an ingredient association. Requires ADMIN or STOCK role."""
-    result = ProductoService.update_ingrediente_cantidad(session, producto_id, ingrediente_id, data.cantidad)
+    """PATCH /productos/{id}/ingredientes/{ingrediente_id} — Update ingredient association fields (cantidad, removible, principal, unidad). Requires ADMIN or STOCK role."""
+    result = ProductoService.update_ingrediente(session, producto_id, ingrediente_id, data)
     return get_or_404(result, "Relación no encontrada")
 
 # --- Product-Category relationship endpoints ---

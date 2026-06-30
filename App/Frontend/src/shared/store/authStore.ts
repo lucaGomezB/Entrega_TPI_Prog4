@@ -130,12 +130,11 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => sessionStorage),
-      // Only persist authentication-related fields; exclude transient UI state
+      // Only persist the token fields. user and isAuthenticated are derived
+      // on bootstrap via /auth/me — persisting them is redundant and bloats storage.
       partialize: (state) => ({
         accessToken: state.accessToken,
         expiresAt: state.expiresAt,
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
       }),
       onRehydrateStorage: () => {
         return (state, error) => {
@@ -144,8 +143,9 @@ export const useAuthStore = create<AuthStore>()(
             return
           }
           if (!state) return
-          // If token is expired, clear everything
-          if (state.isAuthenticated && state.expiresAt && Date.now() > state.expiresAt) {
+          // Validate persisted session: token must exist and not be expired
+          const isValid = state.accessToken && state.expiresAt && Date.now() < state.expiresAt
+          if (!isValid) {
             useAuthStore.persist.clearStorage()
             useAuthStore.setState({
               user: null,

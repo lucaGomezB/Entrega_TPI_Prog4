@@ -42,15 +42,13 @@ class IngredienteService:
 
         with CatalogoDeProductosUnitOfWork(session) as uow:
             db_ingrediente = Ingrediente.model_validate(data)
-            uow.ingredientes.add(db_ingrediente)
             try:
-                uow.flush()
+                uow.ingredientes.create(db_ingrediente)
             except IntegrityError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Ya existe un ingrediente con ese nombre. No se puede crear duplicados.",
                 )
-            uow.ingredientes.refresh(db_ingrediente)
             return db_ingrediente
 
     @staticmethod
@@ -92,7 +90,7 @@ class IngredienteService:
             db_ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
             get_or_404(db_ingrediente, "Ingrediente no encontrado")
             db_ingrediente.precio_actual = precio
-            uow.ingredientes.add(db_ingrediente)
+            uow.ingredientes.update(db_ingrediente)
         # Refresh after commit to get current state
         session.refresh(db_ingrediente)
         # Trigger price recalculation for all products using this ingredient
@@ -106,7 +104,7 @@ class IngredienteService:
             db_ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
             get_or_404(db_ingrediente, "Ingrediente no encontrado")
             db_ingrediente.stock_actual = stock
-            uow.ingredientes.add(db_ingrediente)
+            uow.ingredientes.update(db_ingrediente)
         # Refresh after commit to get current state
         session.refresh(db_ingrediente)
         return db_ingrediente
@@ -123,7 +121,7 @@ class IngredienteService:
             for key, value in values.items():
                 setattr(db_ingrediente, key, value)
 
-            uow.ingredientes.add(db_ingrediente)
+            uow.ingredientes.update(db_ingrediente)
         # Propagate price change to all products if precio_actual was updated
         if 'precio_actual' in data.model_dump(exclude_unset=True):
             ProductoService.recalcular_precio_productos_afectados(session, ingrediente_id)
@@ -140,5 +138,5 @@ class IngredienteService:
                 return False
 
             db_ingrediente.deleted_at = get_utc_now()
-            uow.ingredientes.add(db_ingrediente)
+            uow.ingredientes.update(db_ingrediente)
             return True

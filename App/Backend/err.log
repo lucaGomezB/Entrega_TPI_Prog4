@@ -1,7 +1,0 @@
-MP_WEBHOOK_SECRET is missing or still the default placeholder. Webhook signature validation will be skipped — any caller can POST to /pagos/webhook.
-INFO:     Started server process [8896]
-INFO:     Waiting for application startup.
-INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
-INFO  [alembic.runtime.migration] Will assume transactional DDL.
-INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
-INFO  [alembic.runtime.migration] Will assume transactional DDL.

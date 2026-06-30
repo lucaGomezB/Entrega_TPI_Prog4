@@ -13,7 +13,7 @@ Prefix: /pedidos
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body, WebSocket, WebSocketException
 from sqlmodel import Session
-from typing import List
+from typing import List, Optional
 from app.core.database import get_session
 from app.core.paginated_response import PaginatedResponse
 from app.core.security import decode_token
@@ -56,6 +56,7 @@ def read_activos(
     limit: int = Query(100),
     sort_by: str = Query("id", description="Field to sort by: id, estado_codigo, created_at, updated_at, total"),
     sort_order: str = Query("desc", description="Sort direction: asc or desc"),
+    search: Optional[str] = Query(None, description="Text search: matches order ID, customer email/name, or notes"),
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -66,7 +67,7 @@ def read_activos(
     """
     return PedidoService.get_activos_scoped(
         session, current_user, skip=skip, limit=limit,
-        sort_by=sort_by, sort_order=sort_order,
+        sort_by=sort_by, sort_order=sort_order, search=search,
     )
 
 
@@ -76,6 +77,7 @@ def read_historial(
     limit: int = Query(100),
     sort_by: str = Query("id", description="Field to sort by: id, estado_codigo, created_at, updated_at, total"),
     sort_order: str = Query("desc", description="Sort direction: asc or desc"),
+    search: Optional[str] = Query(None, description="Text search: matches order ID, customer email/name, or notes"),
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -97,8 +99,10 @@ def read_historial(
     es_gestor = any(rol.codigo in ("ADMIN", "PEDIDOS") for rol in current_user.roles)
     if es_gestor:
         return PedidoService.get_historial(session, skip=skip, limit=limit,
-                                           sort_by=sort_by, sort_order=sort_order)
-    return PedidoService.get_historial_by_usuario(session, current_user.id, skip=skip, limit=limit)
+                                           sort_by=sort_by, sort_order=sort_order,
+                                           search=search)
+    return PedidoService.get_historial_by_usuario(session, current_user.id, skip=skip, limit=limit,
+                                                   search=search)
 
 
 @router.get("/mis-pedidos", response_model=PaginatedResponse[PedidoRead])

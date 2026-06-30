@@ -85,8 +85,8 @@ const apiClient = axios.create({
 /** Returns the current token info from the Zustand store, or null if not set. */
 export function getToken(): TokenInfo | null {
   const { accessToken, expiresAt } = useAuthStore.getState();
-  if (!accessToken) return null;
-  return { accessToken, expiresAt };
+  if (!accessToken || expiresAt === null) return null;
+  return { accessToken, expiresAt: expiresAt as number };
 }
 
 /** Persists a new access token and its expiry to the store. */
@@ -291,7 +291,7 @@ export async function apiFetchOptional<T>(
       method,
       data,
       headers: options.headers as Record<string, string> | undefined,
-      validateStatus: (status) => true,
+      validateStatus: () => true,
     });
 
     if (response.status === 401) {

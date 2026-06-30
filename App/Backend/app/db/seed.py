@@ -99,7 +99,7 @@ CATEGORIAS_SEED = [
 # Ingredients with stock, pricing, and measurement unit.
 # Each tuple is (nombre, descripcion, es_alergeno, precio_actual, stock_actual, unidad_medida_id).
 # unidad_medida_id: FK to unidadmedida — the unit in which stock_actual is tracked.
-# IDs: 1=kg, 2=g, 3=L, 4=mL, 5=pieza, 6=docena, 7=m²
+# IDs: 1=kg, 2=g, 3=L, 4=mL, 5=porcion, 6=docena, 7=m²
 INGREDIENTES_SEED = [
     ("Pan de Hamburguesa",     "Pan suave para hamburguesas",                                      False, Decimal("50"),   500, 5),
     ("Pan de Miga",            "Pan de miga para sandwich",                                        False, Decimal("60"),   300, 5),
@@ -209,7 +209,7 @@ PRODUCTOS_SEED = [
     ),
     # ── Made-to-order products (with ingredient recipes) ──
     # Ingredient tuples are 6-element: (ing_nombre, removible, principal, orden, cantidad, unidad_medida_id)
-    # cantidad uses Decimal; unidad_medida_id: 1=kg, 2=g, 3=L, 4=mL, 5=pieza, 6=docena
+    # cantidad uses Decimal; unidad_medida_id: 1=kg, 2=g, 3=L, 4=mL, 5=porcion, 6=docena
     dict(
         nombre="Café con Leche",
         descripcion="Café expreso con leche cremada",
@@ -323,13 +323,13 @@ FORMAS_PAGO_SEED = [
 # Standard measurement units for the product catalog.
 # Each tuple is (nombre, simbolo, tipo, factor_conversion).
 # factor_conversion: how many base units equal one of this unit.
-# Base units (factor=1): gramo, mililitro, pieza, metro cuadrado.
+# Base units (factor=1): gramo, mililitro, porcion, metro cuadrado.
 UNIDADES_MEDIDA_SEED = [
     ("kilogramo", "kg", "masa", Decimal("1000")),
     ("gramo", "g", "masa", Decimal("1")),
     ("litro", "L", "volumen", Decimal("1000")),
     ("mililitro", "mL", "volumen", Decimal("1")),
-    ("pieza", "p", "unidad", Decimal("1")),
+    ("porcion", "p", "unidad", Decimal("1")),
     ("docena", "doc", "unidad", Decimal("12")),
     ("metro cuadrado", "m²", "area", Decimal("1")),
 ]
@@ -620,15 +620,34 @@ def seed_unidades_medida(session: Session):
     """
     Create standard measurement units idempotently.
 
-    Checks by nombre to avoid duplicates. The 7 predefined units
-    cover masa, volumen, unidad, and area types. Each unit carries
-    its factor_conversion relative to its tipo's base unit.
+    Checks by simbolo (the UNIQUE business key) to avoid duplicates.
+    If a unit with the same simbolo already exists but with a different
+    nombre (e.g. 'pieza' renamed to 'porcion'), the existing row is
+    updated in-place to preserve FK references from ingredientes and
+    productos.
+
+    The 7 predefined units cover masa, volumen, unidad, and area types.
+    Each unit carries its factor_conversion relative to its tipo's base unit.
     """
     for nombre, simbolo, tipo, factor in UNIDADES_MEDIDA_SEED:
         existing = session.exec(
-            select(UnidadMedida).where(UnidadMedida.nombre == nombre)
+            select(UnidadMedida).where(UnidadMedida.simbolo == simbolo)
         ).first()
-        if not existing:
+        if existing:
+            # Update fields if they differ (handles renames like pieza→porcion)
+            updated = False
+            if existing.nombre != nombre:
+                existing.nombre = nombre
+                updated = True
+            if existing.tipo != tipo:
+                existing.tipo = tipo
+                updated = True
+            if existing.factor_conversion != factor:
+                existing.factor_conversion = factor
+                updated = True
+            if updated:
+                session.add(existing)
+        else:
             session.add(UnidadMedida(nombre=nombre, simbolo=simbolo, tipo=tipo, factor_conversion=factor))
     session.commit()
 
@@ -653,11 +672,11 @@ def run_seed():
         seed_users(session)
         seed_direcciones(session)
         seed_categorias(session)
+        seed_unidades_medida(session)
         seed_ingredientes(session)
         seed_productos(session)
         seed_estados_pedido(session)
         seed_formas_pago(session)
-        seed_unidades_medida(session)
 
     # Stamp Alembic to the current head so subsequent app starts
     # don't try to re-run broken incremental migrations on an empty DB.

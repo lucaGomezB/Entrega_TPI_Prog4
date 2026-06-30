@@ -1,9 +1,0 @@
-INFO:     Will watch for changes in these directories: ['C:\\notas\\2026\\Trabajo Final\\Trabajo-final-Prog4\\EntregaFinalProg4\\ProyectoFinal\\Entrega_TPI_Prog4\\Backend']
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [9096] using WatchFiles
-INFO:     Started server process [4824]
-INFO:     Waiting for application startup.
-INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
-INFO  [alembic.runtime.migration] Will assume transactional DDL.
-INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
-INFO  [alembic.runtime.migration] Will assume transactional DDL.

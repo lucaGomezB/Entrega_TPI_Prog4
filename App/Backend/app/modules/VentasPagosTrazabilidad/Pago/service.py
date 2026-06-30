@@ -159,10 +159,21 @@ class PagoService:
         # ── Step 2: Idempotency — detect duplicate init ──
         fingerprint = _cart_fingerprint(data, usuario.id)
 
-        # Check for existing Pago with same idempotency key (double-click guard)
+        # Check for existing Pago with same idempotency key (double-click guard).
+        # ONLY match Pagos that have NOT yet resulted in a Pedido (pedido_id=NULL).
+        # If the user is making a new purchase with the same cart contents as a
+        # previous completed order, generate a fresh fingerprint so the new Pago
+        # gets a unique idempotency_key (avoiding the UNIQUE constraint on
+        # idempotency_key in the pago table).
         with VentasPagosTrazabilidadUnitOfWork(session) as uow:
             existing_pago = uow.pagos.get_by_idempotency_key(fingerprint)
-            if existing_pago:
+            if existing_pago is not None and existing_pago.pedido_id is not None:
+                # Old Pago already resulted in a Pedido — this is a fresh purchase,
+                # not a retry. Generate a unique fingerprint.
+                fingerprint = f"{fingerprint}-{uuid.uuid4().hex[:8]}"
+                existing_pago = None  # force new Pago creation below
+
+            if existing_pago is not None:
                 mp_pid = existing_pago.mp_payment_id
                 if mp_pid is not None:
                     # Already paid — try to get a fresh init_point
@@ -340,9 +351,7 @@ class PagoService:
                 transaction_amount=total,
                 payment_method_id=None,
             )
-            uow.add(pago)
-            uow.flush()
-            uow.refresh(pago)
+            uow.pagos.create(pago)
 
             # ── Step 7: Create preference in MercadoPago ──
             try:
@@ -484,14 +493,10 @@ class PagoService:
         )
 
         if uow is not None:
-            uow.add(pago)
-            uow.flush()
-            uow.refresh(pago)
+            uow.pagos.create(pago)
         else:
             with VentasPagosTrazabilidadUnitOfWork(session) as new_uow:
-                new_uow.add(pago)
-                new_uow.flush()
-                new_uow.refresh(pago)
+                new_uow.pagos.create(pago)
 
         # ── Create the preference in MercadoPago ──
         try:
@@ -706,7 +711,7 @@ class PagoService:
             pago.mp_status = mp_status
             pago.mp_status_detail = mp_status_detail
             pago.mp_payment_id = mp_payment_id
-            uow.add(pago)
+            uow.pagos.update(pago)
             return PagoRead.model_validate(pago)
 
     @staticmethod
@@ -850,7 +855,7 @@ class PagoService:
                     db_pago.mp_status = mp_status
                     db_pago.mp_status_detail = mp_status_detail
                     db_pago.payment_method_id = payment_data.get("payment_method_id")
-                    uow.add(db_pago)
+                    uow.pagos.update(db_pago)
 
                     # ── If approved: create Pedido from snapshot ──
                     if mp_status == "approved":

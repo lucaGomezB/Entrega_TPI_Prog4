@@ -125,6 +125,13 @@ export const productosApi = {
       body: JSON.stringify({ cantidad, ...(unidad_medida_id !== undefined ? { unidad_medida_id } : {}) }),
     }),
 
+  /** Toggles a boolean field (es_removible, es_principal) on an ingredient assignment, preserving current cantidad. */
+  toggleIngredienteFlag: (productoId: number, ingredienteId: number, field: "es_removible" | "es_principal", value: boolean, cantidad: number) =>
+    apiFetch<ProductoIngredienteRead[]>(`/productos/${productoId}/ingredientes/${ingredienteId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ [field]: value, cantidad }),
+    }),
+
   // Relaciones Producto-Categoria
 
   /** Fetches all category assignments for a product. */

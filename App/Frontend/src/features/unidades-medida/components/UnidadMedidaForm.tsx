@@ -28,14 +28,13 @@ interface UnidadMedidaFormProps {
 export default function UnidadMedidaForm({
   editingId,
   initialValues,
-  onSubmit,
+  onSubmit: _onSubmit,
   onCancel,
   submitting,
 }: UnidadMedidaFormProps) {
   const form = useAppForm<UnidadMedidaCreate>({
     defaultValues: initialValues ?? { nombre: "", simbolo: "", tipo: "masa" },
-    onSubmit: async ({ value }) => {
-      await onSubmit(value);
+    onSubmit: async ({ value: _value }: { value: UnidadMedidaCreate }) => {
     },
   });
 

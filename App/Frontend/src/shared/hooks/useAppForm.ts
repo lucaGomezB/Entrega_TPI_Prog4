@@ -10,7 +10,7 @@
  * Usage:
  *   const form = useAppForm<MyFormData>({
  *     validators: { onSubmit: myOnSubmitValidator },
- *     onSubmit: async (values) => { ... },
+ *     onSubmit: async ({ value }) => { ... },
  *   });
  *
  * Field validation:
@@ -23,10 +23,10 @@
  */
 import { useForm } from '@tanstack/react-form'
 
-// ── Local type (FieldValidator was removed in @tanstack/react-form@1.33.0) ──
+// ── Local type (TanStack Form v1 passes { value, fieldApi } to validators) ──
 
-/** A synchronous field validator: receives the field value and returns an error string or undefined. */
-type FieldValidator<T> = (value: T) => string | undefined
+/** A synchronous field validator: receives { value } and returns an error string or undefined. */
+type FieldValidator<T> = (props: { value: T }) => string | undefined
 
 // ── Helper validators ──
 
@@ -113,15 +113,36 @@ export function composeValidators<T>(...validators: FieldValidator<T>[]): FieldV
  * explicit default are initialised to undefined rather than causing runtime
  * errors. Callers can override this and any other FormOptions via `opts`.
  *
- * @typeParam TFormData - Record type matching the form's field names and value types.
+ * Note: TanStack Form v1's `useForm` has 12 generic parameters. In strict
+ * TypeScript mode, only the first (TFormData) is provided explicitly; the
+ * remaining 11 default to `undefined` per the library's type definitions.
+ * The return type is asserted to preserve TFormData for downstream consumers.
+ *
+ * @typeParam TFormData - The form's field names and value types.
  * @param opts - Partial FormOptions to merge on top of defaults.
  * @returns The TanStack Form instance with full API (handleSubmit, Field, etc.).
  */
-export function useAppForm<TFormData extends Record<string, unknown>>(
+export function useAppForm<TFormData>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   opts?: any
 ) {
-  return useForm<TFormData>({
-    // Default behavior: empty defaultValues to avoid undefined reference errors.
+  // TanStack Form v1 useForm<TFormData, ...> has 12 type parameters.
+  // In strict mode, TS cannot infer the remaining 11 from a single arg.
+  // We provide all 12 explicitly so the return type carries TFormData.
+  return useForm<
+    TFormData,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined
+  >({
     defaultValues: {} as TFormData,
     ...opts,
   })
