@@ -9,7 +9,7 @@ import { type PagoRead } from "@/features/pedidos/api/pagos";
 import { getUserRoles } from "@/shared/api/client";
 import { AxiosError } from "axios";
 import { useAdminPedidoFeed } from "@/features/pedidos/hooks/useAdminPedidoFeed";
-import { useEstadoPedidoWS } from "@/features/pedidos/hooks/useEstadoPedidoWS";
+import { useClientePedidoFeed } from "@/features/pedidos/hooks/useClientePedidoFeed";
 import { useWsStatus } from "@/features/pedidos/store/wsStore";
 import { useNotificationStore } from "@/features/pedidos/store/notificationStore";
 import { useParams } from "react-router-dom";
@@ -368,6 +368,13 @@ export default function PedidosPage() {
     qc.invalidateQueries({ queryKey: ['pedidos', 'detail'] });
   });
 
+  // Client feed: single WebSocket for all client orders (replaces per-pedido connections)
+  useClientePedidoFeed(!esGestor && !esHistorial, () => {
+    qc.invalidateQueries({ queryKey: ['pedidos', 'activos'] });
+    qc.invalidateQueries({ queryKey: ['pedidos', 'detail'] });
+    qc.invalidateQueries({ queryKey: ['mis-pedidos'] });
+  });
+
   // Auto-open detail popup from URL param
   useEffect(() => {
     if (!autoOpenId || isLoading || autoOpenedRef.current || pedidos.length === 0) return;
@@ -566,11 +573,6 @@ export default function PedidosPage() {
       {cancelPopup !== null && (
         <CancelMotivoPopup pedidoId={cancelPopup} onConfirm={handleCancelarConfirm} onCancel={() => !cancelLoading && setCancelPopup(null)} loading={cancelLoading} />
       )}
-
-      {/* WS subscribers: one per active pedido for client-side real-time updates */}
-      {!esGestor && !esHistorial && pedidos.map((p) => (
-        <PedidoWSSubscriber key={p.id} pedidoId={p.id} enabled={true} />
-      ))}
     </div>
   );
 }

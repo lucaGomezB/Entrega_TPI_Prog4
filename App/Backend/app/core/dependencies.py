@@ -73,6 +73,26 @@ def fire_broadcast_admin(ws_manager: WSManager | None, payload: dict) -> None:
         logger.warning("WS admin broadcast failed: %s", exc)
 
 
+def fire_broadcast_user(ws_manager: WSManager | None, user_id: int, payload: dict) -> None:
+    """Fire-and-forget broadcast to a user-specific room from a sync context.
+
+    The room key is f"user_{user_id}". Clients connect to this room via
+    the /ws/cliente/pedidos endpoint to receive real-time updates for all
+    their orders with a single WebSocket connection.
+
+    Args:
+        ws_manager: The WSManager instance (or None to skip).
+        user_id: The user ID whose client room should receive the broadcast.
+        payload: JSON-serializable dict.
+    """
+    if ws_manager is None:
+        return
+    try:
+        asyncio.run(ws_manager.broadcast(f"user_{user_id}", payload))
+    except Exception as exc:
+        logger.warning("WS user broadcast to user_%s failed: %s", user_id, exc)
+
+
 async def PaginationDep(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=100, description="Max records to return (1-100)"),

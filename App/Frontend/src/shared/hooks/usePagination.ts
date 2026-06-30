@@ -10,18 +10,17 @@
  * Usage:
  *   const { skip, limit, handlePageChange, handleLimitChange } = usePagination(10);
  */
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 
 export function usePagination(defaultLimit: number = 10) {
   const [skip, setSkip] = useState(0)
   const [limit, setLimit] = useState(defaultLimit)
 
-  const handlePageChange = (newSkip: number) => setSkip(newSkip)
-
-  const handleLimitChange = (newLimit: number) => {
+  const handlePageChange = useCallback((newSkip: number) => setSkip(newSkip), [])
+  const handleLimitChange = useCallback((newLimit: number) => {
     setLimit(newLimit)
     setSkip(0)
-  }
+  }, [])
 
   return { skip, limit, handlePageChange, handleLimitChange }
 }

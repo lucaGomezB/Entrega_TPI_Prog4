@@ -76,6 +76,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
           <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
           <Route path="/pedidos/:id" element={<PedidosPage />} />
           <Route path="/direcciones" element={<DireccionesPage />} />
+          <Route path="/login" element={<Login />} />
           <Route path="*" element={<Navigate to="/productos" replace />} />
         </Routes>
       </Suspense>
@@ -87,6 +88,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
         <Routes>
           <Route path="/" element={<Navigate to="/productos" replace />} />
           <Route path="/productos" element={<ProductosCRUD role={productRole} />} />
+          <Route path="/login" element={<Login />} />
           <Route path="*" element={<Navigate to="/productos" replace />} />
         </Routes>
       </Suspense>
@@ -100,6 +102,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
           <Route path="/pedidos" element={<PedidosPage />} />
           <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
           <Route path="/pedidos/:id" element={<PedidosPage />} />
+          <Route path="/login" element={<Login />} />
           <Route path="*" element={<Navigate to="/pedidos" replace />} />
         </Routes>
       </Suspense>
@@ -123,6 +126,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
         <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
         <Route path="/pedidos/:id" element={<PedidosPage />} />
         <Route path="/direcciones" element={<DireccionesPage />} />
+        <Route path="/login" element={<Login />} />
         <Route path="*" element={<Navigate to="/productos" replace />} />
       </Routes>
     </Suspense>

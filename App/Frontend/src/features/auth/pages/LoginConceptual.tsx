@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch, setToken, setUserInfo } from "@/shared/api/client";
 import { AxiosError } from "axios";
 import { useAuthStore } from "@/shared/store/authStore";
+import { useCartStore } from "@/shared/store/cartStore";
 import {
   useAppForm,
   composeValidators,
@@ -56,7 +57,9 @@ interface LoginFormValues {
  * @param onLogin - Optional callback invoked after successful authentication.
  */
 export default function Login({ onLogin }: { onLogin?: () => void }) {
-  const [modo, setModo] = useState<Modo>("login");
+  const [searchParams] = useSearchParams();
+  const initialMode: Modo = searchParams.get("mode") === "register" ? "register" : "login";
+  const [modo, setModo] = useState<Modo>(initialMode);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -72,6 +75,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const finalizarAuth = async () => {
     const userInfo = await apiFetch<UserInfo>("/auth/me");
     setUserInfo(userInfo);
+    useCartStore.getState().clearCarrito();
     onLogin?.();
 
     // Role-based redirect: ADMIN users go to the dashboard, others to home
@@ -89,6 +93,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
    * need to invoke onLogin callback and redirect based on role.
    */
   const handleRegistroSuccess = () => {
+    useCartStore.getState().clearCarrito();
     onLogin?.();
     const roles = useAuthStore.getState().user?.roles ?? [];
     if (roles.includes("ADMIN")) {
@@ -152,6 +157,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
    */
   const handleGuestLogin = () => {
     useAuthStore.getState().setRoles([]);
+    useCartStore.getState().clearCarrito();
     navigate("/productos");
   };
 

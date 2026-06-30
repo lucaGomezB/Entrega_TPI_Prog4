@@ -35,7 +35,7 @@ from ..HistorialEstadoPedido.service import HistorialEstadoPedidoService
 from ..DetallePedido.models import DetallePedido
 from ..HistorialEstadoPedido.models import HistorialEstadoPedido
 from app.core.base import get_utc_now
-from app.core.dependencies import fire_broadcast, fire_broadcast_admin
+from app.core.dependencies import fire_broadcast, fire_broadcast_admin, fire_broadcast_user
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +641,7 @@ class PedidoService:
             }
             fire_broadcast(ws_manager, result_pedido.id, payload)
             fire_broadcast_admin(ws_manager, payload)
+            fire_broadcast_user(ws_manager, result_pedido.usuario_id, payload)
 
         return (result_pedido, result_estado_anterior)
 
@@ -1023,6 +1024,7 @@ class PedidoService:
             }
             fire_broadcast(ws_manager, result_pedido.id, payload)
             fire_broadcast_admin(ws_manager, payload)
+            fire_broadcast_user(ws_manager, result_pedido.usuario_id, payload)
 
         return result_pedido
 

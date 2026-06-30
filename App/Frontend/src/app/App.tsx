@@ -77,7 +77,7 @@ function App() {
         }
       } else {
         useAuthStore.getState().logout()
-        useCartStore.getState().hydrate();
+        useCartStore.getState().clearCarrito();
       }
       setVerifying(false)
     }
@@ -92,7 +92,7 @@ function App() {
       // If the server call fails, still clear local state.
     }
     useAuthStore.getState().logout()
-    useCartStore.getState().hydrate()
+    useCartStore.getState().clearCarrito()
     navigate('/login')
   }
 

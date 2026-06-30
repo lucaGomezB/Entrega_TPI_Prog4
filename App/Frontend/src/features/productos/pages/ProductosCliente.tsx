@@ -72,8 +72,13 @@ export default function ProductosCliente() {
   const [recentlyAdded, setRecentlyAdded] = useState<Set<number>>(new Set());
   const addTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
-  /** Adds a product to the cart and triggers visual feedback. */
+  /** Adds a product to the cart and triggers visual feedback.
+   *  Guests are redirected to /login?mode=register to create an account first. */
   const handleAddToCart = (prod: Producto) => {
+    if (!isAuth) {
+      navigate("/login?mode=register");
+      return;
+    }
     useCartStore.getState().addToCart(prod.id, prod.nombre, Number(prod.precio_base));
     triggerFeedback(prod.id);
   };

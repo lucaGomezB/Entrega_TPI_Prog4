@@ -3,7 +3,7 @@
  * Uses TanStack Query for data fetching and mutations.
  * Uses DataTable with server-side pagination, SearchFilter, and Modal.
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { type Usuario, type UsuarioCreate, type UsuarioUpdate } from "@/features/auth/api/usuarios";
 import { apiFetch, getUserRoles } from "@/shared/api/client";
@@ -292,6 +292,8 @@ export default function AdminUsuariosPage() {
   const navigate = useNavigate();
   const [rolFiltro, setRolFiltro] = useState("");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("id");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [todosRoles, setTodosRoles] = useState<RolOption[]>([]);
   const [editando, setEditando] = useState<Usuario | null>(null);
   const [creando, setCreando] = useState(false);
@@ -309,10 +311,30 @@ export default function AdminUsuariosPage() {
     handlePageChange(0);
   }, [handlePageChange]);
 
+  const handleSort = (newSortBy: string, newSortOrder: "asc" | "desc") => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+  };
+
   // ── TanStack Query ──
   const { data, isLoading, isError, error } = useUsuarios(skip, limit, rolFiltro || undefined, search || undefined);
   const usuarios = data?.items ?? [];
   const total = data?.total ?? 0;
+
+  // Client-side sort (only numeric columns: id)
+  const sortedUsuarios = useMemo(() => {
+    if (!sortBy) return usuarios;
+    return [...usuarios].sort((a, b) => {
+      const aVal = (a as Record<string, unknown>)[sortBy];
+      const bVal = (b as Record<string, unknown>)[sortBy];
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
+      }
+      const aStr = String(aVal ?? "");
+      const bStr = String(bVal ?? "");
+      return sortOrder === "asc" ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+    });
+  }, [usuarios, sortBy, sortOrder]);
 
   const createMutation = useCreateUsuario();
   const updateMutation = useUpdateUsuario();
@@ -348,6 +370,7 @@ export default function AdminUsuariosPage() {
     {
       key: "id" as const,
       label: "Codigo",
+      sortable: true,
       hideOnMobile: true,
       render: (u) => <span className="text-gray-500 text-xs">#{u.id}</span>,
     },
@@ -405,13 +428,16 @@ export default function AdminUsuariosPage() {
       </div>
       <DataTable
         columns={columns}
-        data={usuarios}
+        data={sortedUsuarios}
         total={total}
         skip={skip}
         limit={limit}
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         isLoading={isLoading}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSort={handleSort}
       />
       {creando && <CrearUsuarioModal todosRoles={todosRoles} onClose={() => setCreando(false)} onSave={handleCreate} />}
       {editando && <EditarUsuarioModal usuario={editando} todosRoles={todosRoles} onClose={() => setEditando(null)} onSave={handleSave} />}

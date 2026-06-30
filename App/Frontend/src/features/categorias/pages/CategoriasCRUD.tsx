@@ -8,7 +8,7 @@
  *   - Text filter (client-side, preserves ancestor nodes so context is not lost).
  *   - Excel export of the flattened (depth-annotated) tree.
  */
-import { useState, useRef, type ReactNode } from "react";
+import { useState, useRef, useMemo, type ReactNode } from "react";
 import { AxiosError } from "axios";
 import type { CategoriaCreate, CategoriaTree } from "@/features/categorias/api/categorias";
 import { useCategoriasTree, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from "@/features/categorias/hooks/useCategorias";
@@ -231,6 +231,7 @@ export default function CategoriasCRUD() {
   const [selectedParentName, setSelectedParentName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
   // Cloudinary Upload Widget state (managed by shared hook)
   const [imagenPublicIds, setImagenPublicIds] = useState<string[]>([]);
@@ -256,6 +257,25 @@ export default function CategoriasCRUD() {
   };
 
   const filteredTree = filterTree(treeData, filter);
+
+  // Client-side sort by id
+  const sortedTree = useMemo(() => {
+    if (!filteredTree) return [];
+    const sortNodes = (nodes: CategoriaTree[]): CategoriaTree[] => {
+      const sorted = [...nodes].sort((a, b) =>
+        sortOrder === "asc" ? a.id - b.id : b.id - a.id
+      );
+      return sorted.map((node) => ({
+        ...node,
+        subcategorias: sortNodes(node.subcategorias),
+      }));
+    };
+    return sortNodes(filteredTree);
+  }, [filteredTree, sortOrder]);
+
+  const handleSortToggle = () => {
+    setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+  };
 
   const form = useAppForm<CategoriaCreate>({
     defaultValues: { nombre: "", descripcion: "", parent_id: null, orden_display: 0, imagenes_url: [] },
@@ -455,7 +475,9 @@ export default function CategoriasCRUD() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="bg-gray-100 text-gray-600 uppercase text-xs tracking-wider">
-                <th className="px-3 py-3 text-left font-semibold hidden md:table-cell">Codigo</th>
+                <th className="px-3 py-3 text-left font-semibold hidden md:table-cell cursor-pointer select-none hover:bg-gray-200" onClick={handleSortToggle}>
+                  Codigo {sortOrder === "asc" ? "\u25B2" : "\u25BC"}
+                </th>
                 <th className="px-3 py-3 text-left font-semibold">Nombre</th>
                 <th className="px-3 py-3 text-left font-semibold hidden md:table-cell">Descripcion</th>
                 <th className="px-3 py-3 text-left font-semibold">Acciones</th>
@@ -481,7 +503,7 @@ export default function CategoriasCRUD() {
               )}
 
               {/* Empty state */}
-              {!isLoading && !isError && filteredTree.length === 0 && (
+              {!isLoading && !isError && sortedTree.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-3 py-12 text-center text-gray-400">
                     {filter.trim() ? "No hay categorias que coincidan con el filtro" : "No hay categorias"}
@@ -490,7 +512,7 @@ export default function CategoriasCRUD() {
               )}
 
               {/* Tree rows */}
-              {!isLoading && !isError && filteredTree.map((node) => (
+              {!isLoading && !isError && sortedTree.map((node) => (
                 <CategoryTreeRow
                   key={node.id}
                   categoria={node}
@@ -506,10 +528,10 @@ export default function CategoriasCRUD() {
         </div>
 
         {/* Footer with item count */}
-        {!isLoading && !isError && filteredTree.length > 0 && (
+        {!isLoading && !isError && sortedTree.length > 0 && (
           <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200">
             <span className="text-xs text-gray-500">
-              {filteredTree.length} {filteredTree.length === 1 ? "categoria visible" : "categorias visibles"}
+              {sortedTree.length} {sortedTree.length === 1 ? "categoria visible" : "categorias visibles"}
             </span>
             {filter.trim() && (
               <span className="text-xs text-blue-600">Filtro activo: "{filter}"</span>

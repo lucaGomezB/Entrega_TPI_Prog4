@@ -34,7 +34,7 @@ from .schemas import PagoRead, InitFromCartRequest
 from ..uow import VentasPagosTrazabilidadUnitOfWork
 from ..Pedido.service import PedidoService
 from ..CarritoSnapshot.models import CarritoSnapshot
-from app.core.dependencies import fire_broadcast, fire_broadcast_admin, get_ws_manager
+from app.core.dependencies import fire_broadcast, fire_broadcast_admin, fire_broadcast_user, get_ws_manager
 from app.core.routing import get_or_404
 
 logger = logging.getLogger(__name__)
@@ -936,6 +936,7 @@ class PagoService:
                     }
                     fire_broadcast(ws_manager, _broadcast_pedido_id, payload)
                     fire_broadcast_admin(ws_manager, payload)
+                    fire_broadcast_user(ws_manager, _broadcast_pedido_usuario_id, payload)
 
         if background_tasks is not None:
             background_tasks.add_task(_process)

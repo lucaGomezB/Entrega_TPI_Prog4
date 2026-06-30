@@ -10,7 +10,7 @@
  * State management: TanStack Query for products, TanStack Form for create/edit.
  * Uses DataTable with server-side pagination.
  */
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useAppForm } from "@/shared/hooks/useAppForm";
 import type { Producto, ProductoCreate, ProductoIngredienteRead, ProductoCategoriaRead } from "@/features/productos/api/productos";
 import { productosApi } from "@/features/productos/api/productos";
@@ -665,6 +665,8 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
 
   // ── UI-only state ──
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("id");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
 
@@ -672,6 +674,11 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     setSearch(value);
     handlePageChange(0);
   }, [handlePageChange]);
+
+  const handleSort = (newSortBy: string, newSortOrder: "asc" | "desc") => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+  };
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -693,6 +700,21 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
   const { data, isLoading, isError, error } = useProductos(skip, limit, search || undefined);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
+
+  // Client-side sort
+  const sortedItems = useMemo(() => {
+    if (!sortBy) return items;
+    return [...items].sort((a, b) => {
+      const aVal = (a as Record<string, unknown>)[sortBy];
+      const bVal = (b as Record<string, unknown>)[sortBy];
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
+      }
+      const aStr = String(aVal ?? "");
+      const bStr = String(bVal ?? "");
+      return sortOrder === "asc" ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+    });
+  }, [items, sortBy, sortOrder]);
 
   // ── Categories and ingredients for selectors (fetch all, not paginated) ──
   const [allCats, setAllCats] = useState<Categoria[]>([]);
@@ -976,11 +998,12 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
 
   // Build columns based on role
   const columns: DataTableColumn<Producto>[] = [
-    ...(!readOnly ? [{ key: "id" as const, label: "Codigo", hideOnMobile: true, render: (p: Producto) => <span className="text-gray-500 text-xs">{p.id}</span> }] : []),
+    ...(!readOnly ? [{ key: "id" as const, label: "Codigo", sortable: true, hideOnMobile: true, render: (p: Producto) => <span className="text-gray-500 text-xs">{p.id}</span> }] : []),
     { key: "nombre" as const, label: "Nombre", render: (p: Producto) => <span className="font-medium text-gray-800">{p.nombre}</span> },
     {
       key: "precio_actual" as const,
       label: "Precio",
+      sortable: true,
       render: (p: Producto) => (
         <span className="font-mono text-sm">
           ${Number(p.precio_actual).toFixed(2)}
@@ -993,6 +1016,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     ...(!readOnly ? [{
       key: "stock_cantidad" as const,
       label: "Stock",
+      sortable: true,
       render: (p: Producto) => (
         p.stock_cantidad === 0 ? (
           <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
@@ -1008,6 +1032,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
     ...(!readOnly && !isStockMode ? [{
       key: "tiempo_prep_min" as const,
       label: "Prep. (min)",
+      sortable: true,
       hideOnMobile: true,
       render: (p: Producto) => <span className="text-sm">{p.tiempo_prep_min}</span>,
     }] : []),
@@ -1439,13 +1464,16 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       {/* Product list table via DataTable */}
       <DataTable
         columns={columns}
-        data={items}
+        data={sortedItems}
         total={total}
         skip={skip}
         limit={limit}
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         isLoading={isLoading}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSort={handleSort}
         getRowClassName={(p: Producto) => !p.disponible ? "bg-gray-100 opacity-60" : undefined}
       />
 

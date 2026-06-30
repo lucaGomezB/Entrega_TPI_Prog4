@@ -409,3 +409,36 @@ async def ws_admin_pedidos(
         pass
     finally:
         ws_manager.disconnect(websocket)
+
+
+@router.websocket("/ws/cliente/pedidos")
+async def ws_cliente_pedidos(
+    websocket: WebSocket,
+    session: Session = Depends(get_session),
+    ws_manager: WSManager = Depends(get_ws_manager),
+):
+    """WebSocket endpoint for client-specific real-time order feed.
+
+    Authenticated clients connect to a single room (user_{id}) and receive
+    state-change events for ALL their orders. This replaces per-pedido
+    WebSocket connections, reducing browser connection count and preventing
+    disconnections from connection limits.
+    """
+    await websocket.accept()
+
+    try:
+        user = await _get_user_from_ws_token(websocket, session)
+    except WebSocketException:
+        await websocket.close(code=4001, reason="Token requerido")
+        return
+
+    room = f"user_{user.id}"
+    ws_manager.connect(websocket, room)
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except Exception:
+        pass
+    finally:
+        ws_manager.disconnect(websocket)

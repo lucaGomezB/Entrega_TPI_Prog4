@@ -3,7 +3,7 @@
  * Uses TanStack Query for data fetching and mutations.
  * Uses DataTable with server-side pagination.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { AxiosError } from "axios";
 import type { Ingrediente, IngredienteCreate } from "@/features/productos/api/ingredientes";
 import { ingredientesApi } from "@/features/productos/api/ingredientes";
@@ -25,6 +25,8 @@ const DEFAULT_LIMIT = 10;
 
 export default function IngredientesCRUD() {
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("id");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { skip, limit, handlePageChange, handleLimitChange } = usePagination(DEFAULT_LIMIT);
 
@@ -32,6 +34,11 @@ export default function IngredientesCRUD() {
     setSearch(value);
     handlePageChange(0);
   }, [handlePageChange]);
+
+  const handleSort = (newSortBy: string, newSortOrder: "asc" | "desc") => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+  };
 
   const userRoles = getUserRoles();
   const esAdmin = userRoles.includes("ADMIN");
@@ -53,6 +60,21 @@ export default function IngredientesCRUD() {
   const { data, isLoading, isError, error } = useIngredientes(skip, limit, search || undefined);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
+
+  // Client-side sort
+  const sortedItems = useMemo(() => {
+    if (!sortBy) return items;
+    return [...items].sort((a, b) => {
+      const aVal = (a as Record<string, unknown>)[sortBy];
+      const bVal = (b as Record<string, unknown>)[sortBy];
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
+      }
+      const aStr = String(aVal ?? "");
+      const bStr = String(bVal ?? "");
+      return sortOrder === "asc" ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+    });
+  }, [items, sortBy, sortOrder]);
 
   const createMutation = useCreateIngrediente();
   const updateMutation = useUpdateIngrediente();
@@ -174,6 +196,7 @@ export default function IngredientesCRUD() {
     ...(showId ? [{
       key: "id" as const,
       label: "Codigo",
+      sortable: true,
       hideOnMobile: true,
       render: (ing: Ingrediente) => <span className="text-gray-500 text-xs">#{ing.id}</span>,
     }] : []),
@@ -206,6 +229,7 @@ export default function IngredientesCRUD() {
     {
       key: "precio_actual",
       label: "Precio",
+      sortable: true,
       render: (ing) =>
         inlinePrecioEdit?.id === ing.id ? (
           <div className="flex gap-1 items-center">
@@ -225,6 +249,7 @@ export default function IngredientesCRUD() {
     {
       key: "stock_actual",
       label: "Stock",
+      sortable: true,
       render: (ing) =>
         inlineStockEdit?.id === ing.id ? (
           <div className="flex gap-1 items-center">
@@ -372,13 +397,16 @@ export default function IngredientesCRUD() {
       )}
       <DataTable
         columns={columns}
-        data={items}
+        data={sortedItems}
         total={total}
         skip={skip}
         limit={limit}
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         isLoading={isLoading}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSort={handleSort}
       />
     </div>
   );
