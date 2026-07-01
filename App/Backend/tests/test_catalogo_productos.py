@@ -10,6 +10,7 @@ from fastapi import status
 from app.modules.CatalogoDeProductos.Categoria.models import Categoria
 from app.modules.CatalogoDeProductos.Producto.models import Producto
 from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+from app.modules.CatalogoDeProductos.producto_categoria import ProductoCategoria
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -350,6 +351,131 @@ class TestProductoEndpoints:
         data = response.json()
         assert data["total"] >= 1
 
+    # ── category filter (categoria_id param) ──
+
+    def test_get_productos_by_category(self, client, db_session):
+        """GET /productos/?categoria_id=X returns only products in that category."""
+        cat_a = Categoria(nombre="Bebidas", descripcion="Drinks", orden_display=1)
+        cat_b = Categoria(nombre="Comidas", descripcion="Food", orden_display=2)
+        db_session.add_all([cat_a, cat_b])
+        db_session.flush()
+
+        prod_a = Producto(nombre="Coca-Cola", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=5, disponible=True)
+        prod_b = Producto(nombre="Hamburguesa", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=5, disponible=True)
+        db_session.add_all([prod_a, prod_b])
+        db_session.flush()
+
+        db_session.add(ProductoCategoria(producto_id=prod_a.id, categoria_id=cat_a.id, es_principal=True))
+        db_session.add(ProductoCategoria(producto_id=prod_b.id, categoria_id=cat_b.id, es_principal=True))
+        db_session.flush()
+
+        resp = client.get(f"/api/v1/productos/?categoria_id={cat_a.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["nombre"] == "Coca-Cola"
+
+    def test_get_productos_by_category_includes_descendants(self, client, db_session):
+        """Filtering by root category returns products in descendant subcategories."""
+        root = Categoria(nombre="Bebidas", descripcion="Root", orden_display=1)
+        db_session.add(root)
+        db_session.flush()
+        child = Categoria(nombre="Gaseosas", descripcion="Child", orden_display=1, parent_id=root.id)
+        db_session.add(child)
+        db_session.flush()
+
+        prod = Producto(nombre="Sprite", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=5, disponible=True)
+        db_session.add(prod)
+        db_session.flush()
+        db_session.add(ProductoCategoria(producto_id=prod.id, categoria_id=child.id, es_principal=True))
+        db_session.flush()
+
+        resp = client.get(f"/api/v1/productos/?categoria_id={root.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["nombre"] == "Sprite"
+
+    def test_get_productos_by_nonexistent_category(self, client, db_session):
+        """Filtering by non-existent category returns empty results."""
+        resp = client.get("/api/v1/productos/?categoria_id=99999")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    def test_get_productos_category_and_search_combined(self, client, db_session):
+        """Category filter + text search combine correctly."""
+        cat_a = Categoria(nombre="Bebidas", descripcion="Drinks", orden_display=1)
+        cat_b = Categoria(nombre="Panaderia", descripcion="Bakery", orden_display=2)
+        db_session.add_all([cat_a, cat_b])
+        db_session.flush()
+
+        prod_a = Producto(nombre="Coca-Cola", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=5, disponible=True)
+        prod_b = Producto(nombre="Pan Frances", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=5, disponible=True)
+        db_session.add_all([prod_a, prod_b])
+        db_session.flush()
+
+        db_session.add(ProductoCategoria(producto_id=prod_a.id, categoria_id=cat_a.id, es_principal=True))
+        db_session.add(ProductoCategoria(producto_id=prod_b.id, categoria_id=cat_b.id, es_principal=True))
+        db_session.flush()
+
+        resp = client.get(f"/api/v1/productos/?categoria_id={cat_a.id}&search=coca")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["nombre"] == "Coca-Cola"
+
+    def test_product_read_has_categoria_ids(self, client, db_session):
+        """ProductoRead response includes categoria_ids field with at least one ID."""
+        cat = Categoria(nombre="Postres", descripcion="Desserts", orden_display=1)
+        db_session.add(cat)
+        db_session.flush()
+
+        prod = Producto(nombre="Flan", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=5, disponible=True)
+        db_session.add(prod)
+        db_session.flush()
+        db_session.add(ProductoCategoria(producto_id=prod.id, categoria_id=cat.id, es_principal=True))
+        db_session.flush()
+
+        resp = client.get("/api/v1/productos/")
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        flan = next((p for p in items if p["nombre"] == "Flan"), None)
+        assert flan is not None, "Flan not found in response"
+        assert "categoria_ids" in flan, "categoria_ids missing in ProductoRead"
+        assert cat.id in flan["categoria_ids"], f"Expected categoria_ids to contain {cat.id}"
+
+    # ── multiple category filter (categoria_id repeated param) ──
+
+    def test_get_productos_by_multiple_categories(self, client, db_session):
+        """GET /productos/?categoria_id=X&categoria_id=Y returns products from ANY matching category (union)."""
+        cat_a = Categoria(nombre="Bebidas", descripcion="Drinks", orden_display=1)
+        cat_b = Categoria(nombre="Postres", descripcion="Desserts", orden_display=2)
+        cat_c = Categoria(nombre="Pizzas", descripcion="Pizza", orden_display=3)
+        db_session.add_all([cat_a, cat_b, cat_c])
+        db_session.flush()
+
+        prod_a = Producto(nombre="Coca-Cola", descripcion="Test", precio_base=500, precio_actual=500, stock_cantidad=10, tiempo_prep_min=5, disponible=True)
+        prod_b = Producto(nombre="Flan", descripcion="Test", precio_base=400, precio_actual=400, stock_cantidad=5, tiempo_prep_min=8, disponible=True)
+        prod_c = Producto(nombre="Muzzarella", descripcion="Test", precio_base=800, precio_actual=800, stock_cantidad=3, tiempo_prep_min=20, disponible=True)
+        db_session.add_all([prod_a, prod_b, prod_c])
+        db_session.flush()
+
+        db_session.add(ProductoCategoria(producto_id=prod_a.id, categoria_id=cat_a.id, es_principal=True))
+        db_session.add(ProductoCategoria(producto_id=prod_b.id, categoria_id=cat_b.id, es_principal=True))
+        db_session.add(ProductoCategoria(producto_id=prod_c.id, categoria_id=cat_c.id, es_principal=True))
+        db_session.flush()
+
+        # Request products from BOTH Bebidas and Postres — should get Coca-Cola AND Flan, not Muzzarella
+        resp = client.get(f"/api/v1/productos/?categoria_id={cat_a.id}&categoria_id={cat_b.id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2, f"Expected 2 products, got {data['total']}"
+        names = [item["nombre"] for item in data["items"]]
+        assert "Coca-Cola" in names
+        assert "Flan" in names
+        assert "Muzzarella" not in names
 
 # ═══════════════════════════════════════════════════════════════════════════
 # INGREDIENTE ENDPOINTS
@@ -487,3 +613,127 @@ class TestIngredienteEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["total"] >= 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SCHEMA HARDENING TESTS — stock_cantidad ge=0 constraints (Bug 2)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestProductoStockConstraints:
+
+    def test_producto_create_negative_stock_raises_validation_error(self):
+        """ProductoCreate(stock_cantidad=-5) raises ValidationError."""
+        from pydantic import ValidationError
+        from app.modules.CatalogoDeProductos.Producto.schemas import ProductoCreate
+        with pytest.raises(ValidationError):
+            ProductoCreate(
+                nombre="Test",
+                categorias_ids=[1],
+                stock_cantidad=-5,
+            )
+
+    def test_producto_create_stock_zero_succeeds(self):
+        """ProductoCreate(stock_cantidad=0) succeeds."""
+        from app.modules.CatalogoDeProductos.Producto.schemas import ProductoCreate
+        p = ProductoCreate(
+            nombre="Test",
+            categorias_ids=[1],
+            stock_cantidad=0,
+        )
+        assert p.stock_cantidad == 0
+
+    def test_producto_update_negative_stock_raises_validation_error(self):
+        """ProductoUpdate(stock_cantidad=-1) raises ValidationError."""
+        from pydantic import ValidationError
+        from app.modules.CatalogoDeProductos.Producto.schemas import ProductoUpdate
+        with pytest.raises(ValidationError):
+            ProductoUpdate(stock_cantidad=-1)
+
+    def test_producto_update_stock_zero_succeeds(self):
+        """ProductoUpdate(stock_cantidad=0) succeeds."""
+        from app.modules.CatalogoDeProductos.Producto.schemas import ProductoUpdate
+        p = ProductoUpdate(stock_cantidad=0)
+        assert p.stock_cantidad == 0
+
+    def test_producto_update_stock_none_succeeds(self):
+        """ProductoUpdate(stock_cantidad=None) succeeds (omit field)."""
+        from app.modules.CatalogoDeProductos.Producto.schemas import ProductoUpdate
+        p = ProductoUpdate(stock_cantidad=None)
+        assert p.stock_cantidad is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# INGREDIENT-DERIVED MAX TESTS — stock validation includes max_posible
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestIngredientDerivedMax:
+
+    def test_create_product_with_limiting_ingredient_shows_max_posible(self, client, admin_headers, db_session):
+        """Creating product with ingredient limiting to 3 units shows max_posible."""
+        from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+
+        # Create ingredient with limited stock: 10 units
+        ing = Ingrediente(
+            nombre="Limon", descripcion="Test",
+            precio_actual=50, stock_actual=10,
+        )
+        db_session.add(ing)
+        db_session.flush()
+
+        # Create a product with stock_cantidad=5 and ingredient cantidad=4
+        # needed = 4 * 5 = 20, but stock_actual=10, so 10 < 20 — SHORT
+        # max_posible = floor(10 / 4) = 2
+        response = client.post("/api/v1/productos/", json={
+            "nombre": "Limonada",
+            "categorias_ids": [1],
+            "stock_cantidad": 5,
+            "ingredientes": [{
+                "ingrediente_id": ing.id,
+                "cantidad": 4,
+                "es_removible": False,
+                "es_principal": True,
+                "orden": 0,
+            }],
+        }, headers=admin_headers)
+        # Expect error due to ingredient stock shortage
+        assert response.status_code in (400, 422)
+        data = response.json()
+        # The custom exception handler moves structured detail fields to top level
+        ingredientes = data.get("ingredientes", [])
+        if ingredientes:
+            assert len(ingredientes) > 0
+            has_max = any("max_posible" in ing for ing in ingredientes)
+            assert has_max, f"Expected max_posible in ingredientes: {ingredientes}"
+        else:
+            # Fallback: check detail string
+            detail = data.get("detail", "")
+            error_text = str(detail)
+            assert "max_posible" in error_text or "maximo" in error_text.lower()
+
+    def test_create_product_with_sufficient_stock_succeeds(self, client, admin_headers, db_session):
+        """Creating product with sufficient ingredient stock succeeds."""
+        from app.modules.CatalogoDeProductos.Ingrediente.models import Ingrediente
+
+        # Ingredient with plenty of stock
+        ing = Ingrediente(
+            nombre="Azucar", descripcion="Test",
+            precio_actual=20, stock_actual=500,
+        )
+        db_session.add(ing)
+        db_session.flush()
+
+        response = client.post("/api/v1/productos/", json={
+            "nombre": "Dulce de Leche",
+            "categorias_ids": [1],
+            "stock_cantidad": 2,
+            "ingredientes": [{
+                "ingrediente_id": ing.id,
+                "cantidad": 1,
+                "es_removible": False,
+                "es_principal": True,
+                "orden": 0,
+            }],
+        }, headers=admin_headers)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["nombre"] == "Dulce de Leche"

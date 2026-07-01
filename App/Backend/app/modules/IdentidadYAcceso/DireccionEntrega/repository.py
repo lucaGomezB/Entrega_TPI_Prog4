@@ -64,3 +64,45 @@ class DireccionEntregaRepository(BaseRepository[DireccionEntrega]):
             statement = statement.where(DireccionEntrega.usuario_id == usuario_id)
         statement = statement.order_by(DireccionEntrega.created_at.desc())
         return self.session.exec(statement).all()
+
+    def get_locales(self) -> list[DireccionEntrega]:
+        """Get all non-deleted company stores/locations (es_local=True)."""
+        statement = (
+            select(DireccionEntrega)
+            .where(
+                DireccionEntrega.es_local == True,
+                col(DireccionEntrega.deleted_at).is_(None),
+            )
+            .order_by(DireccionEntrega.created_at.desc())
+        )
+        return self.session.exec(statement).all()
+
+    def get_by_usuario_with_locales(self, usuario_id: int, incluir_locales: bool = False) -> list[DireccionEntrega]:
+        """
+        Get user's addresses, optionally including all company stores (locales).
+
+        When incluir_locales=True, returns user-scoped addresses UNION all locales,
+        ordered by: locales first, then principal first, then created_at desc.
+        """
+        if not incluir_locales:
+            return self.get_by_usuario(usuario_id)
+
+        # Get user's own addresses + all locales
+        user_addr = self.get_by_usuario(usuario_id)
+        locales = self.get_locales()
+        # Deduplicate by id (possible if user owns a local)
+        existing_ids = {a.id for a in user_addr}
+        combined = list(user_addr)
+        for loc in locales:
+            if loc.id not in existing_ids:
+                combined.append(loc)
+
+        # Sort: es_local first (locales), then es_principal first, then created_at desc
+        combined.sort(
+            key=lambda a: (
+                not a.es_local,
+                not a.es_principal,
+                -(a.created_at.timestamp() if a.created_at else 0),
+            )
+        )
+        return combined

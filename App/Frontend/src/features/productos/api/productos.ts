@@ -27,7 +27,7 @@ export interface Producto {
   disponible: boolean;
   es_insumo: boolean;
   tiene_ingredientes?: boolean;
-  categoria_principal_id?: number | null;
+  categoria_ids: number[];
   unidad_medida_id?: number | null;
   unidad_medida_simbolo?: string | null;
 }

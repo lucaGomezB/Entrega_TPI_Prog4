@@ -104,6 +104,28 @@ export function composeValidators<T>(...validators: FieldValidator<T>[]): FieldV
   }
 }
 
+/**
+ * Returns a validator that enforces a minimum numeric value.
+ * Does not validate non-number or NaN values (returns undefined for those).
+ */
+export function minValue(min: number, message?: string): FieldValidator<number> {
+  return ({ value }) =>
+    typeof value === "number" && !isNaN(value) && value < min
+      ? (message ?? `Debe ser mayor o igual a ${min}`)
+      : undefined;
+}
+
+/**
+ * Returns a validator that enforces a maximum numeric value.
+ * Does not validate non-number or NaN values.
+ */
+export function maxValue(max: number, message?: string): FieldValidator<number> {
+  return ({ value }) =>
+    typeof value === "number" && !isNaN(value) && value > max
+      ? (message ?? `Debe ser menor o igual a ${max}`)
+      : undefined;
+}
+
 // ── Hook base ──
 
 /**

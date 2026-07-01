@@ -44,6 +44,18 @@ class CategoriaRepository(BaseRepository[Categoria]):
         """Fetch a parent category by ID (alias for get_by_id with explicit name)."""
         return self.get_by_id(parent_id)
 
+    def get_descendant_ids(self, categoria_id: int) -> list[int]:
+        """Return all descendant category IDs including self (recursive).
+
+        Uses get_all(parent_id=...) to traverse the category tree.
+        The tree is shallow (< 5 levels) so recursion is safe.
+        """
+        ids = [categoria_id]
+        children = self.get_all(parent_id=categoria_id)
+        for child in children:
+            ids.extend(self.get_descendant_ids(child.id))
+        return ids
+
     def has_active_products(self, categoria_id: int) -> bool:
         """Check whether any active (non-deleted) product references this category."""
         from ..producto_categoria import ProductoCategoria

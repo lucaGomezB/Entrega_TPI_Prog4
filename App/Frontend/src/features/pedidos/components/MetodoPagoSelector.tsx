@@ -1,7 +1,8 @@
 /**
  * MetodoPagoSelector — Payment method radio buttons extracted from Carrito.
  *
- * Renders two radio buttons: PAGO_LOCAL and MERCADOPAGO.
+ * Renders three radio buttons: PAGO_LOCAL, MERCADOPAGO, and TRANSFERENCIA.
+ * EFECTIVO was removed (duplicate of PAGO_LOCAL) — see change locales-retiro-y-eliminar-efectivo.
  * Props receive the current value and change handler from parent.
  */
 interface MetodoPagoSelectorProps {
@@ -35,6 +36,17 @@ export function MetodoPagoSelector({ formaPago, onChange }: MetodoPagoSelectorPr
             className="cursor-pointer"
           />
           <span className="text-sm">MercadoPago (tarjeta/debito)</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="formaPago"
+            value="TRANSFERENCIA"
+            checked={formaPago === "TRANSFERENCIA"}
+            onChange={() => onChange("TRANSFERENCIA")}
+            className="cursor-pointer"
+          />
+          <span className="text-sm">Transferencia bancaria</span>
         </label>
       </div>
     </div>

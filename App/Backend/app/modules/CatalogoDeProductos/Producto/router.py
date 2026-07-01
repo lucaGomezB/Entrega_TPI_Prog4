@@ -7,7 +7,7 @@ Endpoints are split into:
 
 Prefix: /productos
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 from typing import List, Optional
 from app.core.database import get_session
@@ -23,9 +23,9 @@ router = APIRouter(prefix="/productos", tags=["Productos"])
 # --- Public GET endpoints (no auth required) ---
 
 @router.get("/", response_model=PaginatedResponse[ProductoRead])
-def read_productos(skip: int = 0, limit: int = 100, search: Optional[str] = None, session: Session = Depends(get_session)):
-    """GET /productos — List all products with pagination. Public endpoint, no auth required."""
-    return ProductoService.get_all(session, skip=skip, limit=limit, search=search)
+def read_productos(skip: int = 0, limit: int = 100, search: Optional[str] = None, categoria_id: Optional[list[int]] = Query(None), session: Session = Depends(get_session)):
+    """GET /productos — List all products with pagination, optional search, and optional category filter. Public endpoint, no auth required."""
+    return ProductoService.get_all(session, skip=skip, limit=limit, search=search, categoria_id=categoria_id)
 
 @router.get("/{producto_id}", response_model=ProductoRead)
 def read_producto(producto_id: int, session: Session = Depends(get_session)):

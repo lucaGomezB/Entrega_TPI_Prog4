@@ -158,13 +158,22 @@ def create(
     """POST /pedidos — Create a new order.
 
     Logic:
-    1. Forces the authenticated user as owner unless ADMIN/PEDIDOS supplies a different user_id
-    2. Creates the order in PENDIENTE state with price/name snapshots
-    3. Broadcasts creation event to admin room after commit
-    4. Confirmation (PENDIENTE -> CONFIRMADO) happens ONLY via approved payment webhook
+    1. Block ADMIN users from creating orders (admins manage, not buy)
+    2. Forces the authenticated user as owner unless ADMIN/PEDIDOS supplies a different user_id
+    3. Creates the order in PENDIENTE state with price/name snapshots
+    4. Broadcasts creation event to admin room after commit
+    5. Confirmation (PENDIENTE -> CONFIRMADO) happens ONLY via approved payment webhook
 
     Note: auto_confirmar was removed. Confirmation is exclusively via MercadoPago webhook.
     """
+    # Block ADMIN users from creating orders
+    es_admin = any(rol.codigo == "ADMIN" for rol in current_user.roles)
+    if es_admin and data.usuario_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Los administradores no pueden crear pedidos. Use el panel de administracion.",
+        )
+
     if data.usuario_id is None:
         data.usuario_id = current_user.id
 
@@ -201,7 +210,7 @@ def avanzar(
         CONFIRMADO -> EN_PREP (preparation started)
         EN_PREP -> ENTREGADO (delivered)
 
-    NOTE: PENDIENTE -> CONFIRMADO is allowed for PAGO_LOCAL, EFECTIVO, and
+    NOTE: PENDIENTE -> CONFIRMADO is allowed for PAGO_LOCAL and
     TRANSFERENCIA via this endpoint. MERCADOPAGO orders MUST go through the
     IPN webhook and are blocked here.
 

@@ -140,8 +140,7 @@ function App() {
       { to: '/ingredientes', label: 'Ingredientes' },
       { to: '/productos', label: 'Productos' },
       { to: '/pedidos', label: 'Pedidos' },
-      { to: '/direcciones', label: 'Direcciones' },
-      { to: '/carrito', label: `Carrito${cartCount > 0 ? ` (${cartCount})` : ''}` },
+      { to: '/direcciones', label: 'Locales' },
     ];
     navItems.splice(0, 0, { to: '/admin/dashboard', label: 'Dashboard' });
     navItems.splice(1, 0, { to: '/admin/usuarios', label: 'Usuarios' });
@@ -161,7 +160,7 @@ function App() {
           <div className="flex justify-between items-center">
             {/* Left: brand + desktop nav links */}
             <div className="flex items-center gap-4">
-              <span className="font-bold mr-2">{isClient || isGuest ? 'Menu' : 'Catalogo de Productos'}</span>
+              <span className="font-bold mr-2">{isClient || isGuest ? '' : 'Catalogo de Productos'}</span>
 
               {/* Desktop nav links (hidden on mobile) */}
               <div className="hidden md:flex gap-2">

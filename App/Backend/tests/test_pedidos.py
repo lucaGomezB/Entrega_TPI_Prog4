@@ -55,7 +55,7 @@ def _ensure_formas_pago(db_session):
     from sqlmodel import select
     for codigo, desc, hab in [
         ("MERCADOPAGO", "MP", True),
-        ("EFECTIVO", "Efectivo", True),
+        ("EFECTIVO", "Efectivo", False),
         ("PAGO_LOCAL", "Pago local", True),
     ]:
         if not db_session.exec(select(FormaPago).where(FormaPago.codigo == codigo)).first():
@@ -454,13 +454,13 @@ class TestPedidoHistorial:
 class TestPedidoCreate:
 
     def test_create_pedido_ok_pendiente(self, client, client_headers, db_session):
-        """POST /pedidos with EFECTIVO creates order in PENDIENTE state
+        """POST /pedidos with PAGO_LOCAL creates order (auto-confirms to CONFIRMADO for in-store payment)
         with calculated total and detail snapshots."""
         _seed_all(db_session)
         prod = _create_producto(db_session, nombre="Pizza", stock=50)
 
         response = client.post("/api/v1/pedidos/", json={
-            "forma_pago_codigo": "EFECTIVO",
+            "forma_pago_codigo": "PAGO_LOCAL",
             "subtotal": "1500.00",
             "costo_envio": "0.00",
             "detalles": [{
@@ -472,7 +472,7 @@ class TestPedidoCreate:
         }, headers=client_headers)
         assert response.status_code == 201
         data = response.json()
-        assert data["estado_codigo"] == "PENDIENTE"
+        assert data["estado_codigo"] == "CONFIRMADO"  # PAGO_LOCAL auto-confirms
         assert Decimal(data["total"]) > Decimal("0")
         assert data["costo_envio"] == "0.00"
         assert data["direccion_id"] is None
@@ -493,7 +493,7 @@ class TestPedidoCreate:
         prod = _create_producto(db_session, nombre="ScarceItem", stock=2)
 
         response = client.post("/api/v1/pedidos/", json={
-            "forma_pago_codigo": "EFECTIVO",
+            "forma_pago_codigo": "PAGO_LOCAL",
             "subtotal": "5000.00",
             "detalles": [{
                 "producto_id": prod.id,
@@ -547,25 +547,25 @@ class TestPedidoCreate:
         _seed_all(db_session)
 
         response = client.post("/api/v1/pedidos/", json={
-            "forma_pago_codigo": "EFECTIVO",
+            "forma_pago_codigo": "PAGO_LOCAL",
             "subtotal": "0.00",
             "detalles": [],
         }, headers=client_headers)
         assert response.status_code == 201
         data = response.json()
-        assert data["estado_codigo"] == "PENDIENTE"
+        assert data["estado_codigo"] == "CONFIRMADO"  # PAGO_LOCAL auto-confirms
         assert data["total"] == "0.00"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PEDIDO EFECTIVO / PAGO_LOCAL — pickup-only validation
+# PEDIDO PAGO_LOCAL — pickup-only validation
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestPedidoPickupOnly:
-    """POST /api/v1/pedidos — pickup-only payment methods force direccion_id=null."""
+    """POST /api/v1/pedidos — PAGO_LOCAL (pickup-only) forces direccion_id=null or local-only."""
 
-    def test_efectivo_with_direccion_id_rejected(self, client, client_headers, db_session):
-        """EFECTIVO with direccion_id returns 422."""
+    def test_pago_local_with_personal_direccion_rejected(self, client, client_headers, db_session):
+        """PAGO_LOCAL with a non-local (personal) direccion_id returns 422."""
         _seed_all(db_session)
         prod = _create_producto(db_session, stock=50)
 
@@ -573,32 +573,7 @@ class TestPedidoPickupOnly:
         u = db_session.exec(select(Usuario).where(Usuario.email == "client_test@test.com")).first()
         assert u is not None
 
-        direccion = _create_direccion(db_session, u.id)
-
-        response = client.post("/api/v1/pedidos/", json={
-            "forma_pago_codigo": "EFECTIVO",
-            "direccion_id": direccion.id,
-            "subtotal": 500,
-            "costo_envio": 50,
-            "detalles": [{
-                "producto_id": prod.id,
-                "cantidad": 1,
-                "nombre_snapshot": prod.nombre,
-                "precio_snapshot": str(prod.precio_actual),
-            }],
-        }, headers=client_headers)
-        assert response.status_code == 422
-
-    def test_pago_local_with_direccion_id_rejected(self, client, client_headers, db_session):
-        """PAGO_LOCAL with direccion_id returns 422."""
-        _seed_all(db_session)
-        prod = _create_producto(db_session, stock=50)
-
-        from sqlmodel import select
-        u = db_session.exec(select(Usuario).where(Usuario.email == "client_test@test.com")).first()
-        assert u is not None
-
-        direccion = _create_direccion(db_session, u.id)
+        direccion = _create_direccion(db_session, u.id)  # es_local=False by default
 
         response = client.post("/api/v1/pedidos/", json={
             "forma_pago_codigo": "PAGO_LOCAL",
@@ -614,13 +589,31 @@ class TestPedidoPickupOnly:
         }, headers=client_headers)
         assert response.status_code == 422
 
-    def test_efectivo_sin_direccion_creates_order(self, client, client_headers, db_session):
-        """EFECTIVO without direccion_id creates order successfully."""
+    def test_pago_local_with_local_direccion_allowed(self, client, admin_headers, client_headers, db_session):
+        """PAGO_LOCAL with direccion_id pointing to a local (es_local=True) succeeds."""
         _seed_all(db_session)
         prod = _create_producto(db_session, stock=50)
 
+        # Admin creates a local/store
+        response_local = client.post("/api/v1/direcciones/", json={
+            "alias": "Sucursal Centro",
+            "linea1": "Av. Principal 100",
+            "ciudad": "Mendoza",
+            "es_local": True,
+        }, headers=admin_headers)
+        assert response_local.status_code == 201
+        local_id = response_local.json()["id"]
+        assert response_local.json()["es_local"] is True
+
+        # Now a CLIENT creates a pedido with PAGO_LOCAL referencing that local
+        from sqlmodel import select
+        u = db_session.exec(select(Usuario).where(Usuario.email == "client_test@test.com")).first()
+        assert u is not None
+        _ensure_formas_pago(db_session)
+
         response = client.post("/api/v1/pedidos/", json={
-            "forma_pago_codigo": "EFECTIVO",
+            "forma_pago_codigo": "PAGO_LOCAL",
+            "direccion_id": local_id,
             "subtotal": 500,
             "costo_envio": 50,
             "detalles": [{
@@ -632,6 +625,29 @@ class TestPedidoPickupOnly:
         }, headers=client_headers)
         assert response.status_code == 201
         data = response.json()
+        assert data["estado_codigo"] == "CONFIRMADO"  # PAGO_LOCAL auto-confirms
+        assert data["costo_envio"] == "0.00"
+        assert data["direccion_id"] == local_id
+
+    def test_pago_local_sin_direccion_creates_order(self, client, client_headers, db_session):
+        """PAGO_LOCAL without direccion_id creates order successfully (anonymous pickup)."""
+        _seed_all(db_session)
+        prod = _create_producto(db_session, stock=50)
+
+        response = client.post("/api/v1/pedidos/", json={
+            "forma_pago_codigo": "PAGO_LOCAL",
+            "subtotal": 500,
+            "costo_envio": 50,
+            "detalles": [{
+                "producto_id": prod.id,
+                "cantidad": 1,
+                "nombre_snapshot": prod.nombre,
+                "precio_snapshot": str(prod.precio_actual),
+            }],
+        }, headers=client_headers)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["estado_codigo"] == "CONFIRMADO"  # PAGO_LOCAL auto-confirms
         assert data["costo_envio"] == "0.00"
         assert data["direccion_id"] is None
 
@@ -837,3 +853,229 @@ class TestPedidoSortParams:
         items = response.json()["items"]
         totals = [Decimal(item["total"]) for item in items]
         assert totals == sorted(totals, reverse=True), f"Expected DESC by total, got {totals}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SCHEMA HARDENING TESTS — cantidad field constraints
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestSchemaConstraints:
+
+    def test_item_pedido_request_cantidad_zero_raises_validation_error(self):
+        """ItemPedidoRequest(cantidad=0) raises ValidationError — gt=0 constraint."""
+        from pydantic import ValidationError
+        from app.modules.VentasPagosTrazabilidad.Pedido.schemas import ItemPedidoRequest
+        with pytest.raises(ValidationError):
+            ItemPedidoRequest(
+                producto_id=1,
+                cantidad=0,
+                nombre_snapshot="Test",
+                precio_snapshot="100.00",
+            )
+
+    def test_item_pedido_request_cantidad_negative_raises_validation_error(self):
+        """ItemPedidoRequest(cantidad=-1) raises ValidationError — gt=0 constraint."""
+        from pydantic import ValidationError
+        from app.modules.VentasPagosTrazabilidad.Pedido.schemas import ItemPedidoRequest
+        with pytest.raises(ValidationError):
+            ItemPedidoRequest(
+                producto_id=1,
+                cantidad=-1,
+                nombre_snapshot="Test",
+                precio_snapshot="100.00",
+            )
+
+    def test_item_pedido_request_cantidad_one_succeeds(self):
+        """ItemPedidoRequest(cantidad=1) succeeds — valid positive integer."""
+        from app.modules.VentasPagosTrazabilidad.Pedido.schemas import ItemPedidoRequest
+        item = ItemPedidoRequest(
+            producto_id=1,
+            cantidad=1,
+            nombre_snapshot="Test",
+            precio_snapshot="100.00",
+        )
+        assert item.cantidad == 1
+
+    def test_detalle_pedido_update_cantidad_negative_raises_validation_error(self):
+        """DetallePedidoUpdate(cantidad=-1) raises ValidationError — ge=0 constraint."""
+        from pydantic import ValidationError
+        from app.modules.VentasPagosTrazabilidad.Pedido.schemas import DetallePedidoUpdate
+        with pytest.raises(ValidationError):
+            DetallePedidoUpdate(cantidad=-1)
+
+    def test_detalle_pedido_update_cantidad_zero_succeeds(self):
+        """DetallePedidoUpdate(cantidad=0) succeeds — ge=0 allows removal."""
+        from app.modules.VentasPagosTrazabilidad.Pedido.schemas import DetallePedidoUpdate
+        update = DetallePedidoUpdate(cantidad=0)
+        assert update.cantidad == 0
+
+    def test_validar_stock_detalle_input_cantidad_zero_raises_validation_error(self):
+        """ValidarStockDetalleInput(producto_id=1, cantidad=0) raises ValidationError — gt=0."""
+        from pydantic import ValidationError
+        from app.modules.VentasPagosTrazabilidad.Pedido.schemas import ValidarStockDetalleInput
+        with pytest.raises(ValidationError):
+            ValidarStockDetalleInput(producto_id=1, cantidad=0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PEDIDO DETAIL MODIFICATION TESTS — actualizar_detalle stock validation
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestActualizarDetalleStock:
+    """PATCH /pedidos/{id}/detalles/{producto_id} — stock validation on detail update."""
+
+    def test_update_detail_cantidad_exceeding_stock_returns_422(self, client, admin_headers, db_session):
+        """Updating a detail's cantidad above product stock returns 422 stock_insuficiente."""
+        _seed_all(db_session)
+        u = _create_user(db_session, email="stock_update@test.com")
+        prod = _create_producto(db_session, nombre="LowStock", stock=3)
+        p = _create_pedido(db_session, u.id, estado="PENDIENTE", forma_pago="EFECTIVO")
+
+        # Add a detail line with cantidad=1
+        from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
+        db_session.add(DetallePedido(
+            pedido_id=p.id, producto_id=prod.id,
+            cantidad=1, nombre_snapshot=prod.nombre,
+            precio_snapshot=prod.precio_actual,
+            subtotal_snap=prod.precio_actual,
+        ))
+        db_session.flush()
+
+        # Try to update to 10 (stock is only 3)
+        response = client.patch(
+            f"/api/v1/pedidos/{p.id}/detalles/{prod.id}",
+            json={"cantidad": 10},
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+        resp_json = response.json()
+        detail = resp_json.get("detail", "")
+        # detail may be a dict or string depending on error origin
+        error_text = ""
+        if isinstance(detail, dict):
+            error_text = detail.get("error", "") + " " + detail.get("mensaje", "")
+            assert detail.get("solicitado") == 10
+            assert detail.get("disponible") == 3
+        elif isinstance(detail, list):
+            error_text = " ".join(str(d.get("msg", "")) for d in detail)
+        else:
+            error_text = str(detail)
+        assert "stock" in error_text.lower() or "insuficiente" in error_text.lower()
+
+    def test_update_detail_cantidad_within_stock_succeeds(self, client, admin_headers, db_session):
+        """Updating a detail's cantidad within available stock succeeds."""
+        _seed_all(db_session)
+        u = _create_user(db_session, email="stock_ok@test.com")
+        prod = _create_producto(db_session, nombre="PlentyStock", stock=50)
+        p = _create_pedido(db_session, u.id, estado="PENDIENTE", forma_pago="EFECTIVO")
+
+        from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
+        db_session.add(DetallePedido(
+            pedido_id=p.id, producto_id=prod.id,
+            cantidad=1, nombre_snapshot=prod.nombre,
+            precio_snapshot=prod.precio_actual,
+            subtotal_snap=prod.precio_actual,
+        ))
+        db_session.flush()
+
+        response = client.patch(
+            f"/api/v1/pedidos/{p.id}/detalles/{prod.id}",
+            json={"cantidad": 5},
+            headers=admin_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Verify the detail was updated
+        updated_det = [d for d in data["detalles"] if d["producto_id"] == prod.id]
+        assert len(updated_det) == 1
+        assert updated_det[0]["cantidad"] == 5
+
+    def test_update_detail_cantidad_zero_removes_detail(self, client, admin_headers, db_session):
+        """Updating a detail's cantidad to 0 removes the detail line (stock check skipped)."""
+        _seed_all(db_session)
+        u = _create_user(db_session, email="remove_det@test.com")
+        prod = _create_producto(db_session, nombre="DelMe", stock=0)  # stock=0 but removal skipped
+        p = _create_pedido(db_session, u.id, estado="PENDIENTE", forma_pago="EFECTIVO")
+
+        from app.modules.VentasPagosTrazabilidad.DetallePedido.models import DetallePedido
+        db_session.add(DetallePedido(
+            pedido_id=p.id, producto_id=prod.id,
+            cantidad=1, nombre_snapshot=prod.nombre,
+            precio_snapshot=prod.precio_actual,
+            subtotal_snap=prod.precio_actual,
+        ))
+        db_session.flush()
+
+        response = client.patch(
+            f"/api/v1/pedidos/{p.id}/detalles/{prod.id}",
+            json={"cantidad": 0},
+            headers=admin_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Detail should be removed
+        updated_det = [d for d in data["detalles"] if d["producto_id"] == prod.id]
+        assert len(updated_det) == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PEDIDO UPDATE (PATCH) TESTS — update() stock validation
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestPedidoUpdateStock:
+    """PATCH /pedidos/{id} — stock validation when replacing detalles."""
+
+    def test_patch_pedido_detail_exceeding_stock_returns_422(self, client, admin_headers, db_session):
+        """PATCH pedido with a detail line exceeding product stock returns 422."""
+        _seed_all(db_session)
+        u = _create_user(db_session, email="patch_stock@test.com")
+        prod = _create_producto(db_session, nombre="PatchScarce", stock=1)
+        p = _create_pedido(db_session, u.id, estado="PENDIENTE", forma_pago="EFECTIVO")
+
+        response = client.patch(
+            f"/api/v1/pedidos/{p.id}",
+            json={
+                "detalles": [{
+                    "producto_id": prod.id,
+                    "cantidad": 5,
+                    "nombre_snapshot": prod.nombre,
+                    "precio_snapshot": str(prod.precio_actual),
+                }],
+            },
+            headers=admin_headers,
+        )
+        assert response.status_code == 422
+        resp_json = response.json()
+        detail = resp_json.get("detail", "")
+        # detail may be a dict or string depending on error origin
+        if isinstance(detail, dict):
+            assert detail.get("error") == "stock_insuficiente"
+        elif isinstance(detail, list):
+            error_text = " ".join(str(d.get("msg", "")) for d in detail)
+            assert "stock" in error_text.lower() or "insuficiente" in error_text.lower()
+        else:
+            assert "stock" in str(detail).lower() or "insuficiente" in str(detail).lower()
+
+    def test_patch_pedido_detail_within_stock_succeeds(self, client, admin_headers, db_session):
+        """PATCH pedido with detail lines within available stock succeeds."""
+        _seed_all(db_session)
+        u = _create_user(db_session, email="patch_ok@test.com")
+        prod = _create_producto(db_session, nombre="PatchOk", stock=50)
+        p = _create_pedido(db_session, u.id, estado="PENDIENTE", forma_pago="EFECTIVO")
+
+        response = client.patch(
+            f"/api/v1/pedidos/{p.id}",
+            json={
+                "detalles": [{
+                    "producto_id": prod.id,
+                    "cantidad": 3,
+                    "nombre_snapshot": prod.nombre,
+                    "precio_snapshot": str(prod.precio_actual),
+                }],
+            },
+            headers=admin_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["detalles"]) == 1
+        assert data["detalles"][0]["cantidad"] == 3

@@ -19,7 +19,7 @@ export function ResumenPedido({
   formaPago,
   onSubmit,
 }: ResumenPedidoProps) {
-  const esRetiroLocal = formaPago === "PAGO_LOCAL" || formaPago === "EFECTIVO"
+  const esRetiroLocal = formaPago === "PAGO_LOCAL"
 
   const buttonText = () => {
     if (enviando && formaPago === "MERCADOPAGO") return "Redirigiendo a MercadoPago..."

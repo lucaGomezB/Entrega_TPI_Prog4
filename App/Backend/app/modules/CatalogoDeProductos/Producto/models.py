@@ -32,7 +32,7 @@ class ProductoBase(TimestampModel):
     precio_base: Decimal = Field(default=0, sa_column=Column(Numeric(precision=10, scale=2)))
     precio_actual: Decimal = Field(default=0, sa_column=Column(Numeric(precision=10, scale=2)))
     imagenes_url: List[str] = Field(default=[], sa_column=Column(JSON))  # Stored as JSON array in the database
-    stock_cantidad: int = Field(default=0)  # INTEGER CHECK >= 0 DEFAULT 0 — ERD v5
+    stock_cantidad: int = Field(default=0, ge=0)  # INTEGER CHECK >= 0 DEFAULT 0 — ERD v5
     tiempo_prep_min: int = Field(default=0)
     disponible: bool = Field(default=True)
     es_insumo: bool = Field(default=False)

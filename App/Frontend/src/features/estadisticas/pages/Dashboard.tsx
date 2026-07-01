@@ -25,6 +25,7 @@ import {
   usePedidosEstado,
   useIngresosFormaPago,
 } from "@/features/estadisticas/hooks/useEstadisticas";
+import { formatCurrency } from "@/shared/utils/formatCurrency";
 
 // ── Constants ──
 
@@ -50,11 +51,6 @@ const PRODUCT_NAME_MAX_LEN = 22;
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen - 3) + "...";
-}
-
-function formatCurrency(value: string | number): string {
-  const num = typeof value === "string" ? Number(value) : value;
-  return num.toLocaleString("es-AR", { style: "currency", currency: "ARS" });
 }
 
 function dateOffset(days: number): string {

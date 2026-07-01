@@ -209,6 +209,14 @@ class PagoService:
                         "unit_price": float(item.precio),
                         "currency_id": "ARS",
                     })
+                # Add shipping line item when costo_envio > 0
+                if data.costo_envio > 0:
+                    retry_preference_items.append({
+                        "title": "Costo de envío",
+                        "quantity": 1,
+                        "unit_price": float(data.costo_envio),
+                        "currency_id": "ARS",
+                    })
                 # Calculate total
                 retry_total = data.subtotal - data.descuento + data.costo_envio
                 if retry_total < 0:
@@ -306,6 +314,15 @@ class PagoService:
                 "title": item.nombre,
                 "quantity": item.cantidad,
                 "unit_price": float(item.precio),
+                "currency_id": "ARS",
+            })
+
+        # Add shipping line item when costo_envio > 0
+        if data.costo_envio > 0:
+            preference_items.append({
+                "title": "Costo de envío",
+                "quantity": 1,
+                "unit_price": float(data.costo_envio),
                 "currency_id": "ARS",
             })
 
@@ -855,6 +872,10 @@ class PagoService:
                     db_pago.mp_status = mp_status
                     db_pago.mp_status_detail = mp_status_detail
                     db_pago.payment_method_id = payment_data.get("payment_method_id")
+                    # Sync transaction_amount from actual MP payment data
+                    mp_transaction_amount = payment_data.get("transaction_amount")
+                    if mp_transaction_amount is not None:
+                        db_pago.transaction_amount = float(mp_transaction_amount)
                     uow.pagos.update(db_pago)
 
                     # ── If approved: create Pedido from snapshot ──

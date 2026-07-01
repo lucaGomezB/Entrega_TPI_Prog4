@@ -51,21 +51,25 @@ class DireccionEntregaService:
                 latitud=data.latitud,
                 longitud=data.longitud,
                 es_principal=data.es_principal,
+                es_local=data.es_local,
             )
             uow.direcciones.create(db_direccion)
             return db_direccion
 
     @staticmethod
-    def get_all(session: Session, usuario_id: int, es_admin: bool = False) -> list[DireccionEntrega]:
+    def get_all(session: Session, usuario_id: int, es_admin: bool = False, incluir_locales: bool = False) -> list[DireccionEntrega]:
         """
         Get all addresses for a user.
 
         ADMIN users can see all addresses across all users.
         Regular users only see their own addresses.
+        When incluir_locales=True (for non-ADMIN), also include company stores (es_local=True).
         """
         with IdentidadYAccesoUnitOfWork(session) as uow:
             if es_admin:
                 return uow.direcciones.get_all()
+            if incluir_locales:
+                return uow.direcciones.get_by_usuario_with_locales(usuario_id, incluir_locales=True)
             return uow.direcciones.get_by_usuario(usuario_id)
 
     @staticmethod

@@ -85,7 +85,7 @@ class InitFromCartRequest(BaseModel):
     forma_pago_codigo: str
     subtotal: Decimal
     descuento: Decimal = Decimal("0.00")
-    costo_envio: Decimal = Decimal("0.00")
+    costo_envio: Decimal = Decimal("50.00")
     direccion_id: Optional[int] = None
     notas: Optional[str] = None
     items: List[CartItemInput]

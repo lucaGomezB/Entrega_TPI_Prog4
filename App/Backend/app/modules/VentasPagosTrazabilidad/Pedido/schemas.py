@@ -22,7 +22,7 @@ class ItemPedidoRequest(BaseModel):
     at order creation time. Future catalog changes won't affect this order.
     """
     producto_id: int
-    cantidad: int
+    cantidad: int = Field(gt=0)
     nombre_snapshot: str
     precio_snapshot: Decimal
     personalizacion: Optional[List[int]] = None
@@ -65,6 +65,7 @@ class PedidoUpdate(BaseModel):
     direccion_id: Optional[int] = None
     forma_pago_codigo: Optional[str] = None
     notas: Optional[str] = None
+    detalles: Optional[List[ItemPedidoRequest]] = None
 
 
 class DetallePedidoRead(ReadModel):
@@ -147,13 +148,13 @@ class DetallePedidoUpdate(BaseModel):
 
     cantidad = 0 means the detail line should be removed.
     """
-    cantidad: int  # 0 = remove the detail
+    cantidad: int = Field(ge=0)  # 0 = remove the detail
 
 
 class ValidarStockDetalleInput(BaseModel):
     """Input: product + quantity pair for stock validation."""
     producto_id: int
-    cantidad: int
+    cantidad: int = Field(gt=0)
 
 
 class ValidarStockInput(BaseModel):

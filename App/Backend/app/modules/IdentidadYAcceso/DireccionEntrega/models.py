@@ -10,8 +10,8 @@ Supports soft-delete to preserve historical order references.
 
 from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
-from sqlmodel import Field, Relationship
-from sqlalchemy import Numeric
+from sqlmodel import Field, Relationship, Column
+from sqlalchemy import Numeric, Boolean
 from app.core.base import TimestampModel, SoftDeleteModel
 
 if TYPE_CHECKING:
@@ -52,6 +52,9 @@ class DireccionEntrega(DireccionEntregaBase, SoftDeleteModel, table=True):
     """
     __tablename__: str = "direcciones_entrega"
     id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Flag: True means this is a company store/location (available for pickup) rather than a personal delivery address
+    es_local: bool = Field(default=False, sa_column=Column(Boolean, default=False, nullable=False))
 
     # N:1 relationship: each address belongs to one user
     usuario_id: int = Field(foreign_key="usuario.id", nullable=False, ondelete="CASCADE")

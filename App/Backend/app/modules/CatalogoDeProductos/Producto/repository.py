@@ -136,14 +136,14 @@ class ProductoRepository(BaseRepository[Producto]):
         """Fetch a product by ID (uses BaseRepository.get_by_id with soft-delete filter)."""
         return self.get_by_id(producto_id)
 
-    def get_all_with_ingredient_flag(self, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> Tuple[List[Producto], Set[int]]:
+    def get_all_with_ingredient_flag(self, skip: int = 0, limit: int = 100, search: Optional[str] = None, categoria_ids: Optional[List[int]] = None) -> Tuple[List[Producto], Set[int]]:
         """Return paginated non-deleted products and the set of IDs that have ingredients.
 
-        Optionally filters by name ILIKE when search is provided.
+        Optionally filters by name ILIKE when search is provided and/or by category IDs.
         Returns (products, ids_with_ingredients) so the caller can set
         the tiene_ingredientes flag per product.
         """
-        productos = self.get_all_filtered(skip=skip, limit=limit, search=search)
+        productos = self.get_all_filtered(skip=skip, limit=limit, search=search, categoria_ids=categoria_ids)
         if not productos:
             return [], set()
 
@@ -155,8 +155,21 @@ class ProductoRepository(BaseRepository[Producto]):
         ids_with_ingredients = set(rows)
         return list(productos), ids_with_ingredients
 
-    def get_all_filtered(self, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> List[Producto]:
-        """List non-deleted products with optional name search, newest first."""
+    def get_all_filtered(self, skip: int = 0, limit: int = 100, search: Optional[str] = None, categoria_ids: Optional[List[int]] = None) -> List[Producto]:
+        """List non-deleted products with optional name search and category filter, newest first."""
+        if categoria_ids:
+            matching_subq = (
+                select(ProductoCategoria.producto_id)
+                .where(ProductoCategoria.categoria_id.in_(categoria_ids))
+            ).distinct().subquery()
+            stmt = select(Producto).where(
+                Producto.deleted_at.is_(None),
+                Producto.id.in_(select(matching_subq)),
+            )
+            if search:
+                stmt = stmt.where(Producto.nombre.ilike(f"%{search}%"))
+            stmt = stmt.offset(skip).limit(limit).order_by(Producto.id.desc())
+            return self.session.exec(stmt).all()
         if search:
             return self.search("nombre", search, skip=skip, limit=limit)
         return self.get_all(skip=skip, limit=limit)
@@ -197,6 +210,19 @@ class ProductoRepository(BaseRepository[Producto]):
         )
         return set(self.session.exec(statement).all())
 
-    def count_all(self, search: Optional[str] = None) -> int:
-        """Count all non-deleted products, optionally filtered by name search."""
+    def count_all(self, search: Optional[str] = None, categoria_ids: Optional[List[int]] = None) -> int:
+        """Count all non-deleted products, optionally filtered by name search and/or category IDs."""
+        from sqlmodel import func
+        if categoria_ids:
+            matching_subq = (
+                select(ProductoCategoria.producto_id)
+                .where(ProductoCategoria.categoria_id.in_(categoria_ids))
+            ).distinct().subquery()
+            stmt = select(func.count()).select_from(Producto).where(
+                Producto.deleted_at.is_(None),
+                Producto.id.in_(select(matching_subq)),
+            )
+            if search:
+                stmt = stmt.where(Producto.nombre.ilike(f"%{search}%"))
+            return self.session.exec(stmt).one()
         return super().count_all(search=search, search_column="nombre" if search else None)

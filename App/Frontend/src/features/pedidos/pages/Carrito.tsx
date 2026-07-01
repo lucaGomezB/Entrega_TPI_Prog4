@@ -8,7 +8,7 @@
  *   3. Redirect to MP init_point (cart NOT cleared)
  *   4. WebSocket pago_confirmado event clears cart and navigates
  *
- * SYNCHRONOUS FLOW (PAGO_LOCAL, EFECTIVO):
+ * SYNCHRONOUS FLOW (PAGO_LOCAL):
  *   1. Create Pedido
  *   2. Clear cart
  *   3. Navigate to pedidos
@@ -33,6 +33,7 @@ import { useDirecciones } from "@/features/pedidos/hooks/useDirecciones";
 import { DireccionSelector } from "@/features/pedidos/components/DireccionSelector";
 import { MetodoPagoSelector } from "@/features/pedidos/components/MetodoPagoSelector";
 import { ResumenPedido } from "@/features/pedidos/components/ResumenPedido";
+import DecimalInput from "@/shared/components/DecimalInput";
 
 /* ── Modal rapido para crear direccion desde el carrito ── */
 
@@ -144,7 +145,7 @@ function StockWarningModal({ detalles, onAdjust, onClose }: {
               <div key={d.producto_id} className="flex items-center gap-2 text-sm">
                 <span className="flex-1">{d.nombre_producto} (Disp: {d.stock_disponible})</span>
                 <span className="text-red-600 font-medium">{d.cantidad_solicitada} pedidos</span>
-                <input type="number" min={0} max={d.stock_disponible} value={current} onChange={(e) => setAjustes(prev => ({ ...prev, [d.producto_id]: parseInt(e.target.value) || 0 }))} className="border px-2 py-1 w-16 rounded text-sm" />
+                <DecimalInput value={current} onChange={(v) => setAjustes(prev => ({ ...prev, [d.producto_id]: v }))} decimals={0} min={0} max={d.stock_disponible} step={1} width="min-w-[8ch]" />
               </div>
             );
           })}
@@ -178,8 +179,8 @@ export default function Carrito() {
   const [notas, setNotas] = useState("");
   const [ingredientesPorProducto, setIngredientesPorProducto] = useState<Record<number, ProductoIngredienteRead[]>>({});
 
-  // ── TanStack Query: direcciones ──
-  const { data: direcciones = [], isLoading: loadingDirs } = useDirecciones();
+  // ── TanStack Query: direcciones (include locales for pickup selection) ──
+  const { data: direcciones = [], isLoading: loadingDirs } = useDirecciones(true);
   const queryClient = useQueryClient();
 
   // Save address selection when switching to pickup so it can be restored
@@ -187,7 +188,7 @@ export default function Carrito() {
   const savedDireccionSelId = useRef<number | "nueva" | null>(null);
 
   // Auto-select primary direction — but NOT for pickup-only payment methods
-  const esRetiroLocal = formaPago === "PAGO_LOCAL" || formaPago === "EFECTIVO";
+  const esRetiroLocal = formaPago === "PAGO_LOCAL";
   useEffect(() => {
     if (!esRetiroLocal && direcciones.length > 0 && direccionSelId === null) {
       const principal = direcciones.find((d) => d.es_principal);
@@ -295,7 +296,7 @@ export default function Carrito() {
           setEnviando(false);
         }
       } else {
-        // ── SYNCHRONOUS FLOW (PAGO_LOCAL, EFECTIVO) ──
+        // ── SYNCHRONOUS FLOW (PAGO_LOCAL) ──
         await pedidosApi.create({
           forma_pago_codigo: formaPago,
           subtotal: subtotal,
@@ -485,8 +486,12 @@ export default function Carrito() {
         loadingDirs={loadingDirs}
         esRetiroLocal={esRetiroLocal}
         onChange={(val) => {
-          if (val === "retiro") setDireccionSelId(null);
-          else setDireccionSelId(val ? Number(val) : null);
+          if (val === "retiro") {
+            setFormaPago("PAGO_LOCAL");
+            setDireccionSelId(null);
+          } else {
+            setDireccionSelId(val ? Number(val) : null);
+          }
         }}
         onNuevaDireccion={() => setShowNewDir(true)}
       />
@@ -496,10 +501,10 @@ export default function Carrito() {
         onChange={(val) => {
           if (val === "PAGO_LOCAL") {
             savedDireccionSelId.current = direccionSelId;
-            setFormaPago("PAGO_LOCAL");
+            setFormaPago(val);
             setDireccionSelId(null);
           } else {
-            setFormaPago("MERCADOPAGO");
+            setFormaPago(val);
             if (savedDireccionSelId.current !== null) {
               setDireccionSelId(savedDireccionSelId.current);
             }

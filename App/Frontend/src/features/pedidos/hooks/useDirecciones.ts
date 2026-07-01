@@ -3,11 +3,12 @@ import { direccionesApi } from '../api/direcciones'
 import type { DireccionEntregaInput, DireccionEntregaUpdate } from '../api/direcciones'
 import { queryKeys } from '@/shared/api/queryKeys'
 
-/** Fetches all direcciones de entrega for the authenticated user. Uses TanStack Query. */
-export function useDirecciones() {
+/** Fetches all direcciones de entrega for the authenticated user. Uses TanStack Query.
+ *  When incluirLocales=true, also returns company stores (es_local=True) for pickup. */
+export function useDirecciones(incluirLocales = false) {
   return useQuery({
-    queryKey: queryKeys.direcciones.all,
-    queryFn: () => direccionesApi.getAll(),
+    queryKey: incluirLocales ? [...queryKeys.direcciones.all, 'incluir_locales'] : queryKeys.direcciones.all,
+    queryFn: () => direccionesApi.getAll(incluirLocales),
   })
 }
 

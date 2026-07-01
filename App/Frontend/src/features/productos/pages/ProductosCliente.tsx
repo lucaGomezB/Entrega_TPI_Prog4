@@ -11,12 +11,14 @@
  *  - Shows "Ver Carrito (N)" button for authenticated users
  *  - Skeleton loaders while fetching
  */
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Producto } from "@/features/productos/api/productos";
 import { useProductos } from "@/features/productos/hooks/useProductos";
 import { useQuery } from "@tanstack/react-query";
 import { categoriasApi } from "@/features/categorias/api/categorias";
+import type { CategoriaTree } from "@/features/categorias/api/categorias";
+import { getDescendantIds } from "@/features/categorias/utils/tree";
 import { useCartStore } from "@/shared/store/cartStore";
 import { getAccessToken, getUserRoles } from "@/shared/api/client";
 import ProductCard from "@/features/productos/components/ProductCard";
@@ -45,6 +47,21 @@ function SkeletonGrid() {
   );
 }
 
+/**
+ * Flattens the category tree into a depth-annotated list for single-pass rendering.
+ * All chips render as siblings in one flex container — no nested divs breaking flow.
+ */
+function flattenTree(nodes: CategoriaTree[], depth = 0): Array<{ node: CategoriaTree; depth: number }> {
+  const flat: Array<{ node: CategoriaTree; depth: number }> = [];
+  for (const node of nodes) {
+    flat.push({ node, depth });
+    if (node.subcategorias.length > 0) {
+      flat.push(...flattenTree(node.subcategorias, depth + 1));
+    }
+  }
+  return flat;
+}
+
 // ── Page component ──
 
 export default function ProductosCliente() {
@@ -52,8 +69,18 @@ export default function ProductosCliente() {
   const isAuth = !!getAccessToken();
   const esAdmin = getUserRoles().includes("ADMIN");
 
-  // TanStack Query: products
-  const { data: productsData, isLoading, isError, error } = useProductos(0, 1000);
+  // UI-only state (declared before useProductos — needed for query key)
+  const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState("");
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set());
+
+  // Derive array from Set for API calls
+  const selectedIdsArray = useMemo(() => Array.from(selectedCategoryIds), [selectedCategoryIds]);
+
+  // TanStack Query: products — server-side filtering by categories (multi-select)
+  const { data: productsData, isLoading, isError, error } = useProductos(
+    0, 1000, undefined, selectedIdsArray.length > 0 ? selectedIdsArray : undefined,
+  );
   const products = productsData?.items ?? [];
 
   // TanStack Query: categories (for filter chips + image fallback)
@@ -62,11 +89,6 @@ export default function ProductosCliente() {
     queryFn: () => categoriasApi.getTree(),
   });
   const categorias = categoriasData ?? [];
-
-  // UI-only state
-  const [page, setPage] = useState(0);
-  const [filter, setFilter] = useState("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
 
   // Recently-added feedback
   const [recentlyAdded, setRecentlyAdded] = useState<Set<number>>(new Set());
@@ -113,14 +135,74 @@ export default function ProductosCliente() {
     return map;
   }, [categorias]);
 
+  // ── Empty category filter ──
+
+  /**
+   * Persisted set of category IDs that have at least one product assigned.
+   * Computed when viewing "Todas" (full product list) and preserved via useRef
+   * so it survives across re-renders when filters change.
+   */
+  const nonEmptyCategoryIds = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (selectedCategoryIds.size === 0 && products.length > 0) {
+      const ids = new Set<number>();
+      for (const p of products) {
+        for (const cid of p.categoria_ids) {
+          ids.add(cid);
+        }
+      }
+      nonEmptyCategoryIds.current = ids;
+    }
+  }, [selectedCategoryIds.size, products]);
+
+  // ── Category ID → node lookup map (O(1) for getDescendantIds) ──
+  const categoryMap = useRef<Map<number, CategoriaTree>>(new Map());
+
+  useEffect(() => {
+    const map = new Map<number, CategoriaTree>();
+    function indexTree(nodes: CategoriaTree[]) {
+      for (const node of nodes) {
+        map.set(node.id, node);
+        if (node.subcategorias.length > 0) indexTree(node.subcategorias);
+      }
+    }
+    indexTree(categorias);
+    categoryMap.current = map;
+  }, [categorias]);
+
+  /**
+   * Recursively removes categories that have zero products assigned.
+   * If nonEmptyIds is empty (not yet computed), returns nodes unchanged as fallback.
+   */
+  function filterEmptyCategories(nodes: CategoriaTree[], nonEmptyIds: Set<number>): CategoriaTree[] {
+    if (nonEmptyIds.size === 0) return nodes; // fallback: show all
+    return nodes
+      .filter(node =>
+        nonEmptyIds.has(node.id) ||
+        node.subcategorias.some(child => nonEmptyIds.has(child.id))
+      )
+      .map(node => ({
+        ...node,
+        subcategorias: filterEmptyCategories(node.subcategorias, nonEmptyIds),
+      }));
+  }
+
+  const displayCategories = filterEmptyCategories(categorias, nonEmptyCategoryIds.current);
+
+  /** Flat list of visible categories with depth — all chips render as siblings in one flex row. */
+  const flattenedCategories = useMemo(
+    () => flattenTree(displayCategories),
+    [displayCategories],
+  );
+
   // ── Derived data ──
 
-  /** Filter: only available products matching the text filter AND selected category. */
+  /** Filter: only available products matching the text filter. Category filter is server-side. */
   const filtered = products.filter(
     (p) =>
       p.disponible === true &&
-      p.nombre.toLowerCase().includes(filter.toLowerCase()) &&
-      (selectedCategoryId === null || p.categoria_principal_id === selectedCategoryId)
+      p.nombre.toLowerCase().includes(filter.toLowerCase())
   );
 
   /** Current page slice. */
@@ -145,33 +227,46 @@ export default function ProductosCliente() {
         />
       </div>
 
-      {/* Category filter chips */}
-      {categorias.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
+      {/* Category filter chips — flat list, uniform gap, depth shown via subtle color, empty nodes pruned */}
+      {displayCategories.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
           <button
-            onClick={() => { setSelectedCategoryId(null); setPage(0); }}
+            onClick={() => { setSelectedCategoryIds(new Set()); setPage(0); }}
             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors cursor-pointer ${
-              selectedCategoryId === null
+              selectedCategoryIds.size === 0
                 ? "bg-blue-600 text-white"
                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
             }`}
           >
             Todas
           </button>
-          {categorias.map((cat) => (
+          {flattenedCategories.map(({ node, depth }) => (
             <button
-              key={cat.id}
+              key={node.id}
               onClick={() => {
-                setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id);
+                setSelectedCategoryIds(prev => {
+                  const next = new Set(prev);
+                  const found = categoryMap.current.get(node.id);
+                  if (!found) return prev;
+                  const descendantIds = getDescendantIds(found);
+                  if (next.has(node.id)) {
+                    for (const did of descendantIds) next.delete(did);
+                  } else {
+                    for (const did of descendantIds) next.add(did);
+                  }
+                  return next;
+                });
                 setPage(0);
               }}
               className={`px-3 py-1 rounded-full text-sm font-medium transition-colors cursor-pointer ${
-                selectedCategoryId === cat.id
+                selectedCategoryIds.has(node.id)
                   ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  : depth > 0
+                    ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
               }`}
             >
-              {cat.nombre}
+              {node.nombre}
             </button>
           ))}
         </div>
@@ -196,8 +291,8 @@ export default function ProductosCliente() {
                 onAddToCart={handleAddToCart}
                 recentlyAdded={recentlyAdded}
                 categoryImages={
-                  prod.categoria_principal_id
-                    ? categoryImagesMap[prod.categoria_principal_id]
+                  prod.categoria_ids.length > 0
+                    ? categoryImagesMap[prod.categoria_ids[0]]
                     : undefined
                 }
                 showId={esAdmin}

@@ -290,7 +290,7 @@ def _seed_formas_pago(session: Session):
 
     FORMAS = [
         ("MERCADOPAGO", "MercadoPago", True),
-        ("EFECTIVO", "Efectivo", True),
+        ("EFECTIVO", "Efectivo", False),
         ("PAGO_LOCAL", "Pago y retiro en local", True),
         ("TRANSFERENCIA", "Transferencia", True),
     ]
@@ -454,7 +454,7 @@ def pedido_factory(db_session: Session, usuario_id: int, **kwargs):
     defaults = {
         "usuario_id": usuario_id,
         "estado_codigo": "PENDIENTE",
-        "forma_pago_codigo": "EFECTIVO",
+        "forma_pago_codigo": "PAGO_LOCAL",
         "subtotal": Decimal("500.00"),
         "descuento": Decimal("0.00"),
         "costo_envio": Decimal("0.00"),

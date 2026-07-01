@@ -20,6 +20,7 @@ import { getUserRoles } from "@/shared/api/client";
 import ErrorBanner from "@/shared/components/ErrorBanner";
 import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
 import FormFooter from "@/shared/components/FormFooter";
+import DecimalInput from "@/shared/components/DecimalInput";
 
 const DEFAULT_LIMIT = 10;
 
@@ -233,10 +234,15 @@ export default function IngredientesCRUD() {
       render: (ing) =>
         inlinePrecioEdit?.id === ing.id ? (
           <div className="flex gap-1 items-center">
-            <input type="number" step="0.01" min="0"
-              value={inlinePrecioEdit.value}
-              onChange={(e) => setInlinePrecioEdit({ ...inlinePrecioEdit, value: e.target.value })}
-              className="border px-1 py-0.5 w-20 rounded text-sm" />
+            <DecimalInput
+              value={Number(inlinePrecioEdit.value)}
+              onChange={(v) => setInlinePrecioEdit({ ...inlinePrecioEdit, value: String(v) })}
+              decimals={2}
+              min={0}
+              step={0.01}
+              isCurrency
+              width="min-w-[10ch]"
+            />
             <button onClick={() => handleInlinePrecioSave(ing.id)}
               className="bg-green-600 text-white px-2 py-0.5 rounded text-xs cursor-pointer">Guardar</button>
             <button onClick={() => setInlinePrecioEdit(null)}
@@ -253,10 +259,14 @@ export default function IngredientesCRUD() {
       render: (ing) =>
         inlineStockEdit?.id === ing.id ? (
           <div className="flex gap-1 items-center">
-            <input type="number" step="1" min="0"
-              value={inlineStockEdit.value}
-              onChange={(e) => setInlineStockEdit({ ...inlineStockEdit, value: e.target.value })}
-              className="border px-1 py-0.5 w-20 rounded text-sm" />
+            <DecimalInput
+              value={Number(inlineStockEdit.value)}
+              onChange={(v) => setInlineStockEdit({ ...inlineStockEdit, value: String(v) })}
+              decimals={0}
+              min={0}
+              step={1}
+              width="min-w-[8ch]"
+            />
             <button onClick={() => handleInlineStockSave(ing.id)}
               className="bg-green-600 text-white px-2 py-0.5 rounded text-xs cursor-pointer">Guardar</button>
             <button onClick={() => setInlineStockEdit(null)}
@@ -367,10 +377,16 @@ export default function IngredientesCRUD() {
                       return null;
                     })()}
                   </label>
-                  <input type="number" step="0.01" min="0" value={field.state.value}
-                    onChange={(e) => field.handleChange(parseFloat(e.target.value) || 0)}
+                  <DecimalInput
+                    value={field.state.value ?? 0}
+                    onChange={(v) => field.handleChange(v)}
                     onBlur={field.handleBlur}
-                    className="border px-2 py-1 rounded w-28" />
+                    decimals={2}
+                    min={0}
+                    step={0.01}
+                    isCurrency
+                    width="min-w-[10ch]"
+                  />
                 </>
               )}
             </form.Field>
@@ -380,10 +396,15 @@ export default function IngredientesCRUD() {
               {(field) => (
                 <>
                   <label className="block text-sm font-medium">Stock actual</label>
-                  <input type="number" step="1" min="0" value={field.state.value}
-                    onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
+                  <DecimalInput
+                    value={field.state.value ?? 0}
+                    onChange={(v) => field.handleChange(v)}
                     onBlur={field.handleBlur}
-                    className="border px-2 py-1 rounded w-28" />
+                    decimals={0}
+                    min={0}
+                    step={1}
+                    width="min-w-[8ch]"
+                  />
                 </>
               )}
             </form.Field>

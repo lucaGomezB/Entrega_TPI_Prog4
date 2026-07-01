@@ -32,7 +32,7 @@ def _seed_catalogos(db_session):
 
     for codigo, desc, hab in [
         ("MERCADOPAGO", "MercadoPago", True),
-        ("EFECTIVO", "Efectivo", True),
+        ("EFECTIVO", "Efectivo", False),
         ("PAGO_LOCAL", "Pago en local", True),
         ("TRANSFERENCIA", "Transferencia", True),
         ("DESHABILITADO", "Metodo deshabilitado", False),
@@ -152,6 +152,19 @@ class TestFormaPago:
         """No auth returns 401."""
         response = client.get("/api/v1/formas-pago/")
         assert response.status_code == 401
+
+    def test_efectivo_deshabilitado(self, client, admin_headers, db_session):
+        """EFECTIVO does not appear in the enabled payment methods list — task 4.6."""
+        _seed_catalogos(db_session)
+        _seed_roles(db_session)
+
+        response = client.get("/api/v1/formas-pago/", headers=admin_headers)
+        assert response.status_code == 200
+        formas = response.json()
+        codigos = [f["codigo"] for f in formas]
+        assert "EFECTIVO" not in codigos  # EFECTIVO is disabled
+        assert "PAGO_LOCAL" in codigos
+        assert "MERCADOPAGO" in codigos
 
 
 # ═══════════════════════════════════════════════════════════════════════════

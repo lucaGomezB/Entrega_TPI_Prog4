@@ -15,7 +15,7 @@ Endpoints:
 - PATCH /direcciones/{id}/principal: Set as default address.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 from typing import List
 
@@ -36,6 +36,7 @@ def _check_admin(current_user: Usuario) -> bool:
 
 @router.get("/", response_model=List[DireccionEntregaRead])
 def read_direcciones(
+    incluir_locales: bool = Query(False, description="Include company stores (es_local=True) for pickup selection"),
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -44,11 +45,14 @@ def read_direcciones(
 
     ADMIN users see all addresses across all users.
     Regular users see only their own addresses.
+    When incluir_locales=true, company stores are included in the response
+    (useful for pickup location selection in the cart).
     """
     return DireccionEntregaService.get_all(
         session,
         usuario_id=current_user.id,
         es_admin=_check_admin(current_user),
+        incluir_locales=incluir_locales,
     )
 
 

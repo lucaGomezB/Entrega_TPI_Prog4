@@ -869,3 +869,155 @@ class TestDireccionEntrega:
         """Unauthenticated access returns 401."""
         response = client.get("/api/v1/direcciones/")
         assert response.status_code == 401
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LOCALES (es_local) TESTS — task 4.1-4.4
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestDireccionLocales:
+
+    def test_crear_local_como_admin(self, client, admin_headers, db_session):
+        """ADMIN creates a local (es_local=true) — task 4.1."""
+        from tests.conftest import _seed_roles
+        _seed_roles(db_session)
+
+        response = client.post("/api/v1/direcciones/", json={
+            "alias": "Sucursal Centro",
+            "linea1": "Av. San Martin 500",
+            "ciudad": "Mendoza",
+            "provincia": "Mendoza",
+            "es_local": True,
+        }, headers=admin_headers)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["es_local"] is True
+        assert data["alias"] == "Sucursal Centro"
+
+    def test_listar_locales_cross_admin(self, client, admin_headers, db_session):
+        """Admin B sees Admin A's locales when listing direcciones — task 4.2."""
+        from tests.conftest import _seed_roles, _create_auth_headers
+        _seed_roles(db_session)
+        from app.modules.IdentidadYAcceso.Usuario.models import Usuario
+        from app.modules.IdentidadYAcceso.usuario_rol import UsuarioRol
+        from sqlmodel import select
+
+        # Create Admin A's local
+        response = client.post("/api/v1/direcciones/", json={
+            "alias": "Sucursal Norte",
+            "linea1": "Las Heras 1200",
+            "ciudad": "Mendoza",
+            "es_local": True,
+        }, headers=admin_headers)
+        assert response.status_code == 201
+
+        # Create a second admin user
+        admin_b = Usuario(
+            nombre="AdminB", apellido="Test",
+            email="admin_b@test.com",
+            password_hash=get_password_hash("admin123"),
+        )
+        db_session.add(admin_b)
+        db_session.flush()
+        db_session.add(UsuarioRol(usuario_id=admin_b.id, rol_codigo="ADMIN"))
+        db_session.flush()
+
+        admin_b_headers = _create_auth_headers(db_session, admin_b.id, "admin_b@test.com", ["ADMIN"])
+
+        # Admin B should see Admin A's local
+        response2 = client.get("/api/v1/direcciones/", headers=admin_b_headers)
+        assert response2.status_code == 200
+        direcciones = response2.json()
+        assert len(direcciones) >= 1
+        locales = [d for d in direcciones if d.get("es_local")]
+        assert len(locales) >= 1
+        assert locales[0]["alias"] == "Sucursal Norte"
+
+    def test_cliente_no_ve_locales_sin_incluir(self, client, client_headers, db_session):
+        """CLIENT listing direcciones (without incluir_locales) does NOT see locales — task 4.3."""
+        from tests.conftest import _seed_roles, create_user_with_role
+        _seed_roles(db_session)
+
+        # Create a local directly in the DB
+        admin_user, _admin_h = create_user_with_role(db_session, email="admin_noloc@test.com", roles_codigos=["ADMIN"])
+        from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+        local = DireccionEntrega(
+            usuario_id=admin_user.id,
+            alias="Local DB",
+            linea1="Calle DB 1",
+            ciudad="Mendoza",
+            es_local=True,
+        )
+        db_session.add(local)
+        db_session.flush()
+
+        response = client.get("/api/v1/direcciones/", headers=client_headers)
+        assert response.status_code == 200
+        direcciones = response.json()
+        # Client should NOT see the local in their regular listing
+        locales = [d for d in direcciones if d.get("es_local")]
+        assert len(locales) == 0
+
+    def test_cliente_ve_locales_con_incluir(self, client, client_headers, db_session):
+        """CLIENT with incluir_locales=true sees their direcciones + locales — task 4.4."""
+        from tests.conftest import _seed_roles, create_user_with_role
+        _seed_roles(db_session)
+
+        # Create a local directly in the DB
+        admin_user, _admin_h = create_user_with_role(db_session, email="admin_inc@test.com", roles_codigos=["ADMIN"])
+        from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
+        local = DireccionEntrega(
+            usuario_id=admin_user.id,
+            alias="Local Incluir",
+            linea1="Av. Incluir 500",
+            ciudad="Godoy Cruz",
+            es_local=True,
+        )
+        db_session.add(local)
+        db_session.flush()
+
+        # CLIENT creates a personal address
+        client.post("/api/v1/direcciones/", json={
+            "alias": "Mi Casa",
+            "linea1": "Calle Personal 42",
+            "ciudad": "Mendoza",
+        }, headers=client_headers)
+
+        # With incluir_locales=true
+        response = client.get("/api/v1/direcciones/?incluir_locales=true", headers=client_headers)
+        assert response.status_code == 200
+        direcciones = response.json()
+        # Client sees their own + locales
+        assert len(direcciones) >= 2
+        locales = [d for d in direcciones if d.get("es_local")]
+        assert len(locales) >= 1
+        assert locales[0]["alias"] == "Local Incluir"
+
+    def test_admin_no_puede_crear_pedido(self, client, admin_headers, db_session):
+        """ADMIN blocked from POST /pedidos/ — task 4.5."""
+        from tests.conftest import _seed_roles
+        _seed_roles(db_session)
+        # Need estados and formas_pago for pedido creation
+        from app.modules.VentasPagosTrazabilidad.EstadoPedido.models import EstadoPedido
+        from app.modules.VentasPagosTrazabilidad.FormaPago.models import FormaPago
+        from sqlmodel import select
+
+        for codigo, desc, orden, terminal in [
+            ("PENDIENTE", "Pendiente", 1, False),
+            ("CONFIRMADO", "Confirmado", 2, False),
+        ]:
+            if not db_session.exec(select(EstadoPedido).where(EstadoPedido.codigo == codigo)).first():
+                db_session.add(EstadoPedido(codigo=codigo, descripcion=desc, orden=orden, es_terminal=terminal))
+        for codigo, desc, hab in [
+            ("PAGO_LOCAL", "Pago local", True),
+        ]:
+            if not db_session.exec(select(FormaPago).where(FormaPago.codigo == codigo)).first():
+                db_session.add(FormaPago(codigo=codigo, descripcion=desc, habilitado=hab))
+        db_session.flush()
+
+        response = client.post("/api/v1/pedidos/", json={
+            "forma_pago_codigo": "PAGO_LOCAL",
+            "subtotal": "100.00",
+            "detalles": [],
+        }, headers=admin_headers)
+        assert response.status_code == 403

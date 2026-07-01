@@ -38,7 +38,7 @@ class ProductoCreate(SQLModel):
     precio_base: Decimal = Decimal('0.00')
     precio_actual: Optional[Decimal] = None
     imagenes_url: List[str] = []
-    stock_cantidad: int = 0
+    stock_cantidad: int = Field(default=0, ge=0)
     tiempo_prep_min: int = 0
     disponible: bool = True
     es_insumo: bool = False
@@ -66,7 +66,7 @@ class ProductoUpdate(SQLModel):
     receta: Optional[str] = None
     precio_base: Optional[Decimal] = None
     precio_actual: Optional[Decimal] = None
-    stock_cantidad: Optional[int] = None
+    stock_cantidad: Optional[int] = Field(default=None, ge=0)
     tiempo_prep_min: Optional[int] = None
     disponible: Optional[bool] = None
     es_insumo: Optional[bool] = None
@@ -94,6 +94,7 @@ class ProductoRead(SQLModel):
     disponible: bool = True
     es_insumo: bool = False
     tiene_ingredientes: bool = False
+    categoria_ids: list[int] = Field(default_factory=list)
     unidad_medida_id: Optional[int] = None
     unidad_medida_simbolo: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)

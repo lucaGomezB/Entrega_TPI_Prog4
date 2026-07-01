@@ -9,10 +9,12 @@ This is the thickest layer in the Product module. Key invariants:
 - All write operations use the Unit of Work pattern
 """
 from decimal import Decimal
+import math
 
 from fastapi import HTTPException
 from sqlmodel import Session, select
 from typing import Optional
+from collections import defaultdict
 from .models import Producto
 from .schemas import ProductoCreate, ProductoRead, ProductoUpdate, IngredienteAsignado, CategoriaAsignada
 from app.core.paginated_response import PaginatedResponse
@@ -143,28 +145,35 @@ class ProductoService:
                     associations = uow.productos.get_producto_ingredientes(db_producto.id)
 
                     # Pass 1: validate ALL ingredients, collect every shortage
-                    shortages: list[str] = []
+                    shortages: list[dict] = []
                     for pi in associations:
                         ing = uow.productos.get_ingrediente(pi.ingrediente_id)
                         if ing:
                             pi_unidad = pi.unidad_medida_id or ing.unidad_medida_id
-                            needed = (
+                            factor = (
                                 _convertir_cantidad(
                                     Decimal(pi.cantidad), pi_unidad, ing.unidad_medida_id,
                                     factores=factores,
                                 )
-                                * Decimal(db_producto.stock_cantidad)
                             )
+                            needed = factor * Decimal(db_producto.stock_cantidad)
                             if ing.stock_actual < needed:
-                                shortages.append(
-                                    f"'{ing.nombre}': necesita {needed}, tiene {ing.stock_actual}"
-                                )
+                                max_posible = int(ing.stock_actual // factor)
+                                shortages.append({
+                                    "ingrediente": ing.nombre,
+                                    "disponible": ing.stock_actual,
+                                    "requerido": int(math.ceil(needed)),
+                                    "max_posible": max_posible,
+                                })
 
                     if shortages:
-                        lines = "\n".join(f"  - {s}" for s in shortages)
                         raise HTTPException(
                             status_code=400,
-                            detail=f"Stock insuficiente en los siguientes ingredientes:\n{lines}"
+                            detail={
+                                "error": "stock_insuficiente",
+                                "mensaje": "Stock insuficiente en los siguientes ingredientes",
+                                "ingredientes": shortages,
+                            }
                         )
 
                     # Pass 2: all validated — deduct now
@@ -257,8 +266,11 @@ class ProductoService:
             # NOTE: No manual uow.commit() — the UoW __exit__ handles it automatically.
 
     @staticmethod
-    def get_all(session: Session, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> PaginatedResponse[ProductoRead]:
-        """List all non-deleted products with pagination, ingredient flag, and optional text search.
+    def get_all(session: Session, skip: int = 0, limit: int = 100, search: Optional[str] = None, categoria_id: Optional[list[int]] = None) -> PaginatedResponse[ProductoRead]:
+        """List all non-deleted products with pagination, ingredient flag, optional text search, and optional category filter.
+
+        When categoria_id is provided (single ID or list), the filter includes each category
+        and all its descendants (union via get_descendant_ids on the category repository).
 
         Read-only: wrapped in UoW for consistent DB access. The data is already
         in memory when returned so the UoW commit on exit is harmless.
@@ -267,8 +279,19 @@ class ProductoService:
         avoid N+1 checks per product.
         """
         with CatalogoDeProductosUnitOfWork(session) as uow:
-            productos, ids_with_ingredients = uow.productos.get_all_with_ingredient_flag(skip=skip, limit=limit, search=search)
-            total = uow.productos.count_all(search=search)
+            # Resolve descendant category IDs when filtering by category
+            # Supports both single int (backward compat) and list[int] (multi-select)
+            categoria_ids: Optional[list[int]] = None
+            if categoria_id:
+                all_ids: set[int] = set()
+                for cid in categoria_id:
+                    all_ids.update(uow.categorias.get_descendant_ids(cid))
+                categoria_ids = list(all_ids)
+
+            productos, ids_with_ingredients = uow.productos.get_all_with_ingredient_flag(
+                skip=skip, limit=limit, search=search, categoria_ids=categoria_ids,
+            )
+            total = uow.productos.count_all(search=search, categoria_ids=categoria_ids)
 
             # Build ProductoRead response with computed tiene_ingredientes
             result = []
@@ -282,6 +305,24 @@ class ProductoService:
                         tiene_ingredientes=p.id in ids_with_ingredients,
                     )
                 )
+
+            # Populate categoria_ids on each ProductoRead via batch query
+            if result:
+                product_ids = [p.id for p in result]
+                from ..producto_categoria import ProductoCategoria as PC
+                pc_stmt = select(PC).where(PC.producto_id.in_(product_ids))
+                pc_rows = session.exec(pc_stmt).all()
+                pc_map = defaultdict(list)
+                for row in pc_rows:
+                    pc_map[row.producto_id].append(row.categoria_id)
+                # Build new list with populated categoria_ids
+                enriched = []
+                for p in result:
+                    p_dict = p.model_dump()
+                    p_dict['categoria_ids'] = pc_map.get(p.id, [])
+                    enriched.append(ProductoRead(**p_dict))
+                result = enriched
+
             return PaginatedResponse(
                 items=result,
                 total=total,
@@ -333,28 +374,33 @@ class ProductoService:
                 associations = uow.productos.get_producto_ingredientes(producto_id)
 
                 # First pass: validate ALL ingredients, collect every shortage
-                shortages: list[str] = []
+                shortages: list[dict] = []
                 for pi in associations:
                     ing = uow.productos.get_ingrediente(pi.ingrediente_id)
                     if ing:
-                        needed = (
-                            _convertir_cantidad(
-                                Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
-                                factores=factores,
-                            )
-                            * Decimal(diff)
+                        factor = _convertir_cantidad(
+                            Decimal(pi.cantidad), pi.unidad_medida_id, ing.unidad_medida_id,
+                            factores=factores,
                         )
+                        needed = factor * Decimal(diff)
                         if ing.stock_actual < needed:
-                            shortages.append(
-                                f"'{ing.nombre}': necesita {needed}, tiene {ing.stock_actual}"
-                            )
+                            max_posible = int(ing.stock_actual // factor)
+                            shortages.append({
+                                "ingrediente": ing.nombre,
+                                "disponible": ing.stock_actual,
+                                "requerido": int(math.ceil(needed)),
+                                "max_posible": max_posible,
+                            })
 
                 # If ANY ingredient is short, report ALL at once — do NOT deduct anything
                 if shortages:
-                    lines = "\n".join(f"  - {s}" for s in shortages)
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Stock insuficiente en los siguientes ingredientes:\n{lines}"
+                        detail={
+                            "error": "stock_insuficiente",
+                            "mensaje": "Stock insuficiente en los siguientes ingredientes",
+                            "ingredientes": shortages,
+                        }
                     )
 
                 # Second pass: all validated — deduct now

@@ -31,12 +31,12 @@ from app.core.paginated_response import PaginatedResponse
 from ..uow import VentasPagosTrazabilidadUnitOfWork
 from app.modules.CatalogoDeProductos.uow import CatalogoDeProductosUnitOfWork
 from app.modules.IdentidadYAcceso.uow import IdentidadYAccesoUnitOfWork
+from app.modules.IdentidadYAcceso.DireccionEntrega.models import DireccionEntrega
 from ..HistorialEstadoPedido.service import HistorialEstadoPedidoService
 from ..DetallePedido.models import DetallePedido
 from ..HistorialEstadoPedido.models import HistorialEstadoPedido
 from app.core.base import get_utc_now
 from app.core.dependencies import fire_broadcast, fire_broadcast_admin, fire_broadcast_user
-
 
 # ---------------------------------------------------------------------------
 # FINITE STATE MACHINE (FSM) definition
@@ -62,7 +62,7 @@ from app.core.dependencies import fire_broadcast, fire_broadcast_admin, fire_bro
 ESTADOS_TERMINALES = {"ENTREGADO", "CANCELADO"}
 
 # Payment methods that only allow in-store pickup (no delivery)
-PICKUP_ONLY_METHODS = {"EFECTIVO", "PAGO_LOCAL"}
+PICKUP_ONLY_METHODS = {"PAGO_LOCAL"}
 
 TRANSICIONES_VALIDAS: dict[str, str] = {
     "PENDIENTE": "CONFIRMADO",
@@ -301,13 +301,16 @@ class PedidoService:
         (stock validation, ingredient validation, DB constraint), the entire
         transaction is rolled back. No partial orders.
         """
-        # ── Pickup-only payment methods: EFECTIVO and PAGO_LOCAL do NOT support delivery ──
+        # ── Pickup-only payment methods: PAGO_LOCAL does NOT support delivery ──
         if data.forma_pago_codigo in PICKUP_ONLY_METHODS:
             if data.direccion_id is not None:
-                raise HTTPException(
-                    status_code=422,
-                    detail="Este metodo de pago no admite envio a domicilio. direccion_id debe ser null.",
-                )
+                # Allow if it references a company store (local), not a personal delivery address
+                direccion = session.get(DireccionEntrega, data.direccion_id)
+                if not direccion or not direccion.es_local:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Este metodo de pago no admite envio a domicilio. Solo se permite seleccionar un local para retiro.",
+                    )
 
         # Auto-select user's primary address if none provided
         # (skip for pickup-only methods: they don't need a delivery address)
@@ -481,7 +484,22 @@ class PedidoService:
 
             if cantidad <= 0:
                 uow.delete(detalle)
+                uow.flush()  # Process deletion to avoid cascade issues on pedido update
+                uow.session.expire(db_pedido, ['detalles'])  # Expire stale relationship
             else:
+                # Validate stock BEFORE updating
+                prod = uow.pedidos.get_producto(producto_id)
+                if prod and prod.stock_cantidad < cantidad:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "error": "stock_insuficiente",
+                            "mensaje": f"Stock insuficiente para '{prod.nombre}'",
+                            "producto_id": producto_id,
+                            "solicitado": cantidad,
+                            "disponible": prod.stock_cantidad,
+                        },
+                    )
                 detalle.cantidad = cantidad
                 detalle.subtotal_snap = detalle.precio_snapshot * cantidad
                 uow.detalles.update(detalle)
@@ -489,12 +507,11 @@ class PedidoService:
             # Recalculate order totals from remaining details
             detalles_restantes = uow.pedidos.get_detalles(pedido_id)
             nuevo_subtotal = sum(d.subtotal_snap for d in detalles_restantes)
-            db_pedido = uow.pedidos.get_by_id(pedido_id)
             db_pedido.subtotal = nuevo_subtotal
             db_pedido.total = nuevo_subtotal - db_pedido.descuento + (db_pedido.costo_envio or Decimal('0.00'))
             if db_pedido.total < 0:
                 db_pedido.total = Decimal('0.00')
-            uow.add(db_pedido)
+            uow.pedidos.update(db_pedido)
             uow.refresh(db_pedido)
             return db_pedido
 
@@ -541,7 +558,7 @@ class PedidoService:
 
             estado_siguiente = TRANSICIONES_VALIDAS[estado_anterior]
 
-            # PENDIENTE -> CONFIRMADO: allowed for non-MP payment methods (PAGO_LOCAL, EFECTIVO)
+            # PENDIENTE -> CONFIRMADO: allowed for non-MP payment methods (PAGO_LOCAL, TRANSFERENCIA)
             # MERCADOPAGO orders MUST go through the IPN webhook (PagoService.process_webhook)
             if estado_siguiente == "CONFIRMADO" and db_pedido.forma_pago_codigo == "MERCADOPAGO":
                 raise HTTPException(
@@ -848,7 +865,7 @@ class PedidoService:
         an approved payment. For MERCADOPAGO orders this is the ONLY way
         PENDIENTE advances to CONFIRMADO — the API endpoint blocks the
         MP transition in avanzar_estado.
-        Non-MP methods (PAGO_LOCAL, EFECTIVO) transition directly via
+        Non-MP methods (PAGO_LOCAL, TRANSFERENCIA) transition directly via
         avanzar_estado, which also validates/deducts stock.
 
         Flow:
@@ -1066,6 +1083,21 @@ class PedidoService:
                     # Validate ingredient exclusions before creating the detail
                     if det.personalizacion:
                         PedidoService._validar_personalizacion(session, det.producto_id, det.personalizacion)
+
+                    # Validate stock for this detail line
+                    prod = uow.pedidos.get_producto(det.producto_id)
+                    get_or_404(prod, f"Producto ID {det.producto_id} no encontrado")
+                    if prod.stock_cantidad < det.cantidad:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail={
+                                "error": "stock_insuficiente",
+                                "mensaje": f"Stock insuficiente para '{prod.nombre}'",
+                                "producto_id": det.producto_id,
+                                "solicitado": det.cantidad,
+                                "disponible": prod.stock_cantidad,
+                            },
+                        )
 
                     line_total = det.precio_snapshot * det.cantidad
                     nuevo_subtotal += line_total

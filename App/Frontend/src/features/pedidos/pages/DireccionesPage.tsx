@@ -2,6 +2,7 @@
  * DireccionesPage — Delivery addresses management page for authenticated users.
  * Uses TanStack Query for data fetching and mutations.
  * Uses DataTable with client-side pagination.
+ * Role-adaptive: ADMIN sees "Administracion de sucursales", CLIENT sees "Mis Direcciones".
  */
 import { useState, useMemo } from "react";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
@@ -23,6 +24,7 @@ import ErrorBanner from "@/shared/components/ErrorBanner";
 import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
 import FormFooter from "@/shared/components/FormFooter";
 import SearchFilter from "@/shared/components/SearchFilter";
+import { getUserRoles } from "@/shared/api/client";
 
 const DEFAULT_LIMIT = 10;
 
@@ -36,6 +38,7 @@ interface DireccionFormFields {
   provincia: string;
   codigo_postal: string;
   es_principal: boolean;
+  es_local: boolean;
 }
 
 function DireccionModal({
@@ -59,6 +62,7 @@ function DireccionModal({
       provincia: direccion?.provincia ?? "",
       codigo_postal: direccion?.codigo_postal ?? "",
       es_principal: direccion?.es_principal ?? false,
+      es_local: direccion?.es_local ?? false,
     },
     onSubmit: async ({ value }: { value: DireccionFormFields }) => {
       const base = {
@@ -71,9 +75,9 @@ function DireccionModal({
       };
       try {
         if (esEditar) {
-          await onSave({ ...base, es_principal: value.es_principal } satisfies DireccionEntregaUpdate & { es_principal: boolean });
+          await onSave({ ...base, es_principal: value.es_principal, es_local: value.es_local } satisfies DireccionEntregaUpdate & { es_principal: boolean; es_local: boolean });
         } else {
-          await onSave({ ...base, es_principal: value.es_principal } satisfies DireccionEntregaInput);
+          await onSave({ ...base, es_principal: value.es_principal, es_local: value.es_local } satisfies DireccionEntregaInput);
         }
         onClose();
       } catch {
@@ -151,6 +155,16 @@ function DireccionModal({
               </label>
             )}
           </form.Field>
+          {getUserRoles().includes("ADMIN") && (
+            <form.Field name="es_local">
+              {(field) => (
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={field.state.value} onChange={(e) => field.handleChange(e.target.checked)} onBlur={field.handleBlur} className="cursor-pointer" />
+                  <span className="font-medium text-gray-700">Es un local / sucursal (disponible para retiro)</span>
+                </label>
+              )}
+            </form.Field>
+          )}
           <div className="flex justify-end pt-2">
             <FormFooter
               isSubmitting={form.state.isSubmitting}
@@ -172,6 +186,8 @@ export default function DireccionesPage() {
   const [skip, setSkip] = useState(0);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [search, setSearch] = useState("");
+
+  const esAdmin = getUserRoles().includes("ADMIN");
 
   // ── TanStack Query ──
   const { data: direccionesRaw = [], isLoading, isError, error } = useDirecciones();
@@ -282,6 +298,17 @@ export default function DireccionesPage() {
       hideOnMobile: true,
       render: (d) => <span className="text-sm text-gray-600">{d.ciudad}</span>,
     },
+    ...(esAdmin ? [{
+      key: "es_local" as const,
+      label: "Tipo",
+      render: (d: DireccionEntrega) => (
+        d.es_local ? (
+          <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded">Local</span>
+        ) : (
+          <span className="inline-block bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded">Personal</span>
+        )
+      ),
+    }] : []),
     {
       key: "acciones",
       label: "Acciones",
@@ -300,7 +327,16 @@ export default function DireccionesPage() {
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Mis Direcciones</h1>
+        <div>
+          <h1 className="text-2xl font-bold">
+            {esAdmin ? "Administracion de sucursales Food Store" : "Mis Direcciones"}
+          </h1>
+          {esAdmin && (
+            <p className="text-sm text-gray-500 mt-1">
+              Los locales creados aqui estaran disponibles como puntos de retiro para todos los clientes.
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <SearchFilter
             onSearch={(v) => { setSearch(v); setSkip(0); }}

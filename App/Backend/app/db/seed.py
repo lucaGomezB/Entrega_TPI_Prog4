@@ -315,7 +315,7 @@ ESTADOS_PEDIDO_SEED = [
 # Supported payment methods for order processing
 FORMAS_PAGO_SEED = [
     FormaPago(codigo="MERCADOPAGO",   descripcion="MercadoPago",          habilitado=True),
-    FormaPago(codigo="EFECTIVO",      descripcion="Efectivo",             habilitado=True),
+    FormaPago(codigo="EFECTIVO",      descripcion="Efectivo",             habilitado=False),
     FormaPago(codigo="PAGO_LOCAL",    descripcion="Pago y retiro en local", habilitado=True),
     FormaPago(codigo="TRANSFERENCIA", descripcion="Transferencia",        habilitado=True),
 ]

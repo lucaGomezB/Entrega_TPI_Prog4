@@ -37,6 +37,7 @@ import ErrorBanner from "@/shared/components/ErrorBanner";
 import { EditButton, DeleteButton } from "@/shared/components/ActionButton";
 import FormFooter from "@/shared/components/FormFooter";
 import { useCloudinaryUpload } from "@/shared/hooks/useCloudinaryUpload";
+import DecimalInput from "@/shared/components/DecimalInput";
 
 const DEFAULT_LIMIT = 10;
 
@@ -142,15 +143,18 @@ function IngredienteSelector({ allIngredientes, unidades, selected, onSelect, on
                 <td className="border p-2">
                   {sel && (
                     <span className="inline-flex items-center gap-1">
-                      <input type="number" step="0.001" min="0.001"
+                      <DecimalInput
                         value={sel.cantidad}
-                        onChange={(e) => {
-                          const newCant = Number(e.target.value) || 0.001;
+                        onChange={(v) => {
                           setLocalSelected(prev =>
-                            prev.map(s => s.id === ing.id ? { ...s, cantidad: newCant } : s)
+                            prev.map(s => s.id === ing.id ? { ...s, cantidad: v } : s)
                           );
                         }}
-                        className="border px-2 py-1 rounded w-16" />
+                        decimals={3}
+                        min={0.001}
+                        step={0.001}
+                        width="min-w-[8ch]"
+                      />
                       <select
                         value={sel.unidad_medida_id ?? ""}
                         onChange={(e) => {
@@ -379,11 +383,15 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
                               <td className="border p-2">{ing.ingrediente_nombre}</td>
                               <td className="border p-2">
                                 <span className="inline-flex items-center gap-1">
-                                  <input type="number" step="0.001" min="0.001"
+                                  <DecimalInput
                                     value={ing.cantidad}
+                                    onChange={(v) => handleCantidadChange(ing.ingrediente_id, v, ing.unidad_medida_id)}
+                                    decimals={3}
+                                    min={0.001}
+                                    step={0.001}
                                     disabled={updatingCantidad === ing.ingrediente_id}
-                                    onChange={(e) => handleCantidadChange(ing.ingrediente_id, Number(e.target.value) || 0.001, ing.unidad_medida_id)}
-                                    className="border px-2 py-1 rounded w-20" />
+                                    width="min-w-[8ch]"
+                                  />
                                 </span>
                               </td>
                               <td className="border p-2 text-sm text-gray-600">
@@ -477,9 +485,13 @@ function IngredientesPopup({ productoId, productoNombre, unidades, onClose, onIn
                   <div>
                     <label className="block text-sm font-medium">Cantidad</label>
                     <span className="inline-flex gap-1">
-                      <input type="number" step="0.001" min="0.001" value={addForm.cantidad}
-                        onChange={(e) => setAddForm({ ...addForm, cantidad: Number(e.target.value) || 0.001 })}
-                        className="border px-2 py-1 rounded w-20" />
+                      <DecimalInput value={addForm.cantidad}
+                        onChange={(v) => setAddForm({ ...addForm, cantidad: v })}
+                        decimals={3}
+                        min={0.001}
+                        step={0.001}
+                        width="min-w-[8ch]"
+                      />
                       <select
                         value={addForm.unidad_medida_id ?? ""}
                         onChange={(e) => setAddForm({ ...addForm, unidad_medida_id: e.target.value ? Number(e.target.value) : null })}
@@ -1155,7 +1167,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
         </div>
       ),
     }] : []),
-    ...(isAuth && role !== 'stock' ? [{
+    ...(role === 'client' ? [{
       key: "carrito" as const,
       label: "Carrito",
       render: (p: Producto) => {
@@ -1231,11 +1243,14 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 {(field) => (
                   <div>
                     <label className="block text-sm font-medium">Stock</label>
-                    <input type="number" min="0"
+                    <DecimalInput
                       value={field.state.value ?? 0}
-                      onChange={(e) => field.handleChange(Number(e.target.value))}
+                      onChange={(v) => field.handleChange(v)}
                       onBlur={field.handleBlur}
-                      className="border px-2 py-1 rounded w-full" />
+                      decimals={0}
+                      min={0}
+                      step={1}
+                    />
                   </div>
                 )}
               </form.Field>
@@ -1314,11 +1329,17 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                     <form.Field name="precio_base">
                       {(field) => (
                         <>
-                          <input type="number" step="0.01" value={field.state.value ?? 0}
-                            disabled={precioDisabled}
-                            onChange={(e) => field.handleChange(Number(e.target.value))}
+                          <DecimalInput
+                            value={field.state.value ?? 0}
+                            onChange={(v) => field.handleChange(v)}
                             onBlur={field.handleBlur}
-                            className={`border px-2 py-1 rounded w-full ${precioDisabled ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : ''}`} />
+                            decimals={2}
+                            min={0}
+                            step={0.01}
+                            isCurrency
+                            disabled={precioDisabled}
+                            className={precioDisabled ? "cursor-not-allowed" : ""}
+                          />
                           {(editingId && hasIngredients) || (!editingId && selectedIngredientes.length > 0) ? (
                             <p className="text-xs text-gray-500 mt-1 italic">
                               {!editingId
@@ -1348,10 +1369,15 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 </label>
                 <form.Field name="precio_actual">
                   {(field) => (
-                    <input type="number" step="0.01" value={field.state.value ?? 0}
-                      onChange={(e) => field.handleChange(Number(e.target.value))}
+                    <DecimalInput
+                      value={field.state.value ?? 0}
+                      onChange={(v) => field.handleChange(v)}
                       onBlur={field.handleBlur}
-                      className="border px-2 py-1 rounded w-full" />
+                      decimals={2}
+                      min={0}
+                      step={0.01}
+                      isCurrency
+                    />
                   )}
                 </form.Field>
               </div>
@@ -1376,10 +1402,14 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 {(field) => (
                   <div>
                     <label className="block text-sm font-medium">Stock</label>
-                    <input type="number" min="0" value={field.state.value ?? 0}
-                      onChange={(e) => field.handleChange(Number(e.target.value))}
+                    <DecimalInput
+                      value={field.state.value ?? 0}
+                      onChange={(v) => field.handleChange(v)}
                       onBlur={field.handleBlur}
-                      className="border px-2 py-1 rounded w-full" />
+                      decimals={0}
+                      min={0}
+                      step={1}
+                    />
                   </div>
                 )}
               </form.Field>
@@ -1387,10 +1417,14 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
                 {(field) => (
                   <div>
                     <label className="block text-sm font-medium">Tiempo de preparacion (minutos)</label>
-                    <input type="number" value={field.state.value ?? 0}
-                      onChange={(e) => field.handleChange(Number(e.target.value))}
+                    <DecimalInput
+                      value={field.state.value ?? 0}
+                      onChange={(v) => field.handleChange(v)}
                       onBlur={field.handleBlur}
-                      className="border px-2 py-1 rounded w-full" />
+                      decimals={0}
+                      min={0}
+                      step={1}
+                    />
                   </div>
                 )}
               </form.Field>
@@ -1556,7 +1590,7 @@ export default function ProductosCRUD({ role = 'admin' }: { role?: 'admin' | 'st
       {/* Extra actions below table */}
       <div className="flex gap-2 mt-4 items-center justify-between">
         <div />
-        {isAuth && role !== 'stock' && (
+        {role === 'client' && (
           <button
             onClick={() => navigate("/carrito")}
             className="bg-green-700 text-white px-4 py-1.5 rounded text-sm font-semibold hover:bg-green-800 cursor-pointer"

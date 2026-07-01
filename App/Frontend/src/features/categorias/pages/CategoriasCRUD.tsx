@@ -12,6 +12,7 @@ import { useState, useRef, useMemo, type ReactNode } from "react";
 import { AxiosError } from "axios";
 import type { CategoriaCreate, CategoriaTree } from "@/features/categorias/api/categorias";
 import { useCategoriasTree, useCreateCategoria, useUpdateCategoria, useDeleteCategoria } from "@/features/categorias/hooks/useCategorias";
+import { getDescendantIds } from "@/features/categorias/utils/tree";
 import ImageCarousel from "@/shared/components/ImageCarousel";
 import { exportToExcel } from "@/shared/utils/exportExcel";
 import { useAppForm, required } from "@/shared/hooks/useAppForm";
@@ -34,14 +35,6 @@ function flattenTree(nodes: CategoriaTree[], depth = 0): (CategoriaTree & { dept
     }
   }
   return result;
-}
-
-function getDescendantIds(node: CategoriaTree): number[] {
-  const ids: number[] = [node.id];
-  for (const child of node.subcategorias) {
-    ids.push(...getDescendantIds(child));
-  }
-  return ids;
 }
 
 function findCategoriaInTree(nodes: CategoriaTree[], id: number): CategoriaTree | null {

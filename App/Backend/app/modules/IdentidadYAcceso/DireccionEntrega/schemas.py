@@ -23,6 +23,7 @@ class DireccionEntregaCreate(BaseModel):
     latitud: Optional[Decimal] = None
     longitud: Optional[Decimal] = None
     es_principal: bool = False
+    es_local: bool = False
 
 
 class DireccionEntregaUpdate(BaseModel):
@@ -36,6 +37,7 @@ class DireccionEntregaUpdate(BaseModel):
     latitud: Optional[Decimal] = None
     longitud: Optional[Decimal] = None
     es_principal: Optional[bool] = None
+    es_local: Optional[bool] = None
 
 
 class DireccionEntregaRead(ReadModel):
@@ -51,5 +53,6 @@ class DireccionEntregaRead(ReadModel):
     latitud: Optional[Decimal] = None
     longitud: Optional[Decimal] = None
     es_principal: bool
+    es_local: bool = False
     created_at: datetime
     updated_at: datetime

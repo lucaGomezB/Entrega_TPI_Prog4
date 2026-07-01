@@ -22,6 +22,7 @@ export interface DireccionEntrega {
   latitud: string | null;
   longitud: string | null;
   es_principal: boolean;
+  es_local: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +37,7 @@ export interface DireccionEntregaInput {
   latitud?: string | null;
   longitud?: string | null;
   es_principal?: boolean;
+  es_local?: boolean;
 }
 
 export interface DireccionEntregaUpdate {
@@ -48,6 +50,7 @@ export interface DireccionEntregaUpdate {
   latitud?: string | null;
   longitud?: string | null;
   es_principal?: boolean;
+  es_local?: boolean;
 }
 
 /**
@@ -65,8 +68,13 @@ export const direccionesApi = {
   /**
    * Fetches all addresses for the current user (scoped by the JWT).
    * Overrides the default paginated getAll with a non-paginated version.
+   * When incluirLocales=true, also returns company stores (es_local=True)
+   * for pickup location selection.
    */
-  getAll: () => apiFetch<DireccionEntrega[]>("/direcciones/"),
+  getAll: (incluirLocales = false) => {
+    const url = incluirLocales ? "/direcciones/?incluir_locales=true" : "/direcciones/";
+    return apiFetch<DireccionEntrega[]>(url);
+  },
 
   /**
    * Marks an address as the primary/default delivery address.

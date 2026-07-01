@@ -58,6 +58,7 @@ export interface AppRoutesProps {
 // ── Component ──
 
 export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppRoutesProps) {
+  const isAdmin = hasRole(roles, 'ADMIN');
   let productRole: 'admin' | 'stock' | 'pedidos' | 'client';
   if (isClient || isGuest) productRole = 'client';
   else if (hasRole(roles, 'ADMIN')) productRole = 'admin';
@@ -71,7 +72,7 @@ export function AppRoutes({ roles, isGuest, isClient, isStock, isPedidos }: AppR
           <Route path="/" element={<Navigate to="/productos" replace />} />
           <Route path="/productos/:id" element={<ProductoDetail />} />
           <Route path="/productos" element={<ProductosCliente />} />
-          {!isGuest && <Route path="/carrito" element={<Carrito />} />}
+        {!isGuest && !isAdmin && <Route path="/carrito" element={<Carrito />} />}
           <Route path="/pedidos" element={<PedidosPage />} />
           <Route path="/pedidos/post-pago" element={<PostPagoPage />} />
           <Route path="/pedidos/:id" element={<PedidosPage />} />

@@ -15,6 +15,8 @@ import { addToast } from "@/shared/components/Toast";
 import ImageCarousel from "@/shared/components/ImageCarousel";
 import AllergenBadge from "@/features/productos/components/AllergenBadge";
 import ErrorBanner from "@/shared/components/ErrorBanner";
+import { getAccessToken, getUserRoles } from "@/shared/api/client";
+import DecimalInput from "@/shared/components/DecimalInput";
 
 // ── Skeleton loader for the detail page ──
 
@@ -61,6 +63,12 @@ export default function ProductoDetail() {
   const [quantity, setQuantity] = useState(1);
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
   const [added, setAdded] = useState(false);
+
+  // Role-gate: only clients (no role) and pedidos staff see add-to-cart
+  const isClientOrPedidos = (() => {
+    const roles = getUserRoles();
+    return roles.includes("PEDIDOS") || (!!getAccessToken() && roles.length === 0);
+  })();
 
   // ── Loading state ──
   if (productLoading) {
@@ -211,77 +219,77 @@ export default function ProductoDetail() {
         )}
       </div>
 
-      {/* Add-to-cart section */}
-      <div className="border-t pt-4 space-y-4">
-        <h2 className="text-xl font-semibold text-gray-900">Agregar al carrito</h2>
+      {/* Add-to-cart section — hidden for admin/stock/guests */}
+      {isClientOrPedidos && (
+        <div className="border-t pt-4 space-y-4">
+          <h2 className="text-xl font-semibold text-gray-900">Agregar al carrito</h2>
 
-        {/* Quantity selector */}
-        <div className="flex items-center gap-3">
-          <label htmlFor="quantity" className="text-sm font-medium text-gray-700">
-            Cantidad:
-          </label>
-          <input
-            id="quantity"
-            type="number"
-            min={1}
-            max={99}
-            value={quantity}
-            onChange={(e) => {
-              const v = Math.max(1, Math.min(99, Number(e.target.value) || 1));
-              setQuantity(v);
-            }}
-            className="border rounded px-2 py-1 w-20 text-center"
-            disabled={isUnavailable}
-          />
-        </div>
-
-        {/* Removable ingredient checkboxes */}
-        {removableIngredients.length > 0 && (
-          <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">
-              Excluir ingredientes:
-            </p>
-            <div className="space-y-1">
-              {removableIngredients.map((ing) => (
-                <label
-                  key={ing.ingrediente_id}
-                  className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={excludedIds.has(ing.ingrediente_id)}
-                    onChange={() => handleToggleExclusion(ing.ingrediente_id)}
-                    disabled={isUnavailable}
-                    className="rounded"
-                  />
-                  Sin {ing.ingrediente_nombre}
-                </label>
-              ))}
-            </div>
+          {/* Quantity selector */}
+          <div className="flex items-center gap-3">
+            <label htmlFor="quantity" className="text-sm font-medium text-gray-700">
+              Cantidad:
+            </label>
+            <DecimalInput
+              id="quantity"
+              value={quantity}
+              onChange={(v) => setQuantity(v)}
+              decimals={0}
+              min={1}
+              max={99}
+              step={1}
+              disabled={isUnavailable}
+              width="min-w-[8ch]"
+            />
           </div>
-        )}
 
-        {/* Add to cart button */}
-        <button
-          onClick={handleAddToCart}
-          disabled={isUnavailable}
-          className={`px-6 py-2 rounded font-medium text-white transition-colors cursor-pointer ${
-            isUnavailable
-              ? "bg-gray-400 cursor-not-allowed"
+          {/* Removable ingredient checkboxes */}
+          {removableIngredients.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                Excluir ingredientes:
+              </p>
+              <div className="space-y-1">
+                {removableIngredients.map((ing) => (
+                  <label
+                    key={ing.ingrediente_id}
+                    className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={excludedIds.has(ing.ingrediente_id)}
+                      onChange={() => handleToggleExclusion(ing.ingrediente_id)}
+                      disabled={isUnavailable}
+                      className="rounded"
+                    />
+                    Sin {ing.ingrediente_nombre}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add to cart button */}
+          <button
+            onClick={handleAddToCart}
+            disabled={isUnavailable}
+            className={`px-6 py-2 rounded font-medium text-white transition-colors cursor-pointer ${
+              isUnavailable
+                ? "bg-gray-400 cursor-not-allowed"
+                : added
+                  ? "bg-green-600"
+                  : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {isUnavailable
+              ? product.disponible
+                ? "Sin stock"
+                : "No disponible"
               : added
-                ? "bg-green-600"
-                : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
-          {isUnavailable
-            ? product.disponible
-              ? "Sin stock"
-              : "No disponible"
-            : added
-              ? "OK Agregado"
-              : "Agregar al carrito"}
-        </button>
-      </div>
+                ? "OK Agregado"
+                : "Agregar al carrito"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
